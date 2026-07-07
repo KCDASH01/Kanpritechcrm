@@ -1,0 +1,136 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
+  }
+
+  /* Thin indigo scrollbar */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #c7d2fe; border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover { background: #a5b4fc; }
+}
+
+/* ── Marketing page animations ────────────────────────────────────────────── */
+@keyframes liUp {
+  from { opacity: 0; transform: translateY(28px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes liIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes floatA {
+  0%,100% { transform: translateY(0px)  rotate(-1deg); }
+  50%      { transform: translateY(-14px) rotate(1deg);  }
+}
+@keyframes floatB {
+  0%,100% { transform: translateY(0px)  rotate(1deg); }
+  50%      { transform: translateY(-10px) rotate(-2deg); }
+}
+@keyframes floatC {
+  0%,100% { transform: translateY(-4px) rotate(-0.5deg); }
+  50%      { transform: translateY(6px)  rotate(0.5deg); }
+}
+@keyframes mktShimmer {
+  0%   { background-position: -300% center; }
+  100% { background-position:  300% center; }
+}
+@keyframes blobMorph {
+  0%,100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
+  50%      { border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%; }
+}
+@keyframes pulseRing {
+  0%   { transform: scale(1);   opacity: .5; }
+  100% { transform: scale(1.6); opacity: 0;  }
+}
+
+.mkt-li-1 { animation: liUp 0.65s cubic-bezier(.22,1,.36,1) 0.05s both; }
+.mkt-li-2 { animation: liUp 0.65s cubic-bezier(.22,1,.36,1) 0.18s both; }
+.mkt-li-3 { animation: liUp 0.65s cubic-bezier(.22,1,.36,1) 0.31s both; }
+.mkt-li-4 { animation: liUp 0.65s cubic-bezier(.22,1,.36,1) 0.44s both; }
+.mkt-li-5 { animation: liIn  0.9s ease-out               0.65s both; }
+
+.mkt-float-a { animation: floatA 5s   ease-in-out         infinite; }
+.mkt-float-b { animation: floatB 6s   ease-in-out 0.8s   infinite; }
+.mkt-float-c { animation: floatC 4.5s ease-in-out 1.6s   infinite; }
+
+.mkt-blob  { animation: blobMorph 9s  ease-in-out     infinite; }
+.mkt-blob2 { animation: blobMorph 11s ease-in-out 3s  infinite; }
+
+.mkt-gradient-text {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 45%, #06b6d4 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.mkt-shimmer-badge {
+  background: linear-gradient(90deg, #6366f1, #8b5cf6, #06b6d4, #6366f1);
+  background-size: 300% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: mktShimmer 4s linear infinite;
+}
+.mkt-hero-mesh {
+  background-image:
+    radial-gradient(circle at 22% 20%, rgba(99,102,241,.10) 0%, transparent 45%),
+    radial-gradient(circle at 78% 80%, rgba(139,92,246,.08) 0%, transparent 45%),
+    linear-gradient(to right,  rgba(99,102,241,.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(99,102,241,.05) 1px, transparent 1px);
+  background-size: auto, auto, 48px 48px, 48px 48px;
+}
+.mkt-card-lift {
+  transition: transform .22s ease, box-shadow .22s ease;
+}
+.mkt-card-lift:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 24px 48px -12px rgba(99,102,241,.18);
+}
+.mkt-btn-primary {
+  transition: transform .18s ease, box-shadow .18s ease, background-color .15s;
+}
+.mkt-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 32px -8px rgba(99,102,241,.45);
+}
+.mkt-plan-card {
+  transition: transform .22s ease, box-shadow .22s ease;
+}
+.mkt-plan-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px -12px rgba(99,102,241,.15);
+}
+.mkt-pulse-dot::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: #22c55e;
+  animation: pulseRing 2s ease-out infinite;
+}
+
+@layer utilities {
+  /* Shimmer skeleton — applied via .skeleton class */
+  .skeleton {
+    background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.6s linear infinite;
+  }
+
+  /* Hide scrollbar but keep scroll functionality */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; }
+
+  /* Gradient text */
+  .text-gradient {
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+}
