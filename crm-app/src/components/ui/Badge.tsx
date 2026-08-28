@@ -6,12 +6,15 @@ const COLORS: Record<string, string> = {
   // Lead status
   new:          'bg-blue-100 text-blue-700',
   contacted:    'bg-yellow-100 text-yellow-700',
-  qualified:    'bg-green-100 text-green-700',
-  unqualified:  'bg-red-100 text-red-700',
+  ringing:      'bg-green-100 text-green-700',
+  important:    'bg-amber-100 text-amber-800',
   converted:    'bg-indigo-100 text-indigo-700',
   followup:     'bg-orange-100 text-orange-700',
   meeting:      'bg-violet-100 text-violet-700',
   not_interested: 'bg-gray-100 text-gray-600',
+  // legacy aliases (if any cached responses)
+  qualified:    'bg-green-100 text-green-700',
+  unqualified:  'bg-amber-100 text-amber-800',
 
   // Deal status
   open:  'bg-blue-100 text-blue-700',
@@ -21,7 +24,6 @@ const COLORS: Record<string, string> = {
   // Activity type
   call:     'bg-green-100 text-green-700',
   email:    'bg-violet-100 text-violet-700',
-  meeting:  'bg-blue-100 text-blue-700',
   task:     'bg-orange-100 text-orange-700',
   note:     'bg-yellow-100 text-yellow-700',
   deadline: 'bg-red-100 text-red-700',

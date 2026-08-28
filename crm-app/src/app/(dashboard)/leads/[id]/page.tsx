@@ -12,7 +12,9 @@ import { pipelinesApi } from '@/lib/api/pipelines';
 import { LeadInfoCard } from '@/components/leads/LeadInfoCard';
 import { StatusStepperCard } from '@/components/leads/StatusStepperCard';
 import { ScheduleStatusModal } from '@/components/leads/ScheduleStatusModal';
-import { isScheduledLeadStatus, type LeadStatus, type ScheduledLeadStatus } from '@/lib/leadStatuses';
+import { RemarkStatusModal } from '@/components/leads/RemarkStatusModal';
+import { ConvertToDealForm } from '@/components/leads/ConvertToDealForm';
+import { isScheduledLeadStatus, isRemarkLeadStatus, type LeadStatus, type ScheduledLeadStatus, type RemarkLeadStatus } from '@/lib/leadStatuses';
 import { AssignmentCard } from '@/components/leads/AssignmentCard';
 import { LeadActivityFeed } from '@/components/leads/LeadActivityFeed';
 
@@ -79,80 +81,6 @@ function Spinner() {
   );
 }
 
-// ── Convert-to-deal form (same as in leads/page.tsx) ─────────────────────────
-const inputCls = 'w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-shadow bg-white';
-
-function ConvertForm({ leadName, pipelines, onSave, onClose, saving }: {
-  leadName: string;
-  pipelines: import('@/types').Pipeline[] | undefined;
-  onSave: (d: ConvertPayload) => void;
-  onClose: () => void;
-  saving?: boolean;
-}) {
-  const [selectedPipelineId, setSelectedPipelineId] = useState<number>(0);
-  const [form, setForm] = useState<ConvertPayload>({
-    pipeline_id: 0,
-    stage_id:    0,
-    title:       `Deal — ${leadName}`,
-    value:       undefined,
-  });
-
-  const pipelineId = selectedPipelineId || pipelines?.[0]?.id || 0;
-  const stages     = pipelines?.find((p) => p.id === pipelineId)?.stages ?? [];
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-indigo-50 rounded-xl p-3 text-sm text-indigo-700">
-        Converting <strong>{leadName}</strong> to a deal.
-      </div>
-      <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">Deal Title</label>
-        <input value={form.title ?? ''} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} className={inputCls} />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Pipeline</label>
-          <select
-            value={pipelineId}
-            onChange={(e) => { const id = Number(e.target.value); setSelectedPipelineId(id); setForm((f) => ({ ...f, pipeline_id: id, stage_id: 0 })); }}
-            className={inputCls}
-          >
-            {pipelines?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Stage *</label>
-          <select value={form.stage_id} onChange={(e) => setForm((f) => ({ ...f, stage_id: Number(e.target.value) }))} className={inputCls}>
-            <option value={0}>Select stage…</option>
-            {stages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        </div>
-      </div>
-      <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">Deal Value (₹)</label>
-        <input
-          type="number" min={0}
-          value={form.value ?? ''}
-          onChange={(e) => setForm((f) => ({ ...f, value: e.target.value ? Number(e.target.value) : undefined }))}
-          placeholder="0"
-          className={inputCls}
-        />
-      </div>
-      <div className="flex gap-3 pt-1">
-        <button
-          onClick={() => onSave({ ...form, pipeline_id: pipelineId })}
-          disabled={saving || !form.stage_id}
-          className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold py-2.5 rounded-xl text-sm flex items-center justify-center gap-2 transition-colors"
-        >
-          {saving && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>}
-          Convert to Deal
-        </button>
-        <button onClick={onClose} className="px-5 py-2.5 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-xl transition-colors">Cancel</button>
-      </div>
-    </div>
-  );
-}
-
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function LeadDetailPage() {
   const params    = useParams<{ id: string }>();
@@ -166,6 +94,8 @@ export default function LeadDetailPage() {
   const [waSending, setWaSending]     = useState(false);
   const [assignToast, setAssignToast] = useState<string | null>(null);
   const [scheduleStatus, setScheduleStatus] = useState<ScheduledLeadStatus | null>(null);
+  const [remarkStatus, setRemarkStatus] = useState<RemarkLeadStatus | null>(null);
+  const [phoneError, setPhoneError]   = useState<string | null>(null);
 
   const { data: waTemplates } = useQuery({
     queryKey: ['whatsapp-templates'],
@@ -246,12 +176,19 @@ export default function LeadDetailPage() {
       qc.invalidateQueries({ queryKey: ['leads'] });
       qc.invalidateQueries({ queryKey: ['lead-activities', leadId] });
       qc.invalidateQueries({ queryKey: ['activities'] });
+      setPhoneError(null);
       setScheduleStatus(null);
+      setRemarkStatus(null);
       if (variables._assigneeName !== undefined) {
         setAssignToast(variables._assigneeName || 'Unassigned');
       }
     },
     onError: (err: unknown) => {
+      const phoneMsg = (err as { response?: { data?: { errors?: { phone?: string[] } } } })?.response?.data?.errors?.phone?.[0];
+      if (phoneMsg) {
+        setPhoneError(phoneMsg);
+        return;
+      }
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
       alert(msg ?? 'Failed to update lead.');
     },
@@ -268,11 +205,15 @@ export default function LeadDetailPage() {
 
   const convertMutation = useMutation({
     mutationFn: (payload: ConvertPayload) => leadsApi.convertToDeal(leadId, payload),
-    onSuccess: () => {
+    onSuccess: (result) => {
       setConvertOpen(false);
       qc.invalidateQueries({ queryKey: ['leads'] });
       qc.invalidateQueries({ queryKey: ['deals'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
       invalidateLead();
+      if (result.deal_marked_won) {
+        alert(result.message);
+      }
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -285,6 +226,10 @@ export default function LeadDetailPage() {
   const handleStatusChange = (s: LeadStatus) => {
     if (isScheduledLeadStatus(s)) {
       setScheduleStatus(s);
+      return;
+    }
+    if (isRemarkLeadStatus(s)) {
+      setRemarkStatus(s);
       return;
     }
     updateMutation.mutate({ status: s });
@@ -409,9 +354,14 @@ export default function LeadDetailPage() {
           <div className="w-[340px] shrink-0 space-y-4">
             <LeadInfoCard
               lead={lead}
-              onUpdate={(payload) => updateMutation.mutate(payload)}
+              onUpdate={(payload) => {
+                setPhoneError(null);
+                updateMutation.mutate(payload);
+              }}
               saving={saving}
               canEdit={canEditThisLead}
+              phoneError={phoneError}
+              onPhoneChange={() => setPhoneError(null)}
             />
             <StatusStepperCard
               status={lead.status}
@@ -456,7 +406,7 @@ export default function LeadDetailPage() {
         title="Convert Lead to Deal"
         maxWidth="max-w-md"
       >
-        <ConvertForm
+        <ConvertToDealForm
           leadName={lead.full_name}
           pipelines={pipelines}
           onSave={(p) => convertMutation.mutate(p)}
@@ -470,8 +420,20 @@ export default function LeadDetailPage() {
           lead={lead}
           status={scheduleStatus}
           onClose={() => setScheduleStatus(null)}
-          onConfirm={(scheduleAt) =>
-            updateMutation.mutate({ status: scheduleStatus, schedule_at: scheduleAt })
+          onConfirm={({ scheduleAt, remark }) =>
+            updateMutation.mutate({ status: scheduleStatus, schedule_at: scheduleAt, remark })
+          }
+          saving={saving}
+        />
+      )}
+
+      {remarkStatus && lead && (
+        <RemarkStatusModal
+          lead={lead}
+          status={remarkStatus}
+          onClose={() => setRemarkStatus(null)}
+          onConfirm={(remark) =>
+            updateMutation.mutate({ status: remarkStatus, remark: remark || undefined })
           }
           saving={saving}
         />

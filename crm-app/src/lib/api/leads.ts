@@ -5,10 +5,13 @@ export interface LeadFilters {
   search?: string;
   status?: string;
   source?: string;
+  types?: string;
   stage_id?: number;
   pipeline_id?: number;
   assigned_to?: number | null;
   unassigned?: boolean;
+  date_from?: string;
+  date_to?: string;
   sort_by?: string;
   sort_dir?: 'asc' | 'desc';
   per_page?: number;
@@ -25,6 +28,7 @@ export interface LeadPayload {
   website?: string;
   status?: string;
   source?: string;
+  types?: string;
   industry?: string;
   city?: string;
   country?: string;
@@ -37,6 +41,7 @@ export interface LeadPayload {
   external_lead_id?: string;
   lost_reason?: string;
   schedule_at?: string;
+  remark?:     string;
 }
 
 export interface LeadTimelineEntry {
@@ -48,11 +53,27 @@ export interface LeadTimelineEntry {
   created_at:  string;
 }
 
+export interface ConvertPaymentPayload {
+  amount: number;
+  payment_date: string;
+  payment_mode: 'cash' | 'cheque' | 'bank_transfer' | 'upi' | 'card' | 'other';
+  txn_or_utr_number?: string;
+  notes?: string;
+}
+
 export interface ConvertPayload {
   pipeline_id: number;
   stage_id:    number;
   title?:      string;
   value?:      number;
+  payment?:    ConvertPaymentPayload;
+}
+
+export interface ConvertToDealResponse {
+  data: unknown;
+  message: string;
+  deal_status?: string;
+  deal_marked_won?: boolean;
 }
 
 export const leadsApi = {
@@ -78,5 +99,5 @@ export const leadsApi = {
     client.get<{ data: LeadTimelineEntry[] }>(`/leads/${id}/timeline`).then((r) => r.data.data),
 
   convertToDeal: (id: number, payload: ConvertPayload) =>
-    client.post(`/leads/${id}/convert`, payload).then((r) => r.data),
+    client.post<ConvertToDealResponse>(`/leads/${id}/convert`, payload).then((r) => r.data),
 };

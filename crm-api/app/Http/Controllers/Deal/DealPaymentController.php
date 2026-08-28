@@ -5,11 +5,16 @@ namespace App\Http\Controllers\Deal;
 use App\Http\Controllers\Controller;
 use App\Models\Deal;
 use App\Models\DealPayment;
+use App\Services\DealStatusService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class DealPaymentController extends Controller
 {
+    public function __construct(
+        private readonly DealStatusService $dealStatus,
+    ) {}
     // ── GET /api/deals/{deal}/payments ────────────────────────────────────────
     // List all payments for a deal. Accessible by org members.
 
@@ -73,13 +78,27 @@ class DealPaymentController extends Controller
             'notes'             => ['nullable', 'string', 'max:500'],
         ]);
 
-        $payment = DealPayment::create(array_merge($data, [
-            'deal_id'         => $deal->id,
-            'organization_id' => $deal->organization_id,
-            'created_by'      => $user->id,
-        ]));
+        $dealMarkedWon = false;
+
+        $payment = DB::transaction(function () use ($data, $deal, $user, &$dealMarkedWon) {
+            $payment = DealPayment::create(array_merge($data, [
+                'deal_id'         => $deal->id,
+                'organization_id' => $deal->organization_id,
+                'created_by'      => $user->id,
+            ]));
+
+            $deal->refresh();
+            $dealMarkedWon = $this->dealStatus->markWonIfFullyPaid($deal);
+
+            return $payment;
+        });
 
         $payment->load('createdBy:id,name');
+        $deal->refresh();
+
+        $message = $dealMarkedWon
+            ? 'Payment recorded. Deal marked as Won — full amount received.'
+            : 'Payment recorded successfully.';
 
         return response()->json([
             'data' => [
@@ -94,7 +113,9 @@ class DealPaymentController extends Controller
                     : null,
                 'created_at'        => $payment->created_at?->toIso8601String(),
             ],
-            'message' => 'Payment recorded successfully.',
+            'deal_status'     => $deal->status,
+            'deal_marked_won' => $dealMarkedWon,
+            'message'         => $message,
         ], 201);
     }
 }

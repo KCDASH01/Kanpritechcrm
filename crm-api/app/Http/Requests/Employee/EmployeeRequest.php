@@ -11,15 +11,24 @@ class EmployeeRequest extends FormRequest
 
     public function rules(): array
     {
-        $userId = $this->route('employee')?->id;
+        $isCreate = $this->isMethod('POST');
+        $userId   = $this->route('employee')?->id;
 
         return [
-            'name'     => ['required', 'string', 'max:191'],
+            'name'     => [$isCreate ? 'required' : 'sometimes', 'string', 'max:191'],
             'email'    => [
-                'required', 'email', 'max:191',
+                $isCreate ? 'required' : 'sometimes',
+                'email',
+                'max:191',
                 Rule::unique('users', 'email')->ignore($userId),
             ],
-            'password' => [$this->isMethod('POST') ? 'required' : 'nullable', 'string', 'min:8'],
+            // Password-only updates (team "Reset Password") are valid without name/email.
+            'password' => [
+                $isCreate ? 'required' : 'required_without_all:name,email,phone,role,avatar',
+                'nullable',
+                'string',
+                'min:8',
+            ],
             'phone'    => ['nullable', 'string', 'max:30'],
             'role'     => ['nullable', 'in:admin,employee'],
             'avatar'   => ['nullable', 'string', 'max:500'],

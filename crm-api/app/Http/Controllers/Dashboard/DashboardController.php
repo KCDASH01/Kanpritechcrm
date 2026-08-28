@@ -16,6 +16,9 @@ use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
+    /** @var list<string> */
+    private const LEAD_SUBJECT_TYPES = ['lead', Lead::class];
+
     public function index(Request $request): JsonResponse
     {
         $orgId      = $request->user()->organization_id;
@@ -46,21 +49,9 @@ class DashboardController extends Controller
             ->where('status', 'open')
             ->sum('value');
 
-        $overdueActs = Activity::where('organization_id', $orgId)
-            ->when($assignedTo, fn($q) => $q->where('assigned_to', $assignedTo))
-            ->where('is_done', false)
-            ->whereNotNull('due_at')
-            ->where('due_at', '<', now())
-            ->count();
-
-        // Follow-ups due today whose scheduled time has not passed yet
-        $dueTodayActs = Activity::where('organization_id', $orgId)
-            ->when($assignedTo, fn($q) => $q->where('assigned_to', $assignedTo))
-            ->where('is_done', false)
-            ->whereNotNull('due_at')
-            ->where('due_at', '>=', now())
-            ->where('due_at', '<=', now()->endOfDay())
-            ->count();
+        // Follow-up + meeting leads with a pending schedule (matches FollowUp / Meetings pages)
+        $overdueActs  = $this->countOverdueLeads($orgId, $assignedTo);
+        $dueTodayActs = $this->countDueTodayLeads($orgId, $assignedTo);
 
         // ── Recent data ───────────────────────────────────────────────────────
         $recentLeads = Lead::where('organization_id', $orgId)
@@ -77,16 +68,48 @@ class DashboardController extends Controller
             ->limit(5)
             ->get();
 
-        // ── Reminders (overdue + due within 7 days, not done) ────────────────
-        $reminders = Activity::where('organization_id', $orgId)
-            ->when($assignedTo, fn($q) => $q->where('assigned_to', $assignedTo))
-            ->where('is_done', false)
-            ->whereNotNull('due_at')
-            ->where('due_at', '<=', now()->addDays(7))
-            ->orderBy('due_at')
-            ->limit(10)
-            ->with(['assignedTo'])
-            ->get();
+        // ── Reminders (follow-up / meeting leads only, pending, due within 7 days) ──
+        $scheduledLeadIds = Lead::where('organization_id', $orgId)
+            ->whereIn('status', ['followup', 'meeting'])
+            ->when($assignedTo, fn ($q) => $q->where('assigned_to', $assignedTo))
+            ->pluck('id');
+
+        $reminders = $scheduledLeadIds->isEmpty()
+            ? collect()
+            : Activity::where('organization_id', $orgId)
+                ->when($assignedTo, fn ($q) => $q->where('assigned_to', $assignedTo))
+                ->where('is_done', false)
+                ->whereNotNull('due_at')
+                ->where('due_at', '<=', now()->addDays(7))
+                ->where(function ($q) use ($scheduledLeadIds) {
+                    $q->where(function ($inner) use ($scheduledLeadIds) {
+                        foreach (self::LEAD_SUBJECT_TYPES as $type) {
+                            $inner->orWhere(function ($q2) use ($type, $scheduledLeadIds) {
+                                $q2->where('subject_type', $type)
+                                   ->whereIn('subject_id', $scheduledLeadIds);
+                            });
+                        }
+                    });
+                })
+                ->whereRaw(
+                    "activities.id = (
+                        SELECT a2.id FROM activities a2
+                        INNER JOIN leads l ON l.id = a2.subject_id
+                        WHERE a2.subject_id = activities.subject_id
+                          AND a2.due_at IS NOT NULL
+                          AND a2.deleted_at IS NULL
+                          AND a2.type IN ('task', 'meeting')
+                          AND l.status IN ('followup', 'meeting')
+                          AND (a2.subject_type = ? OR a2.subject_type = ?)
+                        ORDER BY a2.is_done ASC, a2.updated_at DESC, a2.created_at DESC
+                        LIMIT 1
+                    )",
+                    [self::LEAD_SUBJECT_TYPES[0], Lead::class]
+                )
+                ->orderBy('due_at')
+                ->limit(10)
+                ->with(['assignedTo'])
+                ->get();
 
         // ── Chart data ────────────────────────────────────────────────────────
         // Leads created per day — last 30 days
@@ -159,9 +182,9 @@ class DashboardController extends Controller
                     'due_today_activities' => $dueTodayActs,
                     'overdue_activities'   => $overdueActs,
                 ],
-                'recent_leads'        => LeadResource::collection($recentLeads),
-                'recent_deals'        => DealResource::collection($recentDeals),
-                'reminders'           => ActivityResource::collection($reminders),
+                'recent_leads'        => LeadResource::collection($recentLeads)->resolve(),
+                'recent_deals'        => DealResource::collection($recentDeals)->resolve(),
+                'reminders'           => ActivityResource::collection($reminders)->resolve(),
                 'target_progress'     => $targetProgress,
                 'charts' => [
                     'leads_trend'    => $leadsTrend,
@@ -170,5 +193,69 @@ class DashboardController extends Controller
                 ],
             ],
         ]);
+    }
+
+    private function countDueTodayLeads(string $orgId, ?int $assignedTo): int
+    {
+        $dueToday = fn ($q) => $q->where('a.is_done', false)
+            ->where('a.due_at', '>=', now())
+            ->where('a.due_at', '<=', now()->endOfDay());
+
+        return $this->countScheduledLeads($orgId, $assignedTo, 'followup', 'task', $dueToday)
+            + $this->countScheduledLeads($orgId, $assignedTo, 'meeting', 'meeting', $dueToday);
+    }
+
+    private function countOverdueLeads(string $orgId, ?int $assignedTo): int
+    {
+        $overdue = fn ($q) => $q->where('a.is_done', false)
+            ->where('a.due_at', '<', now());
+
+        return $this->countScheduledLeads($orgId, $assignedTo, 'followup', 'task', $overdue)
+            + $this->countScheduledLeads($orgId, $assignedTo, 'meeting', 'meeting', $overdue);
+    }
+
+    /** @param callable(\Illuminate\Database\Query\Builder): void $dueConstraints */
+    private function countScheduledLeads(
+        string $orgId,
+        ?int $assignedTo,
+        string $leadStatus,
+        string $activityType,
+        callable $dueConstraints
+    ): int {
+        $subjectTypes = self::LEAD_SUBJECT_TYPES;
+        $leadClass    = Lead::class;
+
+        return Lead::where('organization_id', $orgId)
+            ->where('status', $leadStatus)
+            ->when($assignedTo, fn ($q) => $q->where('assigned_to', $assignedTo))
+            ->whereExists(function ($sub) use ($activityType, $dueConstraints, $subjectTypes, $leadClass) {
+                $sub->selectRaw('1')
+                    ->from('activities as a')
+                    ->whereColumn('a.subject_id', 'leads.id')
+                    ->where(function ($q) use ($subjectTypes) {
+                        foreach ($subjectTypes as $type) {
+                            $q->orWhere('a.subject_type', $type);
+                        }
+                    })
+                    ->where('a.type', $activityType)
+                    ->whereNotNull('a.due_at')
+                    ->whereNull('a.deleted_at')
+                    ->whereRaw(
+                        "a.id = (
+                            SELECT a2.id FROM activities a2
+                            WHERE a2.subject_id = leads.id
+                              AND a2.type = ?
+                              AND a2.due_at IS NOT NULL
+                              AND a2.deleted_at IS NULL
+                              AND (a2.subject_type = ? OR a2.subject_type = ?)
+                            ORDER BY a2.is_done ASC, a2.updated_at DESC, a2.created_at DESC
+                            LIMIT 1
+                        )",
+                        [$activityType, $subjectTypes[0], $leadClass]
+                    );
+
+                $dueConstraints($sub);
+            })
+            ->count();
     }
 }

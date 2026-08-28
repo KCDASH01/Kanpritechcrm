@@ -537,18 +537,20 @@ function TransactionsModal({ deal, onAddPayment, onViewReceipt }: {
         </div>
       )}
 
-      {/* Add payment CTA */}
-      <div className="pt-2 border-t border-gray-100">
-        <button
-          onClick={onAddPayment}
-          className="flex items-center gap-2 text-sm font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Add Another Payment
-        </button>
-      </div>
+      {/* Add payment CTA — open deals only */}
+      {deal.status === 'open' && (
+        <div className="pt-2 border-t border-gray-100">
+          <button
+            onClick={onAddPayment}
+            className="flex items-center gap-2 text-sm font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Another Payment
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -639,11 +641,15 @@ export default function DealsPage() {
       dealId: number;
       payload: Parameters<typeof dealsApi.addPayment>[1];
     }) => dealsApi.addPayment(dealId, payload),
-    onSuccess: (_, { dealId }) => {
+    onSuccess: (result, { dealId }) => {
       qc.invalidateQueries({ queryKey: ['deals'] });
       qc.invalidateQueries({ queryKey: ['deal-payments', dealId] });
       qc.invalidateQueries({ queryKey: ['sales-targets'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
       setAddPaymentModal(null);
+      if (result.deal_marked_won) {
+        alert(result.message);
+      }
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -845,53 +851,55 @@ export default function DealsPage() {
                         <Badge value={deal.status} />
                       </td>
                       <td className="px-5 py-3.5">
-                        <span className={`text-sm ${pastDue ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
-                          {deal.expected_close_date
-                            ? fmtDate(deal.expected_close_date)
-                            : '—'}
+                        <span className={`text-sm ${
+                          pastDue ? 'text-red-500 font-medium'
+                            : deal.closed_at ? 'text-gray-700 font-medium'
+                            : 'text-gray-400'
+                        }`}>
+                          {deal.status !== 'open' && deal.closed_at
+                            ? fmtDate(deal.closed_at)
+                            : deal.expected_close_date
+                              ? fmtDate(deal.expected_close_date)
+                              : '—'}
                         </span>
                       </td>
                       {/* ── Received column ── */}
                       <td className="px-5 py-3.5">
-                        {deal.status === 'open' ? (
-                          <div className="space-y-0.5">
-                            {deal.total_received != null && deal.total_received > 0 ? (
-                              <span className="text-sm font-semibold text-emerald-700">
-                                ₹{Number(deal.total_received).toLocaleString('en-IN')}
-                              </span>
-                            ) : (
-                              <span className="text-xs text-gray-400">Not entered</span>
-                            )}
+                        <div className="space-y-0.5">
+                          {deal.total_received != null && deal.total_received > 0 ? (
+                            <span className="text-sm font-semibold text-emerald-700">
+                              ₹{Number(deal.total_received).toLocaleString('en-IN')}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-400">
+                              {deal.status === 'open' ? 'Not entered' : '—'}
+                            </span>
+                          )}
+                          {(deal.payments_count ?? 0) > 0 || deal.status === 'open' ? (
                             <button
                               onClick={() => setTxnsModal(deal)}
                               className="block text-xs text-indigo-500 hover:text-indigo-700 hover:underline transition-colors"
                             >
                               View Transactions ({deal.payments_count ?? 0})
                             </button>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-gray-300">—</span>
-                        )}
+                          ) : null}
+                        </div>
                       </td>
                       {/* ── Remaining column ── */}
                       <td className="px-5 py-3.5">
-                        {deal.status === 'open' ? (
-                          (() => {
-                            const remaining = dealRemaining(deal);
-                            if (remaining == null) {
-                              return <span className="text-xs text-gray-400">—</span>;
-                            }
-                            return (
-                              <span className={`text-sm font-semibold ${
-                                remaining === 0 ? 'text-emerald-600' : 'text-amber-700'
-                              }`}>
-                                ₹{remaining.toLocaleString('en-IN')}
-                              </span>
-                            );
-                          })()
-                        ) : (
-                          <span className="text-xs text-gray-300">—</span>
-                        )}
+                        {(() => {
+                          const remaining = dealRemaining(deal);
+                          if (remaining == null) {
+                            return <span className="text-xs text-gray-400">—</span>;
+                          }
+                          return (
+                            <span className={`text-sm font-semibold ${
+                              remaining === 0 ? 'text-emerald-600' : 'text-amber-700'
+                            }`}>
+                              ₹{remaining.toLocaleString('en-IN')}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-5 py-3.5">
                         <div className="flex items-center justify-end gap-1">

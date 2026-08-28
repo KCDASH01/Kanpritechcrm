@@ -128,7 +128,16 @@ export default function TeamPage() {
         setPwSuccess(false);
       }, 1500);
     },
-    onError: () => setPwError('Failed to reset password. Please try again.'),
+    onError: (err: unknown) => {
+      const data = (err as {
+        response?: { data?: { message?: string; errors?: Record<string, string[]> } };
+      })?.response?.data;
+      const fieldMsg =
+        data?.errors?.password?.[0] ??
+        data?.errors?.email?.[0] ??
+        data?.errors?.name?.[0];
+      setPwError(fieldMsg || data?.message || 'Failed to reset password. Please try again.');
+    },
   });
 
   // ── Seat purchase ─────────────────────────────────────────────────────────

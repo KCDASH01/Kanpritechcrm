@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Lead } from '@/types';
 import type { LeadPayload } from '@/lib/api/leads';
 
@@ -9,13 +9,16 @@ interface Props {
   onUpdate: (payload: Partial<LeadPayload>) => void;
   saving: boolean;
   canEdit?: boolean;
+  phoneError?: string | null;
+  onPhoneChange?: () => void;
 }
 
 const inputCls = 'w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white transition-shadow';
 
-export function LeadInfoCard({ lead, onUpdate, saving, canEdit = true }: Props) {
+export function LeadInfoCard({ lead, onUpdate, saving, canEdit = true, phoneError, onPhoneChange }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Partial<LeadPayload>>({});
+  const [awaitingResult, setAwaitingResult] = useState(false);
 
   const startEdit = () => {
     setDraft({
@@ -34,14 +37,17 @@ export function LeadInfoCard({ lead, onUpdate, saving, canEdit = true }: Props) 
     setEditing(true);
   };
 
-  const cancelEdit = () => { setDraft({}); setEditing(false); };
+  const cancelEdit = () => { setDraft({}); setEditing(false); setAwaitingResult(false); };
 
   const handleSave = () => {
+    setAwaitingResult(true);
     onUpdate(draft);
-    setEditing(false);
   };
 
-  const set = (k: keyof LeadPayload, v: string) => setDraft((d) => ({ ...d, [k]: v }));
+  const set = (k: keyof LeadPayload, v: string) => {
+    if (k === 'phone') onPhoneChange?.();
+    setDraft((d) => ({ ...d, [k]: v }));
+  };
 
   const ROW_FIELDS: { label: string; key: keyof Lead; editKey: keyof LeadPayload; type?: string }[] = [
     { label: 'Email',     key: 'email',     editKey: 'email',     type: 'email' },
@@ -62,6 +68,17 @@ export function LeadInfoCard({ lead, onUpdate, saving, canEdit = true }: Props) 
     if (key === 'website') return <a href={val} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline truncate block max-w-[160px]">{val.replace(/^https?:\/\//, '')}</a>;
     return <span className="text-gray-800">{val}</span>;
   };
+
+  useEffect(() => {
+    if (!awaitingResult || saving) return;
+
+    if (!phoneError) {
+      setEditing(false);
+      setDraft({});
+    }
+
+    setAwaitingResult(false);
+  }, [awaitingResult, saving, phoneError]);
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -116,12 +133,17 @@ export function LeadInfoCard({ lead, onUpdate, saving, canEdit = true }: Props) 
           <div key={key} className="flex items-start gap-3">
             <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-20 shrink-0 pt-0.5">{label}</span>
             {editing ? (
-              <input
-                type={type ?? 'text'}
-                value={(draft[editKey] as string) ?? ''}
-                onChange={(e) => set(editKey, e.target.value)}
-                className={inputCls}
-              />
+              <div className="flex-1">
+                <input
+                  type={type ?? 'text'}
+                  value={(draft[editKey] as string) ?? ''}
+                  onChange={(e) => set(editKey, e.target.value)}
+                  className={`${inputCls} ${editKey === 'phone' && phoneError ? 'border-red-300 ring-1 ring-red-200' : ''}`}
+                />
+                {editKey === 'phone' && phoneError && (
+                  <p className="mt-1 text-xs text-red-600">{phoneError}</p>
+                )}
+              </div>
             ) : (
               <div className="flex-1 text-sm">{renderValue(key)}</div>
             )}

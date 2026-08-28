@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use App\Models\LeadTimeline;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Support\PhoneNormalizer;
 
 class Lead extends Model
 {
@@ -16,8 +17,8 @@ class Lead extends Model
     protected $fillable = [
         'organization_id', 'created_by', 'assigned_to', 'lead_date',
         'pipeline_id', 'stage_id',
-        'first_name', 'last_name', 'email', 'phone',
-        'company', 'job_title', 'website', 'status', 'source',
+        'first_name', 'last_name', 'email', 'phone', 'phone_normalized',
+        'company', 'job_title', 'website', 'status', 'source', 'types',
         'industry', 'city', 'country', 'notes', 'score',
         'custom_fields', 'external_lead_id', 'lost_reason',
     ];
@@ -69,5 +70,14 @@ class Lead extends Model
     public function getFullNameAttribute(): string
     {
         return trim("{$this->first_name} {$this->last_name}");
+    }
+
+    public function setPhoneAttribute(?string $value): void
+    {
+        $phone = is_string($value) ? trim($value) : $value;
+        $phone = $phone === '' ? null : $phone;
+
+        $this->attributes['phone'] = $phone;
+        $this->attributes['phone_normalized'] = PhoneNormalizer::normalize($phone);
     }
 }

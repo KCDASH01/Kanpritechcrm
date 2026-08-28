@@ -220,7 +220,7 @@ export default function SettingsPage() {
                   <input
                     value={editTpl ? (editTpl.stage_trigger ?? '') : (tplForm.stage_trigger ?? '')}
                     onChange={(e) => editTpl ? setEditTpl({ ...editTpl, stage_trigger: e.target.value }) : setTplForm({ ...tplForm, stage_trigger: e.target.value })}
-                    placeholder="e.g. qualified"
+                    placeholder="e.g. ringing"
                     className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>

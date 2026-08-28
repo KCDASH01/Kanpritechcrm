@@ -12,7 +12,11 @@ import { salesTargetsApi } from '@/lib/api/salesTargets';
 import { useAuthStore } from '@/store/authStore';
 import { SkeletonCard } from '@/components/ui/Skeleton';
 import { AccessDenied } from '@/components/ui/AccessDenied';
+import { LeadReportTab } from '@/components/reports/LeadReportTab';
+import { RevenueReportTab } from '@/components/reports/RevenueReportTab';
 import type { SalesTargetRow } from '@/types';
+
+type ReportTab = 'analytics' | 'leads' | 'revenue';
 
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.1 } } };
 const item      = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { type: 'spring' as const, damping: 24, stiffness: 300 } } };
@@ -22,9 +26,9 @@ const PIE_COLORS = ['#6366f1','#10b981','#3b82f6','#f59e0b','#ef4444','#8b5cf6',
 const STATUS_COLORS: Record<string, { bar: string; label: string }> = {
   new:         { bar: '#6366f1', label: 'New'         },
   contacted:   { bar: '#3b82f6', label: 'Contacted'   },
-  qualified:   { bar: '#10b981', label: 'Qualified'   },
+  ringing:     { bar: '#10b981', label: 'Ringing'     },
   converted:   { bar: '#22c55e', label: 'Converted'   },
-  unqualified: { bar: '#94a3b8', label: 'Unqualified' },
+  important:   { bar: '#f59e0b', label: 'Important'   },
   lost:        { bar: '#ef4444', label: 'Lost'        },
 };
 
@@ -83,6 +87,7 @@ function fmtMonth(ym: string) {
 
 export default function ReportsPage() {
   const { user, isOwner, isAdmin, isPaidPlan } = useAuthStore();
+  const [activeTab, setActiveTab] = useState<ReportTab>('analytics');
 
   // Advanced reports requires Business or Enterprise plan
   if (!isPaidPlan()) {
@@ -103,6 +108,7 @@ export default function ReportsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['reports', assignedFilter],
     queryFn:  () => reportsApi.get({ assigned_to: assignedFilter }),
+    enabled:  activeTab === 'analytics',
   });
 
   // Goal Attainment data — only fetch for managers
@@ -112,7 +118,7 @@ export default function ReportsPage() {
     enabled:  canManage,
   });
 
-  if (isLoading) {
+  if (isLoading && activeTab === 'analytics') {
     return (
       <div className="space-y-6">
         <div className="skeleton h-8 w-48 rounded-xl" />
@@ -151,6 +157,42 @@ export default function ReportsPage() {
         </p>
       </motion.div>
 
+      {/* Tabs */}
+      <div className="flex flex-wrap gap-2">
+        {([
+          { id: 'analytics' as const, label: 'Analytics' },
+          { id: 'leads' as const, label: 'Lead Report' },
+          { id: 'revenue' as const, label: 'Revenue Report' },
+        ]).map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
+              activeTab === tab.id
+                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-500/25'
+                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'leads' && (
+        <LeadReportTab
+          assignedToFilter={assignedFilter}
+          canFilterByMember={canManage}
+        />
+      )}
+      {activeTab === 'revenue' && (
+        <RevenueReportTab
+          assignedToFilter={assignedFilter}
+          canFilterByMember={canManage}
+        />
+      )}
+
+      {activeTab === 'analytics' && (
+      <>
       {/* Summary stat row */}
       <motion.div className="grid grid-cols-2 lg:grid-cols-4 gap-4" variants={container} initial="hidden" animate="show">
         {[
@@ -465,6 +507,8 @@ export default function ReportsPage() {
             </div>
           )}
         </motion.div>
+      )}
+      </>
       )}
     </div>
   );

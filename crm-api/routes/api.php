@@ -10,7 +10,10 @@ use App\Http\Controllers\Deal\DealPaymentController;
 use App\Http\Controllers\Department\DepartmentController;
 use App\Http\Controllers\EmailTemplate\EmailTemplateController;
 use App\Http\Controllers\Employee\EmployeeController;
+use App\Http\Controllers\Calendar\CalendarController;
 use App\Http\Controllers\FollowUp\FollowUpController;
+use App\Http\Controllers\Important\ImportantController;
+use App\Http\Controllers\Meeting\MeetingController;
 use App\Http\Controllers\Lead\LeadController;
 use App\Http\Controllers\Note\NoteController;
 use App\Http\Controllers\Notification\NotificationController;
@@ -106,6 +109,15 @@ Route::middleware('auth:sanctum')->group(function () {
         // Follow-ups (lead activities with due dates)
         Route::get('follow-ups', [FollowUpController::class, 'index']);
 
+        // Meetings (leads with meeting status)
+        Route::get('meetings', [MeetingController::class, 'index']);
+
+        // Important (leads with important status)
+        Route::get('important', [ImportantController::class, 'index']);
+
+        // Calendar (scheduled follow-ups & meetings from leads)
+        Route::get('calendar', [CalendarController::class, 'index']);
+
         // Activities
         Route::patch('activities/{activity}/done', [ActivityController::class, 'markDone']);
         Route::apiResource('activities',            ActivityController::class);
@@ -136,6 +148,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
             // Advanced reports (Business plan feature)
             Route::get('reports', [ReportsController::class, 'index']);
+            Route::get('reports/leads', [ReportsController::class, 'leadReport']);
+            Route::get('reports/leads/export', [ReportsController::class, 'exportLeadReport']);
+            Route::get('reports/revenue', [ReportsController::class, 'revenueReport']);
+            Route::get('reports/revenue/export', [ReportsController::class, 'exportRevenueReport']);
 
             // Bulk lead import (Business plan feature)
             Route::post('leads/bulk-import', [LeadController::class, 'bulkImport']);

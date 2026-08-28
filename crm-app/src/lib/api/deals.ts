@@ -60,7 +60,12 @@ export const dealsApi = {
     txn_or_utr_number?: string;
     notes?: string;
   }) =>
-    client.post<{ data: DealPayment; message: string }>(`/deals/${dealId}/payments`, payload).then((r) => r.data.data),
+    client.post<{
+      data: DealPayment;
+      message: string;
+      deal_status?: string;
+      deal_marked_won?: boolean;
+    }>(`/deals/${dealId}/payments`, payload).then((r) => r.data),
 
   delete: (id: number) =>
     client.delete(`/deals/${id}`).then((r) => r.data),

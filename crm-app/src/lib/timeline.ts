@@ -9,6 +9,8 @@ export const TIMELINE_CONFIG: Record<string, { icon: string; color: string; bg: 
   followup_created:   { icon: '📅', color: 'text-sky-600',    bg: 'bg-sky-100'     },
   activity_scheduled: { icon: '🗓', color: 'text-cyan-600',   bg: 'bg-cyan-100'    },
   note_added:         { icon: '📝', color: 'text-yellow-600', bg: 'bg-yellow-100'  },
+  status_remark:      { icon: '💬', color: 'text-teal-600',   bg: 'bg-teal-100'    },
+  deal_won:           { icon: '🏆', color: 'text-emerald-600',bg: 'bg-emerald-100' },
   converted:          { icon: '🎉', color: 'text-green-600',  bg: 'bg-green-100'   },
   deleted:            { icon: '🗑', color: 'text-red-600',    bg: 'bg-red-100'     },
   whatsapp:           { icon: '💬', color: 'text-green-600',  bg: 'bg-green-100'   },

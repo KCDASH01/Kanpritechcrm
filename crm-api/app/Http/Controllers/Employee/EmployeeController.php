@@ -8,7 +8,6 @@ use App\Http\Resources\UserResource;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 
 class EmployeeController extends Controller
 {
@@ -62,7 +61,7 @@ class EmployeeController extends Controller
             'organization_id'   => $this->orgId($request),
             'name'              => $validated['name'],
             'email'             => $validated['email'],
-            'password'          => Hash::make($validated['password']),
+            'password'          => $validated['password'], // hashed cast on User model
             'phone'             => $validated['phone'] ?? null,
             'avatar'            => $validated['avatar'] ?? null,
             'role'              => $validated['role'] ?? 'employee',
@@ -94,23 +93,30 @@ class EmployeeController extends Controller
         $this->authorizeOrg($request, $employee);
 
         $validated = $request->validated();
-        $updates   = array_filter([
-            'name'   => $validated['name'] ?? null,
-            'email'  => $validated['email'] ?? null,
-            'phone'  => $validated['phone'] ?? null,
-            'avatar' => $validated['avatar'] ?? null,
-            'role'   => $validated['role'] ?? null,
-        ]);
+        $updates   = [];
 
+        foreach (['name', 'email', 'phone', 'avatar', 'role'] as $field) {
+            if (array_key_exists($field, $validated) && $validated[$field] !== null) {
+                $updates[$field] = $validated[$field];
+            }
+        }
+
+        // Pass plain password — User model `hashed` cast hashes once.
         if (! empty($validated['password'])) {
-            $updates['password'] = Hash::make($validated['password']);
+            $updates['password'] = $validated['password'];
+        }
+
+        if ($updates === []) {
+            return response()->json(['message' => 'No changes provided.'], 422);
         }
 
         $employee->update($updates);
 
         return response()->json([
             'data'    => new UserResource($employee->fresh()),
-            'message' => 'Employee updated successfully.',
+            'message' => ! empty($validated['password']) && count($updates) === 1
+                ? 'Password updated successfully.'
+                : 'Employee updated successfully.',
         ]);
     }
 

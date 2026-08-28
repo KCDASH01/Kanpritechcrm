@@ -22,7 +22,10 @@ import { SkeletonTable } from '@/components/ui/Skeleton';
 import { TIMELINE_CONFIG } from '@/lib/timeline';
 import { ReminderModal } from '@/components/leads/ReminderModal';
 import { ScheduleStatusModal } from '@/components/leads/ScheduleStatusModal';
-import { LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_MENU, isScheduledLeadStatus, type ScheduledLeadStatus } from '@/lib/leadStatuses';
+import { RemarkStatusModal } from '@/components/leads/RemarkStatusModal';
+import { ConvertToDealFormFromLead } from '@/components/leads/ConvertToDealForm';
+import { LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_MENU, isScheduledLeadStatus, isRemarkLeadStatus, type ScheduledLeadStatus, type RemarkLeadStatus } from '@/lib/leadStatuses';
+import { LEAD_TYPES, LEAD_TYPE_LABELS } from '@/lib/leadTypes';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -49,12 +52,21 @@ function formatLeadDateDisplay(iso?: string) {
   return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' });
 }
 
+function formatLeadTableDate(lead: Lead) {
+  const iso = lead.lead_date ?? lead.created_at;
+  if (!iso) return '—';
+  const d = lead.lead_date ? new Date(`${iso}T00:00:00`) : new Date(iso);
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 // ── Lead form (create / edit) ─────────────────────────────────────────────────
-function LeadForm({ lead, onSave, onClose, saving }: {
+function LeadForm({ lead, onSave, onClose, saving, phoneError, onPhoneChange }: {
   lead?: Lead | null;
   onSave: (d: LeadPayload) => void;
   onClose: () => void;
   saving?: boolean;
+  phoneError?: string | null;
+  onPhoneChange?: () => void;
 }) {
   const isPaidPlan = useAuthStore((s) => s.isPaidPlan)();
   const isAdmin    = useAuthStore((s) => s.isAdmin)();
@@ -78,12 +90,16 @@ function LeadForm({ lead, onSave, onClose, saving }: {
     job_title:  lead?.job_title  ?? '',
     status:     lead?.status     ?? 'new',
     source:     lead?.source     ?? 'manual',
+    types:      lead?.types      ?? '',
     assigned_to: lead?.assigned_to?.id ?? null,
     city:       lead?.city       ?? '',
     country:    lead?.country    ?? '',
     notes:      lead?.notes      ?? '',
   });
-  const set = (k: keyof LeadPayload, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k: keyof LeadPayload, v: string) => {
+    if (k === 'phone') onPhoneChange?.();
+    setForm((f) => ({ ...f, [k]: v }));
+  };
 
   const TEXT_FIELDS: [keyof LeadPayload, string, string?][] = [
     ['first_name', 'First Name *'],
@@ -95,6 +111,8 @@ function LeadForm({ lead, onSave, onClose, saving }: {
     ['city',       'City'],
     ['country',    'Country'],
   ];
+
+  const canSubmit = !!form.first_name.trim() && !!form.types;
 
   return (
     <div className="space-y-4">
@@ -115,10 +133,26 @@ function LeadForm({ lead, onSave, onClose, saving }: {
               type={type ?? 'text'}
               value={(form[key] as string) ?? ''}
               onChange={(e) => set(key, e.target.value)}
-              className={inputCls}
+              className={`${inputCls} ${key === 'phone' && phoneError ? 'border-red-300 ring-1 ring-red-200' : ''}`}
             />
+            {key === 'phone' && phoneError && (
+              <p className="mt-1 text-xs text-red-600">{phoneError}</p>
+            )}
           </div>
         ))}
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Type *</label>
+          <select
+            value={form.types ?? ''}
+            onChange={(e) => set('types', e.target.value)}
+            className={inputCls}
+          >
+            <option value="">Select type</option>
+            {LEAD_TYPES.map((t) => (
+              <option key={t} value={t}>{LEAD_TYPE_LABELS[t]}</option>
+            ))}
+          </select>
+        </div>
         <div>
           <label className="block text-xs font-semibold text-gray-600 mb-1">Source</label>
           <select value={form.source ?? 'manual'} onChange={(e) => set('source', e.target.value)} className={inputCls}>
@@ -161,7 +195,7 @@ function LeadForm({ lead, onSave, onClose, saving }: {
       <div className="flex gap-3 pt-1">
         <button
           onClick={() => onSave(form)}
-          disabled={saving || !form.first_name.trim()}
+          disabled={saving || !canSubmit}
           className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-semibold
                      py-2.5 rounded-xl text-sm flex items-center justify-center gap-2 transition-colors"
         >
@@ -171,63 +205,6 @@ function LeadForm({ lead, onSave, onClose, saving }: {
         <button onClick={onClose} className="px-5 py-2.5 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-xl transition-colors">
           Cancel
         </button>
-      </div>
-    </div>
-  );
-}
-
-// ── Convert to Deal form ──────────────────────────────────────────────────────
-function ConvertForm({ lead, pipelines, onSave, onClose, saving }: {
-  lead: Lead;
-  pipelines: import('@/types').Pipeline[] | undefined;
-  onSave: (d: ConvertPayload) => void;
-  onClose: () => void;
-  saving?: boolean;
-}) {
-  const [selectedPipelineId, setSelectedPipelineId] = useState<number>(0);
-  const [form, setForm] = useState<ConvertPayload>({ pipeline_id: 0, stage_id: 0, title: `Deal — ${lead.full_name}`, value: undefined });
-
-  const pipelineId = selectedPipelineId || pipelines?.[0]?.id || 0;
-  const stages     = pipelines?.find((p) => p.id === pipelineId)?.stages ?? [];
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-indigo-50 rounded-xl p-3 text-sm text-indigo-700">
-        Converting <strong>{lead.full_name}</strong> to a deal. A follow-up activity will be auto-logged.
-      </div>
-      <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">Deal Title</label>
-        <input value={form.title ?? ''} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} className={inputCls} />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Pipeline</label>
-          <select value={pipelineId} onChange={(e) => { const id = Number(e.target.value); setSelectedPipelineId(id); setForm((f) => ({ ...f, pipeline_id: id, stage_id: 0 })); }} className={inputCls}>
-            {pipelines?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Stage *</label>
-          <select value={form.stage_id} onChange={(e) => setForm((f) => ({ ...f, stage_id: Number(e.target.value) }))} className={inputCls}>
-            <option value={0}>Select stage…</option>
-            {stages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        </div>
-      </div>
-      <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">Deal Value (₹)</label>
-        <input type="number" min={0} value={form.value ?? ''} onChange={(e) => setForm((f) => ({ ...f, value: e.target.value ? Number(e.target.value) : undefined }))} placeholder="0" className={inputCls} />
-      </div>
-      <div className="flex gap-3 pt-1">
-        <button
-          onClick={() => onSave({ ...form, pipeline_id: pipelineId, stage_id: form.stage_id })}
-          disabled={saving || !form.stage_id}
-          className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-semibold py-2.5 rounded-xl text-sm flex items-center justify-center gap-2 transition-colors"
-        >
-          {saving && <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>}
-          Convert to Deal
-        </button>
-        <button onClick={onClose} className="px-5 py-2.5 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-xl transition-colors">Cancel</button>
       </div>
     </div>
   );
@@ -249,6 +226,7 @@ function LeadPanel({ lead, onClose, onEdit }: { lead: Lead; onClose: () => void;
     ['Company',  lead.company],
     ['Job Title',lead.job_title],
     ['Status',   lead.status],
+    ['Type',     lead.types ? LEAD_TYPE_LABELS[lead.types] : null],
     ['Source',   lead.source],
     ['City',     lead.city],
     ['Country',  lead.country],
@@ -560,11 +538,14 @@ function ActionsMenu({ lead, onEdit, onDelete, onView, onConvert, onChangeStatus
   const [open, setOpen] = useState(false);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [pos, setPos] = useState<{ top?: number; bottom?: number; right: number }>({ top: 0, right: 0 });
+  const [statusPos, setStatusPos] = useState<{ top?: number; bottom?: number; right: number } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const statusBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) {
       setStatusMenuOpen(false);
+      setStatusPos(null);
       return;
     }
     const handler = (e: MouseEvent) => {
@@ -590,6 +571,24 @@ function ActionsMenu({ lead, onEdit, onDelete, onView, onConvert, onChangeStatus
     }
     if (open) setStatusMenuOpen(false);
     setOpen((v) => !v);
+  };
+
+  const toggleStatusMenu = () => {
+    if (!statusMenuOpen && statusBtnRef.current) {
+      const r = statusBtnRef.current.getBoundingClientRect();
+      const submenuHeight = LEAD_STATUS_MENU.length * 34 + 12;
+      const spaceBelow = window.innerHeight - r.bottom;
+      const right = window.innerWidth - r.left + 6;
+
+      if (spaceBelow < submenuHeight) {
+        setStatusPos({ bottom: window.innerHeight - r.bottom, right });
+      } else {
+        setStatusPos({ top: r.top, right });
+      }
+    } else {
+      setStatusPos(null);
+    }
+    setStatusMenuOpen((v) => !v);
   };
 
   const menuItemCls = 'w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2.5 transition-colors cursor-pointer';
@@ -667,8 +666,9 @@ function ActionsMenu({ lead, onEdit, onDelete, onView, onConvert, onChangeStatus
             ) : (
               <div className="relative">
                 <button
+                  ref={statusBtnRef}
                   type="button"
-                  onClick={() => setStatusMenuOpen((v) => !v)}
+                  onClick={toggleStatusMenu}
                   className={`${menuItemCls} justify-between`}
                   aria-expanded={statusMenuOpen}
                   aria-haspopup="menu"
@@ -679,21 +679,35 @@ function ActionsMenu({ lead, onEdit, onDelete, onView, onConvert, onChangeStatus
                   </span>
                   <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
                 </button>
-                {statusMenuOpen && (
-                  <div className="absolute right-full top-0 mr-1 w-44 bg-white border border-gray-100 rounded-xl shadow-xl shadow-black/10 py-1 max-h-72 overflow-y-auto">
-                    {LEAD_STATUS_MENU.map((s) => (
-                      <button
-                        key={s}
-                        onClick={() => { onChangeStatus(s); setOpen(false); }}
-                        className={`${menuItemCls} ${lead.status === s ? 'bg-indigo-50 text-indigo-700' : ''}`}
-                      >
-                        <span className={`w-1.5 h-1.5 rounded-full ${lead.status === s ? 'bg-indigo-500' : 'bg-gray-300'}`} />
-                        {LEAD_STATUS_LABELS[s]}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
+            )}
+
+            {statusMenuOpen && statusPos && (
+              <motion.div
+                data-menu="true"
+                initial={{ opacity: 0, x: 6 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 6 }}
+                style={{
+                  position: 'fixed',
+                  top: statusPos.top,
+                  bottom: statusPos.bottom,
+                  right: statusPos.right,
+                  zIndex: 10000,
+                }}
+                className="w-44 bg-white border border-gray-100 rounded-xl shadow-xl shadow-black/10 py-1 max-h-[min(18rem,calc(100vh-1rem))] overflow-y-auto"
+              >
+                {LEAD_STATUS_MENU.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => { onChangeStatus(s); setOpen(false); }}
+                    className={`${menuItemCls} ${lead.status === s ? 'bg-indigo-50 text-indigo-700' : ''}`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${lead.status === s ? 'bg-indigo-500' : 'bg-gray-300'}`} />
+                    {LEAD_STATUS_LABELS[s]}
+                  </button>
+                ))}
+              </motion.div>
             )}
 
             <div className="mx-2 my-1 border-t border-gray-100" />
@@ -751,6 +765,9 @@ export default function LeadsPage() {
 
   const search           = searchParams.get('search') ?? '';
   const statusFilter     = searchParams.get('status') ?? '';
+  const typeFilter       = searchParams.get('types') ?? '';
+  const dateFromFilter   = searchParams.get('date_from') ?? '';
+  const dateToFilter     = searchParams.get('date_to') ?? '';
   const page             = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1);
   const viewMine         = !isManager ? true : (searchParams.get('view') ?? 'all') === 'mine';
   const teamMemberFilter = searchParams.get('member') ?? '';
@@ -772,7 +789,9 @@ export default function LeadsPage() {
   const [reminderLead, setReminderLead]     = useState<Lead | null>(null);
   const [lostReasonLead, setLostReasonLead] = useState<Lead | null>(null);
   const [scheduleStatusLead, setScheduleStatusLead] = useState<{ lead: Lead; status: ScheduledLeadStatus } | null>(null);
+  const [remarkStatusLead, setRemarkStatusLead] = useState<{ lead: Lead; status: RemarkLeadStatus } | null>(null);
   const [waLead, setWaLead]                 = useState<Lead | null>(null); // WhatsApp template picker
+  const [leadPhoneError, setLeadPhoneError] = useState<string | null>(null);
 
   // Fetch pipelines at page level so they're ready before the modal opens
   const { data: pipelines } = useQuery({
@@ -801,15 +820,18 @@ export default function LeadsPage() {
   const listFilters = {
     search:      search || undefined,
     status:      statusFilter || undefined,
+    types:       typeFilter || undefined,
+    date_from:   dateFromFilter || undefined,
+    date_to:     dateToFilter || undefined,
     assigned_to: assignedToFilter,
     unassigned:  unassignedFilter || undefined,
     page,
   };
 
-  const hasActiveFilters = !!(search || statusFilter || teamMemberFilter);
+  const hasActiveFilters = !!(search || statusFilter || typeFilter || teamMemberFilter || dateFromFilter || dateToFilter);
 
   const clearAllFilters = () =>
-    updateParams({ search: null, status: null, member: null, page: null });
+    updateParams({ search: null, status: null, types: null, member: null, date_from: null, date_to: null, page: null });
 
   const { data: liveSub } = useQuery({
     queryKey: ['subscription'],
@@ -826,8 +848,17 @@ export default function LeadsPage() {
   // Create / Update
   const createMutation = useMutation({
     mutationFn: (payload: LeadPayload) => leadsApi.create(payload),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['leads'] }); setModalLead(undefined); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['leads'] });
+      setLeadPhoneError(null);
+      setModalLead(undefined);
+    },
     onError: (err: unknown) => {
+      const phoneMsg = (err as { response?: { data?: { errors?: { phone?: string[] } } } })?.response?.data?.errors?.phone?.[0];
+      if (phoneMsg) {
+        setLeadPhoneError(phoneMsg);
+        return;
+      }
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
       alert(msg ?? 'Failed to create lead.');
     },
@@ -838,11 +869,17 @@ export default function LeadsPage() {
     onSuccess: (updated) => {
       qc.invalidateQueries({ queryKey: ['leads'] });
       qc.invalidateQueries({ queryKey: ['lead-timeline', updated.id] });
+      setLeadPhoneError(null);
       setModalLead(undefined);
       // Refresh panel if same lead
       if (panelLead?.id === updated.id) setPanelLead(updated);
     },
     onError: (err: unknown) => {
+      const phoneMsg = (err as { response?: { data?: { errors?: { phone?: string[] } } } })?.response?.data?.errors?.phone?.[0];
+      if (phoneMsg) {
+        setLeadPhoneError(phoneMsg);
+        return;
+      }
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
       alert(msg ?? 'Failed to update lead.');
     },
@@ -850,23 +887,31 @@ export default function LeadsPage() {
 
   // Quick status change (from ⋮ menu) — also accepts optional lost_reason
   const statusMutation = useMutation({
-    mutationFn: ({ id, status, lost_reason, schedule_at }: { id: number; status: string; lost_reason?: string; schedule_at?: string }) =>
+    mutationFn: ({ id, status, lost_reason, schedule_at, remark }: { id: number; status: string; lost_reason?: string; schedule_at?: string; remark?: string }) =>
       leadsApi.update(id, {
         status,
         ...(lost_reason !== undefined ? { lost_reason } : {}),
         ...(schedule_at ? { schedule_at } : {}),
+        ...(remark ? { remark } : {}),
       }),
     onSuccess: (updated) => {
       qc.invalidateQueries({ queryKey: ['leads'] });
       qc.invalidateQueries({ queryKey: ['lead-timeline', updated.id] });
       qc.invalidateQueries({ queryKey: ['activities'] });
       qc.invalidateQueries({ queryKey: ['lead-activities', updated.id] });
+      qc.invalidateQueries({ queryKey: ['follow-ups'] });
+      qc.invalidateQueries({ queryKey: ['meetings'] });
+      qc.invalidateQueries({ queryKey: ['important'] });
+      qc.invalidateQueries({ queryKey: ['calendar-events'] });
+      qc.invalidateQueries({ queryKey: ['schedule-alerts'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
       // Cascade to pipeline: deals linked to this lead may have changed status
       qc.invalidateQueries({ queryKey: ['deals'] });
       qc.invalidateQueries({ queryKey: ['pipelines'] });
       if (panelLead?.id === updated.id) setPanelLead(updated);
       setLostReasonLead(null);
       setScheduleStatusLead(null);
+      setRemarkStatusLead(null);
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -896,11 +941,15 @@ export default function LeadsPage() {
   // Convert to deal
   const convertMutation = useMutation({
     mutationFn: ({ id, payload }: { id: number; payload: ConvertPayload }) => leadsApi.convertToDeal(id, payload),
-    onSuccess: () => {
+    onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['leads'] });
       qc.invalidateQueries({ queryKey: ['deals'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
       setConvertLead(null);
       if (convertLead) qc.invalidateQueries({ queryKey: ['lead-timeline', convertLead.id] });
+      if (result.deal_marked_won) {
+        alert(result.message);
+      }
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -909,12 +958,17 @@ export default function LeadsPage() {
   });
 
   const handleSave = (payload: LeadPayload) => {
+    setLeadPhoneError(null);
     const data: LeadPayload = {
       ...payload,
       assigned_to: payload.assigned_to ?? null,
     };
-    if (modalLead?.id) updateMutation.mutate({ id: modalLead.id, payload: data });
-    else createMutation.mutate(data);
+    if (modalLead?.id) {
+      const { status: _status, ...editPayload } = data;
+      updateMutation.mutate({ id: modalLead.id, payload: editPayload });
+    } else {
+      createMutation.mutate(data);
+    }
   };
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
@@ -1007,6 +1061,16 @@ export default function LeadsPage() {
               <option key={s} value={s}>{LEAD_STATUS_LABELS[s]}</option>
             ))}
           </select>
+          <select
+            value={typeFilter}
+            onChange={(e) => updateParams({ types: e.target.value || null, page: null })}
+            className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-600"
+          >
+            <option value="">All types</option>
+            {LEAD_TYPES.map((t) => (
+              <option key={t} value={t}>{LEAD_TYPE_LABELS[t]}</option>
+            ))}
+          </select>
           {isManager && !viewMine && (
             <select
               value={teamMemberFilter}
@@ -1020,20 +1084,36 @@ export default function LeadsPage() {
               ))}
             </select>
           )}
-          {hasActiveFilters && (
-            <button
-              type="button"
-              onClick={clearAllFilters}
-              className="flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium text-gray-600
-                         border border-gray-200 rounded-xl bg-white hover:bg-gray-50 hover:text-gray-900
-                         transition-colors"
-            >
-              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
-              </svg>
-              Clear filters
-            </button>
-          )}
+          <div className="flex items-center gap-3 shrink-0">
+            <input
+              type="date"
+              value={dateFromFilter}
+              onChange={(e) => updateParams({ date_from: e.target.value || null, page: null })}
+              className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-600"
+              title="From date"
+            />
+            <input
+              type="date"
+              value={dateToFilter}
+              onChange={(e) => updateParams({ date_to: e.target.value || null, page: null })}
+              className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-600"
+              title="To date"
+            />
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearAllFilters}
+                className="flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium text-gray-600
+                           border border-gray-200 rounded-xl bg-white hover:bg-gray-50 hover:text-gray-900
+                           transition-colors whitespace-nowrap"
+              >
+                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+                Clear filters
+              </button>
+            )}
+          </div>
           {isFetching && !isLoading && (
             <span className="text-xs text-gray-400 flex items-center gap-1.5">
               <svg className="w-3.5 h-3.5 animate-spin text-indigo-400" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
@@ -1045,15 +1125,15 @@ export default function LeadsPage() {
         {/* Table */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm">
           {isLoading ? (
-            <SkeletonTable rows={6} cols={6} />
-          ) : leads.length === 0 && !search && !statusFilter && !teamMemberFilter ? (
+            <SkeletonTable rows={6} cols={7} />
+          ) : leads.length === 0 && !hasActiveFilters ? (
             <EmptyLeads onAdd={() => setModalLead(null)} canAdd={canCreateLead} />
           ) : (
             <div className="overflow-x-auto rounded-2xl">
               <table className="min-w-full">
                 <thead>
                   <tr className="bg-gray-50/80 border-b border-gray-100">
-                    {['Name', 'Company', 'Contact', 'Status', 'Score', 'Actions'].map((h, hi, arr) => (
+                    {['Name', 'Requirement', 'Company', 'Contact', 'Status', 'Date', 'Actions'].map((h, hi, arr) => (
                       <th key={h} className={`px-5 py-3.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider ${hi === 0 ? 'rounded-tl-2xl' : ''} ${hi === arr.length - 1 ? 'rounded-tr-2xl' : ''}`}>
                         {h}
                       </th>
@@ -1091,28 +1171,23 @@ export default function LeadsPage() {
                           </Link>
                         </td>
 
+                        {/* Requirement */}
+                        <td className="px-5 py-3.5 text-sm text-gray-600">
+                          {lead.types ? LEAD_TYPE_LABELS[lead.types] : '—'}
+                        </td>
+
                         {/* Company */}
                         <td className="px-5 py-3.5 text-sm text-gray-600">{lead.company ?? '—'}</td>
 
                         {/* Contact */}
-                        <td className="px-5 py-3.5">
-                          <p className="text-xs text-gray-600">{lead.email ?? '—'}</p>
-                          <p className="text-xs text-gray-400 mt-0.5">{lead.phone ?? ''}</p>
-                        </td>
+                        <td className="px-5 py-3.5 text-sm text-gray-600">{lead.phone ?? '—'}</td>
 
                         {/* Status */}
                         <td className="px-5 py-3.5"><Badge value={lead.status} /></td>
 
-                        {/* Score */}
-                        <td className="px-5 py-3.5">
-                          {lead.score != null ? (
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-bold text-gray-700">{lead.score}</span>
-                              <div className="w-12 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                <div className="h-full bg-indigo-400 rounded-full" style={{ width: `${lead.score}%` }} />
-                              </div>
-                            </div>
-                          ) : <span className="text-gray-300 text-sm">—</span>}
+                        {/* Date */}
+                        <td className="px-5 py-3.5 text-sm text-gray-600 whitespace-nowrap">
+                          {formatLeadTableDate(lead)}
                         </td>
 
                         {/* Actions */}
@@ -1136,6 +1211,7 @@ export default function LeadsPage() {
                                 if (s === 'converted') { setConvertLead(lead); }
                                 else if (s === 'lost') { setLostReasonLead(lead); }
                                 else if (isScheduledLeadStatus(s)) { setScheduleStatusLead({ lead, status: s }); }
+                                else if (isRemarkLeadStatus(s)) { setRemarkStatusLead({ lead, status: s }); }
                                 else statusMutation.mutate({ id: lead.id, status: s });
                               }}
                             />
@@ -1144,9 +1220,9 @@ export default function LeadsPage() {
                       </motion.tr>
                     ))}
                   </AnimatePresence>
-                  {leads.length === 0 && (search || statusFilter) && (
+                  {leads.length === 0 && hasActiveFilters && (
                     <tr>
-                      <td colSpan={6} className="px-5 py-10 text-center text-gray-400 text-sm">
+                      <td colSpan={7} className="px-5 py-10 text-center text-gray-400 text-sm">
                         No leads match your filters.
                         <button onClick={clearAllFilters} className="ml-2 text-indigo-600 hover:underline">Clear filters</button>
                       </td>
@@ -1175,11 +1251,24 @@ export default function LeadsPage() {
       {/* Edit / Create modal */}
       <Modal
         open={modalLead !== undefined}
-        onClose={() => setModalLead(undefined)}
+        onClose={() => {
+          setLeadPhoneError(null);
+          setModalLead(undefined);
+        }}
         title={modalLead ? 'Edit Lead' : 'Add Lead'}
         maxWidth="max-w-xl"
       >
-        <LeadForm lead={modalLead} onSave={handleSave} onClose={() => setModalLead(undefined)} saving={isSaving} />
+        <LeadForm
+          lead={modalLead}
+          onSave={handleSave}
+          onClose={() => {
+            setLeadPhoneError(null);
+            setModalLead(undefined);
+          }}
+          saving={isSaving}
+          phoneError={leadPhoneError}
+          onPhoneChange={() => setLeadPhoneError(null)}
+        />
       </Modal>
 
       {/* Convert to deal modal */}
@@ -1190,7 +1279,7 @@ export default function LeadsPage() {
         maxWidth="max-w-md"
       >
         {convertLead && (
-          <ConvertForm
+          <ConvertToDealFormFromLead
             lead={convertLead}
             pipelines={pipelines}
             onSave={(p) => convertMutation.mutate({ id: convertLead.id, payload: p })}
@@ -1230,11 +1319,29 @@ export default function LeadsPage() {
           lead={scheduleStatusLead.lead}
           status={scheduleStatusLead.status}
           onClose={() => setScheduleStatusLead(null)}
-          onConfirm={(scheduleAt) =>
+          onConfirm={({ scheduleAt, remark }) =>
             statusMutation.mutate({
               id: scheduleStatusLead.lead.id,
               status: scheduleStatusLead.status,
               schedule_at: scheduleAt,
+              remark,
+            })
+          }
+          saving={statusMutation.isPending}
+        />
+      )}
+
+      {/* Ringing / Important remark modal */}
+      {remarkStatusLead && (
+        <RemarkStatusModal
+          lead={remarkStatusLead.lead}
+          status={remarkStatusLead.status}
+          onClose={() => setRemarkStatusLead(null)}
+          onConfirm={(remark) =>
+            statusMutation.mutate({
+              id: remarkStatusLead.lead.id,
+              status: remarkStatusLead.status,
+              remark: remark || undefined,
             })
           }
           saving={statusMutation.isPending}

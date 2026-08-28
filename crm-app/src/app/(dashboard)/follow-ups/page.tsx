@@ -46,7 +46,7 @@ function EmptyFollowUps({ hasFilters, onClear }: { hasFilters: boolean; onClear:
       <p className="text-gray-400 text-sm mb-4 text-center max-w-sm">
         {hasFilters
           ? 'Try adjusting your search or filters to find what you need.'
-          : 'Follow-ups are created automatically when leads are added or reminders are set.'}
+          : 'Leads marked as Follow-up will appear here. Change a lead status to Follow-up to schedule one.'}
       </p>
       {hasFilters && (
         <button
@@ -124,7 +124,7 @@ export default function FollowUpsPage() {
       qc.setQueryData<PaginatedResponse<FollowUp>>(
         ['follow-ups', listFilters],
         (old) => old
-          ? { ...old, data: old.data.map((f) => f.id === id ? { ...f, is_done: true, status: 'done' as const } : f) }
+          ? { ...old, data: old.data.map((f) => f.activity_id === id ? { ...f, is_done: true, status: 'done' as const } : f) }
           : old,
       );
       return { prev };
@@ -152,7 +152,7 @@ export default function FollowUpsPage() {
           FollowUp{meta ? ` (${meta.total})` : ''}
         </h1>
         <p className="text-xs text-gray-400 mt-0.5">
-          {isManager ? 'Lead follow-ups across your organization' : 'Your assigned lead follow-ups'}
+          {isManager ? 'Leads with Follow-up status' : 'Your leads marked for follow-up'}
           {dueFilter !== 'all' && (
             <span className="ml-2 px-1.5 py-0.5 bg-fuchsia-100 text-fuchsia-700 text-[10px] font-semibold rounded-md uppercase tracking-wide">
               {dueLabel}
@@ -262,7 +262,7 @@ export default function FollowUpsPage() {
                 <AnimatePresence>
                   {items.map((item, i) => (
                     <motion.tr
-                      key={item.id}
+                      key={item.lead_id ?? item.id}
                       initial={{ opacity: 0, y: 4 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, x: -20 }}
@@ -307,9 +307,9 @@ export default function FollowUpsPage() {
                       </td>
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-2">
-                          {!item.is_done && (
+                          {!item.is_done && item.activity_id > 0 && (
                             <button
-                              onClick={() => doneMutation.mutate(item.id)}
+                              onClick={() => doneMutation.mutate(item.activity_id)}
                               disabled={doneMutation.isPending}
                               className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700
                                          hover:bg-emerald-100 transition-colors disabled:opacity-50"

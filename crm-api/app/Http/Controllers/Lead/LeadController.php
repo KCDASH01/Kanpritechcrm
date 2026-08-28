@@ -7,17 +7,23 @@ use App\Http\Requests\Lead\LeadRequest;
 use App\Http\Resources\LeadResource;
 use App\Http\Resources\LeadTimelineResource;
 use App\Models\Activity;
+use App\Models\Deal;
+use App\Models\DealPayment;
 use App\Models\Lead;
 use App\Models\LeadTimeline;
 use App\Models\Notification;
 use App\Services\LeadAuthorizationService;
+use App\Services\DealStatusService;
+use App\Support\PhoneNormalizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class LeadController extends Controller
 {
     public function __construct(
         private readonly LeadAuthorizationService $leadAuth,
+        private readonly DealStatusService $dealStatus,
     ) {}
 
     private function orgId(Request $request): int
@@ -51,6 +57,10 @@ class LeadController extends Controller
             $query->where('source', $source);
         }
 
+        if ($types = $request->input('types')) {
+            $query->where('types', $types);
+        }
+
         if ($stageId = $request->input('stage_id')) {
             $query->where('stage_id', $stageId);
         }
@@ -63,6 +73,14 @@ class LeadController extends Controller
             $query->whereNull('assigned_to');
         } elseif ($assignedTo = $request->input('assigned_to')) {
             $query->where('assigned_to', $assignedTo);
+        }
+
+        if ($dateFrom = $request->input('date_from')) {
+            $query->where('lead_date', '>=', $dateFrom);
+        }
+
+        if ($dateTo = $request->input('date_to')) {
+            $query->where('lead_date', '<=', $dateTo);
         }
 
         $sortBy  = $request->input('sort_by', 'created_at');
@@ -167,7 +185,11 @@ class LeadController extends Controller
 
         $validated   = $this->leadAuth->attributesForUpdate($user, $request->validated());
         $scheduleAt  = $validated['schedule_at'] ?? null;
-        unset($validated['schedule_at']);
+        $remark      = isset($validated['remark']) ? trim((string) $validated['remark']) : null;
+        if ($remark === '') {
+            $remark = null;
+        }
+        unset($validated['schedule_at'], $validated['remark']);
 
         // Guard: converted leads are status-locked — only non-status fields may be updated
         if ($lead->status === 'converted' && isset($validated['status']) && $validated['status'] !== 'converted') {
@@ -198,12 +220,13 @@ class LeadController extends Controller
                     $changed
                 );
 
-                if (in_array($changed['status']['to'], ['followup', 'meeting'], true)) {
-                    $isMeeting    = $changed['status']['to'] === 'meeting';
-                    $activityType = $isMeeting ? 'meeting' : 'task';
-                    $title        = $isMeeting
-                        ? "Meeting with {$lead->full_name}"
-                        : "Follow up with {$lead->full_name}";
+                // Ringing / Important — log remark as activity description
+                if (in_array($changed['status']['to'], ['ringing', 'important'], true)) {
+                    $isRinging    = $changed['status']['to'] === 'ringing';
+                    $activityType = $isRinging ? 'call' : 'note';
+                    $title        = $isRinging
+                        ? "Ringing — {$lead->full_name}"
+                        : "Important — {$lead->full_name}";
 
                     $activity = Activity::create([
                         'organization_id' => $lead->organization_id,
@@ -213,17 +236,24 @@ class LeadController extends Controller
                         'subject_id'      => $lead->id,
                         'type'            => $activityType,
                         'title'           => $title,
-                        'due_at'          => \Carbon\Carbon::parse($scheduleAt),
-                        'priority'        => 'medium',
+                        'description'     => $remark,
+                        'due_at'          => null,
+                        'priority'        => $isRinging ? 'medium' : 'high',
                         'is_done'         => false,
                     ]);
 
                     LeadTimeline::log(
                         $lead,
-                        'followup_created',
-                        ($isMeeting ? 'Meeting' : 'Follow-up') . ' scheduled for ' . $activity->due_at->format('d M Y, h:i A'),
+                        'status_remark',
+                        ($isRinging ? 'Ringing' : 'Important') . ' status set'
+                            . ($remark ? ": {$remark}" : ''),
                         $user->id,
-                        ['activity_id' => $activity->id, 'due_at' => $activity->due_at->toIso8601String(), 'type' => $activityType]
+                        [
+                            'activity_id' => $activity->id,
+                            'type'        => $activityType,
+                            'status'      => $changed['status']['to'],
+                            'remark'      => $remark,
+                        ]
                     );
                 }
 
@@ -298,6 +328,22 @@ class LeadController extends Controller
             }
         }
 
+        // Create or reschedule follow-up / meeting when a due time is provided.
+        // Re-selecting the same status updates the latest activity timing.
+        if ($scheduleAt && in_array($lead->status, ['followup', 'meeting'], true)) {
+            $justSetScheduleStatus = isset($changed['status'])
+                && in_array($changed['status']['to'], ['followup', 'meeting'], true);
+
+            $this->upsertScheduledActivity(
+                $lead,
+                $user,
+                $lead->status,
+                $scheduleAt,
+                $remark,
+                $justSetScheduleStatus
+            );
+        }
+
         return response()->json([
             'data'    => new LeadResource($lead->fresh(['stage', 'pipeline', 'assignedTo'])),
             'message' => 'Lead updated successfully.',
@@ -338,20 +384,54 @@ class LeadController extends Controller
             'leads'              => ['required', 'array', 'max:500'],
             'leads.*.first_name' => ['required', 'string', 'max:191'],
             'leads.*.email'      => ['nullable', 'email', 'max:191'],
+            'leads.*.phone'      => ['nullable', 'string', 'max:30'],
         ]);
 
         $orgId  = $this->orgId($request);
         $userId = $request->user()->id;
         $now    = now();
         $rows   = [];
+        $seenNormalizedPhones = [];
 
-        foreach ($request->input('leads') as $row) {
+        foreach ($request->input('leads') as $index => $row) {
+            $normalizedPhone = PhoneNormalizer::normalize($row['phone'] ?? null);
+
+            if ($normalizedPhone) {
+                $duplicateLead = Lead::with('assignedTo:id,name')
+                    ->where('organization_id', $orgId)
+                    ->where('phone_normalized', $normalizedPhone)
+                    ->first();
+
+                if ($duplicateLead) {
+                    $assigneeName = $duplicateLead->assignedTo?->name ?? 'Unassigned';
+
+                    return response()->json([
+                        'message' => "This lead is already assigned to {$assigneeName}",
+                        'errors' => [
+                            "leads.{$index}.phone" => ["This lead is already assigned to {$assigneeName}"],
+                        ],
+                    ], 422);
+                }
+
+                if (isset($seenNormalizedPhones[$normalizedPhone])) {
+                    return response()->json([
+                        'message' => 'Duplicate phone numbers found in the import file.',
+                        'errors' => [
+                            "leads.{$index}.phone" => ['This phone number is duplicated in the import file.'],
+                        ],
+                    ], 422);
+                }
+
+                $seenNormalizedPhones[$normalizedPhone] = true;
+            }
+
             $rows[] = array_merge($row, [
-                'organization_id' => $orgId,
-                'created_by'      => $userId,
-                'lead_date'       => $now->toDateString(),
-                'created_at'      => $now,
-                'updated_at'      => $now,
+                'phone_normalized' => $normalizedPhone,
+                'organization_id'  => $orgId,
+                'created_by'       => $userId,
+                'lead_date'        => $now->toDateString(),
+                'created_at'       => $now,
+                'updated_at'       => $now,
             ]);
         }
 
@@ -385,29 +465,59 @@ class LeadController extends Controller
     {
         $this->authorizeOrg($request, $lead);
 
+        if ($lead->status === 'converted') {
+            return response()->json(['message' => 'This lead has already been converted to a deal.'], 422);
+        }
+
         $request->validate([
-            'pipeline_id' => ['required', 'integer', 'exists:pipelines,id'],
-            'stage_id'    => ['required', 'integer', 'exists:stages,id'],
-            'title'       => ['nullable', 'string', 'max:191'],
-            'value'       => ['nullable', 'numeric', 'min:0'],
+            'pipeline_id'              => ['required', 'integer', 'exists:pipelines,id'],
+            'stage_id'                 => ['required', 'integer', 'exists:stages,id'],
+            'title'                    => ['nullable', 'string', 'max:191'],
+            'value'                    => ['nullable', 'numeric', 'min:0'],
+            'payment.amount'           => ['nullable', 'numeric', 'min:0.01'],
+            'payment.payment_date'     => ['nullable', 'required_with:payment.amount', 'date'],
+            'payment.payment_mode'     => ['nullable', 'required_with:payment.amount', 'in:cash,cheque,bank_transfer,upi,card,other'],
+            'payment.txn_or_utr_number'=> ['nullable', 'string', 'max:100'],
+            'payment.notes'            => ['nullable', 'string', 'max:500'],
         ]);
 
-        $user = $request->user();
+        $user       = $request->user();
+        $oldStatus  = $lead->status;
+        $dealMarkedWon = false;
 
-        $deal = \App\Models\Deal::create([
-            'organization_id' => $this->orgId($request),
-            'lead_id'         => $lead->id,
-            'created_by'      => $user->id,
-            'assigned_to'     => $lead->assigned_to, // inherit assignee from the lead
-            'pipeline_id'     => $request->input('pipeline_id'),
-            'stage_id'        => $request->input('stage_id'),
-            'title'           => $request->input('title', "Deal — {$lead->full_name}"),
-            'value'           => $request->input('value'),
-            'status'          => 'open',
-        ]);
+        $deal = DB::transaction(function () use ($request, $lead, $user, &$dealMarkedWon) {
+            $deal = Deal::create([
+                'organization_id' => $this->orgId($request),
+                'lead_id'         => $lead->id,
+                'created_by'      => $user->id,
+                'assigned_to'     => $lead->assigned_to,
+                'pipeline_id'     => $request->input('pipeline_id'),
+                'stage_id'        => $request->input('stage_id'),
+                'title'           => $request->input('title', "Deal — {$lead->full_name}"),
+                'value'           => $request->input('value'),
+                'status'          => 'open',
+            ]);
 
-        // Update lead status to converted
-        $lead->update(['status' => 'converted']);
+            if ($request->filled('payment.amount')) {
+                DealPayment::create([
+                    'deal_id'           => $deal->id,
+                    'organization_id'   => $deal->organization_id,
+                    'created_by'        => $user->id,
+                    'amount'            => $request->input('payment.amount'),
+                    'payment_date'      => $request->input('payment.payment_date', now()->toDateString()),
+                    'payment_mode'      => $request->input('payment.payment_mode', 'other'),
+                    'txn_or_utr_number' => $request->input('payment.txn_or_utr_number'),
+                    'notes'             => $request->input('payment.notes'),
+                ]);
+            }
+
+            $deal->refresh();
+            $dealMarkedWon = $this->dealStatus->markWonIfFullyPaid($deal);
+
+            $lead->update(['status' => 'converted']);
+
+            return $deal->fresh(['stage', 'pipeline']);
+        });
 
         LeadTimeline::log(
             $lead,
@@ -420,18 +530,166 @@ class LeadController extends Controller
         LeadTimeline::log(
             $lead,
             'status_changed',
-            "Status changed from «{$lead->getOriginal('status')}» to «converted» (deal created)",
+            "Status changed from «{$oldStatus}» to «converted» (deal created)",
             $user->id,
-            ['from' => $lead->getOriginal('status'), 'to' => 'converted']
+            ['from' => $oldStatus, 'to' => 'converted']
         );
 
+        if ($dealMarkedWon) {
+            LeadTimeline::log(
+                $lead,
+                'deal_won',
+                "Deal «{$deal->title}» marked as Won — full payment received",
+                $user->id,
+                ['deal_id' => $deal->id, 'deal_status' => 'won']
+            );
+        }
+
+        $message = $dealMarkedWon
+            ? 'Lead converted to deal and marked as Won — full amount received.'
+            : 'Lead converted to deal successfully.';
+
         return response()->json([
-            'data'    => $deal->load(['stage', 'pipeline']),
-            'message' => 'Lead converted to deal successfully.',
+            'data'            => $deal,
+            'deal_status'     => $deal->status,
+            'deal_marked_won' => $dealMarkedWon,
+            'message'         => $message,
         ], 201);
     }
 
     // ── Helper ────────────────────────────────────────────────────────────────
+
+    /**
+     * @param  bool  $forceCreate  True when status just changed to followup/meeting.
+     */
+    private function upsertScheduledActivity(
+        Lead $lead,
+        $user,
+        string $status,
+        string $scheduleAt,
+        ?string $remark,
+        bool $forceCreate,
+    ): void {
+        $isMeeting    = $status === 'meeting';
+        $activityType = $isMeeting ? 'meeting' : 'task';
+        $label        = $isMeeting ? 'Meeting' : 'Follow-up';
+        $title        = $isMeeting
+            ? "Meeting with {$lead->full_name}"
+            : "Follow up with {$lead->full_name}";
+        $dueAt = \Carbon\Carbon::parse($scheduleAt);
+
+        $subjectTypes = ['lead', Lead::class];
+
+        // Only update the latest open schedule. Never reopen/mutate a completed
+        // one by falling back to an older pending activity — create a new one instead.
+        $activity     = null;
+        $wasCompleted = false;
+        if (! $forceCreate) {
+            $latest = Activity::where('subject_id', $lead->id)
+                ->where(function ($q) use ($subjectTypes) {
+                    foreach ($subjectTypes as $type) {
+                        $q->orWhere('subject_type', $type);
+                    }
+                })
+                ->where('type', $activityType)
+                ->whereNotNull('due_at')
+                ->orderByDesc('created_at')
+                ->first();
+
+            if ($latest && ! $latest->is_done) {
+                $activity = $latest;
+            } elseif ($latest) {
+                $wasCompleted = true;
+            }
+        }
+
+        if ($activity) {
+            $updates = [
+                'due_at'        => $dueAt,
+                'is_done'       => false,
+                'completed_at'  => null,
+                'assigned_to'   => $lead->assigned_to ?? $user->id,
+                'title'         => $title,
+            ];
+            if ($remark !== null) {
+                $updates['description'] = $remark;
+            }
+
+            $activity->update($updates);
+            $activity->refresh();
+
+            $this->retireStaleScheduledActivities($lead, $activityType, $activity->id);
+
+            LeadTimeline::log(
+                $lead,
+                'activity_scheduled',
+                "{$label} rescheduled for " . $activity->due_at->format('d M Y, h:i A'),
+                $user->id,
+                [
+                    'activity_id' => $activity->id,
+                    'due_at'      => $activity->due_at->toIso8601String(),
+                    'type'        => $activityType,
+                    'remark'      => $remark,
+                    'rescheduled' => true,
+                ]
+            );
+
+            $lead->touch();
+
+            return;
+        }
+
+        $activity = Activity::create([
+            'organization_id' => $lead->organization_id,
+            'created_by'      => $user->id,
+            'assigned_to'     => $lead->assigned_to ?? $user->id,
+            'subject_type'    => Lead::class,
+            'subject_id'      => $lead->id,
+            'type'            => $activityType,
+            'title'           => $title,
+            'description'     => $remark,
+            'due_at'          => $dueAt,
+            'priority'        => 'medium',
+            'is_done'         => false,
+        ]);
+
+        $this->retireStaleScheduledActivities($lead, $activityType, $activity->id);
+
+        $verb = $wasCompleted ? 'rescheduled' : 'scheduled';
+
+        LeadTimeline::log(
+            $lead,
+            $wasCompleted ? 'activity_scheduled' : 'followup_created',
+            "{$label} {$verb} for " . $activity->due_at->format('d M Y, h:i A'),
+            $user->id,
+            [
+                'activity_id' => $activity->id,
+                'due_at'      => $activity->due_at->toIso8601String(),
+                'type'        => $activityType,
+                'remark'      => $remark,
+                'rescheduled' => $wasCompleted,
+            ]
+        );
+    }
+
+    /**
+     * Soft-delete other open follow-up/meeting activities so list pages show one current schedule.
+     */
+    private function retireStaleScheduledActivities(Lead $lead, string $activityType, int $keepId): void
+    {
+        $subjectTypes = ['lead', Lead::class];
+
+        Activity::where('subject_id', $lead->id)
+            ->where(function ($q) use ($subjectTypes) {
+                foreach ($subjectTypes as $type) {
+                    $q->orWhere('subject_type', $type);
+                }
+            })
+            ->where('type', $activityType)
+            ->where('is_done', false)
+            ->where('id', '!=', $keepId)
+            ->delete();
+    }
 
     private function authorizeOrg(Request $request, Lead $lead): void
     {

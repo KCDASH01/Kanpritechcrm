@@ -7,12 +7,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/store/authStore';
 import { authApi } from '@/lib/api/auth';
 import { notificationsApi } from '@/lib/api/notifications';
-import type { CrmNotification } from '@/types';
+import { salesTargetsApi } from '@/lib/api/salesTargets';
+import type { CrmNotification, MyTargetProgress } from '@/types';
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard':   'Dashboard',
   '/leads':       'Leads',
   '/follow-ups':  'FollowUp',
+  '/meetings':    'Meetings',
+  '/important':   'Important',
   '/pipelines':   'Pipelines',
   '/deals':       'Deals',
   '/activities':  'Activities',
@@ -31,14 +34,52 @@ const NOTIF_ICONS: Record<string, string> = {
   activity_assigned:  '✓',
 };
 
+function fmtCurrency(n: number) {
+  if (n >= 100_000) return `₹${(n / 100_000).toFixed(1)}L`;
+  if (n >= 1_000)   return `₹${(n / 1_000).toFixed(1)}K`;
+  return `₹${n.toFixed(0)}`;
+}
+
+function ProgressBar({ label, achieved, target, color }: {
+  label: string; achieved: number; target: number; color: string;
+}) {
+  const pct = target > 0 ? Math.min(Math.round((achieved / target) * 100), 100) : 0;
+  const pctFull = target > 0 ? Math.round((achieved / target) * 100) : 0;
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[11px] font-semibold text-gray-600 uppercase tracking-wide">{label}</span>
+        <span className={`text-[11px] font-bold ${pctFull >= 100 ? 'text-emerald-600' : pctFull >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
+          {pctFull}%
+        </span>
+      </div>
+      <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
+        <motion.div
+          className={`h-full rounded-full ${color}`}
+          initial={{ width: 0 }}
+          animate={{ width: `${pct}%` }}
+          transition={{ duration: 0.6, ease: 'easeOut' }}
+        />
+      </div>
+      <div className="flex items-center justify-between mt-1">
+        <span className="text-[10px] text-gray-500">{fmtCurrency(achieved)}</span>
+        <span className="text-[10px] text-gray-400">of {fmtCurrency(target)}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function Topbar() {
   const router   = useRouter();
   const pathname = usePathname();
   const qc       = useQueryClient();
-  const { user, clearAuth } = useAuthStore();
+  const { user, clearAuth, isEmployee, isPaidPlan } = useAuthStore();
   const [userOpen, setUserOpen]         = useState(false);
   const [notifOpen, setNotifOpen]       = useState(false);
+  const [targetOpen, setTargetOpen]     = useState(false);
   const [refreshing, setRefreshing]     = useState(false);
+
+  const showTargetBtn = isEmployee() && isPaidPlan();
 
   const pageTitle = Object.entries(PAGE_TITLES).find(([key]) =>
     pathname === key || pathname.startsWith(key + '/')
@@ -87,6 +128,21 @@ export default function Topbar() {
     router.push('/login');
   };
 
+  // ── My target progress (employees only) ──────────────────────────────────
+  const { data: targetProgress } = useQuery({
+    queryKey: ['my-target-progress'],
+    queryFn:  salesTargetsApi.myProgress,
+    enabled:  showTargetBtn,
+    staleTime: 5 * 60_000,
+  });
+
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const monthTarget: MyTargetProgress | undefined = targetProgress?.find(
+    (t) => t.period_start.startsWith(currentMonth)
+  );
+  const fmtMonthLabel = now.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+
   const handleRefresh = async () => {
     setRefreshing(true);
     await qc.invalidateQueries();
@@ -125,10 +181,83 @@ export default function Topbar() {
           </svg>
         </button>
 
+        {/* Target progress button (employees only) */}
+        {showTargetBtn && (
+          <div className="relative">
+            <button
+              onClick={() => { setTargetOpen((v) => !v); setNotifOpen(false); setUserOpen(false); }}
+              title="My Targets"
+              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors
+                ${targetOpen
+                  ? 'text-indigo-600 bg-indigo-50'
+                  : 'text-gray-400 hover:text-indigo-600 hover:bg-indigo-50'}`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+            </button>
+
+            <AnimatePresence>
+              {targetOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setTargetOpen(false)} />
+                  <motion.div
+                    className="absolute right-0 top-full mt-2 w-72 bg-white border border-gray-100
+                               rounded-2xl shadow-xl shadow-black/10 z-20 overflow-hidden"
+                    initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -8, scale: 0.96 }}
+                    transition={{ type: 'spring', damping: 30, stiffness: 400 }}
+                  >
+                    <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/80 flex items-center justify-between">
+                      <span className="text-sm font-semibold text-gray-900">My Targets</span>
+                      <span className="text-[10px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full font-semibold">
+                        {fmtMonthLabel}
+                      </span>
+                    </div>
+
+                    <div className="px-4 py-4 space-y-4">
+                      {!monthTarget || (monthTarget.target_amount === 0 && monthTarget.receivable_amount === 0) ? (
+                        <div className="py-4 text-center">
+                          <div className="text-2xl mb-2">🎯</div>
+                          <p className="text-sm text-gray-500 font-medium">No targets set</p>
+                          <p className="text-[11px] text-gray-400 mt-1">
+                            Ask your manager to set targets for this month.
+                          </p>
+                        </div>
+                      ) : (
+                        <>
+                          {monthTarget.target_amount > 0 && (
+                            <ProgressBar
+                              label="Sales Target"
+                              achieved={monthTarget.achieved_amount}
+                              target={monthTarget.target_amount}
+                              color="bg-indigo-500"
+                            />
+                          )}
+                          {monthTarget.receivable_amount > 0 && (
+                            <ProgressBar
+                              label="Collections"
+                              achieved={monthTarget.received_amount ?? 0}
+                              target={monthTarget.receivable_amount}
+                              color="bg-emerald-500"
+                            />
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
+
         {/* Notification bell */}
         <div className="relative">
           <button
-            onClick={() => { setNotifOpen((v) => !v); setUserOpen(false); }}
+            onClick={() => { setNotifOpen((v) => !v); setUserOpen(false); setTargetOpen(false); }}
             title="Notifications"
             className="relative w-8 h-8 rounded-lg flex items-center justify-center text-gray-400
                        hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
@@ -236,7 +365,7 @@ export default function Topbar() {
         {/* User dropdown */}
         <div className="relative">
           <button
-            onClick={() => { setUserOpen((v) => !v); setNotifOpen(false); }}
+            onClick={() => { setUserOpen((v) => !v); setNotifOpen(false); setTargetOpen(false); }}
             className="flex items-center gap-2.5 hover:bg-gray-50 rounded-xl px-2.5 py-1.5 transition-colors"
           >
             <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500

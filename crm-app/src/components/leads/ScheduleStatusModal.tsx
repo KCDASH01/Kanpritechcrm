@@ -5,12 +5,19 @@ import { Modal } from '@/components/ui/Modal';
 import type { Lead } from '@/types';
 import { LEAD_STATUS_LABELS, type ScheduledLeadStatus } from '@/lib/leadStatuses';
 
+export interface ScheduleStatusPayload {
+  scheduleAt: string;
+  remark?:    string;
+}
+
 interface Props {
   lead:      Lead;
   status:    ScheduledLeadStatus;
   onClose:   () => void;
-  onConfirm: (scheduleAt: string) => void;
+  onConfirm: (payload: ScheduleStatusPayload) => void;
   saving?:   boolean;
+  /** True when lead already has this status — updating timing */
+  reschedule?: boolean;
 }
 
 function formatConfirm(datetimeLocal: string): string {
@@ -22,17 +29,28 @@ function formatConfirm(datetimeLocal: string): string {
   });
 }
 
-export function ScheduleStatusModal({ lead, status, onClose, onConfirm, saving }: Props) {
+export function ScheduleStatusModal({ lead, status, onClose, onConfirm, saving, reschedule }: Props) {
   const [scheduleAt, setScheduleAt] = useState('');
+  const [remark, setRemark]         = useState('');
   const inputCls = 'w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-shadow bg-white';
   const label = LEAD_STATUS_LABELS[status];
+  const isReschedule = reschedule ?? lead.status === status;
+
+  const handleConfirm = () => {
+    if (!scheduleAt) return;
+    onConfirm({
+      scheduleAt,
+      remark: remark.trim() || undefined,
+    });
+  };
 
   return (
-    <Modal open onClose={onClose} title={`Set ${label} — ${lead.full_name}`} maxWidth="max-w-sm">
+    <Modal open onClose={onClose} title={`${isReschedule ? 'Reschedule' : 'Set'} ${label} — ${lead.full_name}`} maxWidth="max-w-sm">
       <div className="space-y-4">
         <p className="text-sm text-gray-500">
-          Choose when to {status === 'meeting' ? 'meet with' : 'follow up with'} this lead.
-          An activity will be created and the lead status will be updated.
+          {isReschedule
+            ? `Update the date & time for this ${status === 'meeting' ? 'meeting' : 'follow-up'}. The existing schedule will be updated.`
+            : `Choose when to ${status === 'meeting' ? 'meet with' : 'follow up with'} this lead. An activity will be created and the lead status will be updated.`}
         </p>
         <div>
           <label className="block text-xs font-semibold text-gray-600 mb-1.5">Date &amp; time</label>
@@ -43,9 +61,20 @@ export function ScheduleStatusModal({ lead, status, onClose, onConfirm, saving }
             className={inputCls}
           />
         </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1.5">Remark</label>
+          <textarea
+            value={remark}
+            onChange={(e) => setRemark(e.target.value)}
+            rows={3}
+            placeholder={`Add notes for this ${status === 'meeting' ? 'meeting' : 'follow-up'}…`}
+            className={`${inputCls} resize-none`}
+          />
+          <p className="text-[11px] text-gray-400 mt-1">Saved as the activity description.</p>
+        </div>
         {scheduleAt && (
           <p className="text-sm text-indigo-700 bg-indigo-50 rounded-xl px-3 py-2.5 font-medium">
-            Scheduled for {formatConfirm(scheduleAt)}
+            {isReschedule ? 'Updated to' : 'Scheduled for'} {formatConfirm(scheduleAt)}
           </p>
         )}
         <div className="flex gap-3 pt-1">
@@ -56,7 +85,7 @@ export function ScheduleStatusModal({ lead, status, onClose, onConfirm, saving }
             Cancel
           </button>
           <button
-            onClick={() => onConfirm(scheduleAt)}
+            onClick={handleConfirm}
             disabled={!scheduleAt || saving}
             className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-semibold py-2.5 rounded-xl text-sm flex items-center justify-center gap-2 transition-colors"
           >
@@ -66,7 +95,7 @@ export function ScheduleStatusModal({ lead, status, onClose, onConfirm, saving }
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
             )}
-            Save {label}
+            {isReschedule ? 'Update Timing' : `Save ${label}`}
           </button>
         </div>
       </div>

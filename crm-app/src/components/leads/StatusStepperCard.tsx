@@ -12,11 +12,11 @@ interface Props {
 const MAIN_STEPS: { key: LeadStatus; label: string; num: number }[] = [
   { key: 'new',       label: 'New',       num: 1 },
   { key: 'contacted', label: 'Contacted', num: 2 },
-  { key: 'qualified', label: 'Qualified', num: 3 },
+  { key: 'ringing',   label: 'Ringing',   num: 3 },
 ];
 
 const TERMINAL: { key: LeadStatus; label: string; color: string; activeColor: string }[] = [
-  { key: 'unqualified',    label: 'Unqualified',    color: 'border-gray-300 text-gray-500 hover:border-gray-400',          activeColor: 'bg-gray-500 border-gray-500 text-white'       },
+  { key: 'important',      label: 'Important',      color: 'border-amber-300 text-amber-700 hover:border-amber-400',    activeColor: 'bg-amber-500 border-amber-500 text-white'       },
   { key: 'not_interested', label: 'Not Interested', color: 'border-gray-300 text-gray-500 hover:border-gray-400',          activeColor: 'bg-gray-600 border-gray-600 text-white'       },
   { key: 'converted',      label: 'Converted',      color: 'border-emerald-300 text-emerald-600 hover:border-emerald-400', activeColor: 'bg-emerald-500 border-emerald-500 text-white' },
   { key: 'lost',           label: 'Lost',           color: 'border-red-300 text-red-500 hover:border-red-400',           activeColor: 'bg-red-500 border-red-500 text-white'         },
@@ -41,20 +41,20 @@ export function StatusStepperCard({ status, onStatusChange, saving, canEdit = tr
       <h3 className="text-sm font-semibold text-gray-900 mb-4">Pipeline Status</h3>
 
       {/* Main flow stepper */}
-      <div className="flex items-center gap-0 mb-4">
+      <div className="flex items-center gap-0 mb-4 px-1 pt-1">
         {MAIN_STEPS.map((step, idx) => {
           const isDone    = !isTerminal && !isScheduled && idx < activeIdx;
           const isActive  = !isTerminal && !isScheduled && idx === activeIdx;
           const isFuture  = isTerminal || isScheduled || idx > activeIdx;
 
           return (
-            <div key={step.key} className="flex items-center flex-1">
+            <div key={step.key} className="flex items-center flex-1 min-w-0">
               <button
                 onClick={() => canEdit && !saving && onStatusChange(step.key)}
                 disabled={!canEdit || saving || (isActive && !isTerminal && !isScheduled)}
                 title={step.label}
                 className={[
-                  'w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0',
+                  'w-8 h-8 rounded-full inline-flex items-center justify-center text-xs font-bold border-2 transition-all shrink-0 leading-none',
                   isDone   ? 'bg-indigo-600 border-indigo-600 text-white cursor-pointer hover:bg-indigo-700'   : '',
                   isActive ? 'bg-indigo-600 border-indigo-600 text-white cursor-default ring-4 ring-indigo-100' : '',
                   isFuture && !isDone && !isActive ? 'bg-white border-gray-300 text-gray-400 cursor-pointer hover:border-indigo-400 hover:text-indigo-500' : '',
@@ -64,7 +64,9 @@ export function StatusStepperCard({ status, onStatusChange, saving, canEdit = tr
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                   </svg>
-                ) : step.num}
+                ) : (
+                  <span className="tabular-nums">{step.num}</span>
+                )}
               </button>
 
               <div className="flex-1 flex flex-col items-center">
@@ -90,16 +92,17 @@ export function StatusStepperCard({ status, onStatusChange, saving, canEdit = tr
         <div className="flex flex-wrap gap-2">
           {SCHEDULED.map(({ key, label, color, activeColor }) => {
             const isActive = status === key;
-            const isDisabled = !canEdit || saving || isActive;
+            const isDisabled = !canEdit || saving;
             return (
               <button
                 key={key}
                 onClick={() => !isDisabled && onStatusChange(key)}
                 disabled={isDisabled}
+                title={isActive ? `Reschedule ${label}` : label}
                 className={[
                   'px-3 py-1 rounded-full text-xs font-semibold border transition-all',
                   isActive ? activeColor : color,
-                  !isActive && !saving ? 'cursor-pointer' : 'cursor-default opacity-70',
+                  !saving ? 'cursor-pointer' : 'cursor-default opacity-70',
                 ].join(' ')}
               >
                 {label}

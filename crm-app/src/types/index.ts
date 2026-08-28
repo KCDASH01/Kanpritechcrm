@@ -100,8 +100,9 @@ export interface Lead {
   company?: string;
   job_title?: string;
   website?: string;
-  status: 'new' | 'contacted' | 'qualified' | 'unqualified' | 'converted' | 'lost' | 'followup' | 'meeting' | 'not_interested';
+  status: 'new' | 'contacted' | 'ringing' | 'important' | 'converted' | 'lost' | 'followup' | 'meeting' | 'not_interested';
   source?: string;
+  types?: 'webapp_development' | 'mobile_app_development' | 'website_development' | 'digital_marketing' | 'others' | null;
   industry?: string;
   city?: string;
   country?: string;
@@ -393,6 +394,74 @@ export interface ReportsData {
   leaderboard:  { user_id: number; name: string; deals_won: number; revenue: number }[];
   lost_reasons: { lost_reason: string; count: number }[];
   avg_cycle:    { status: string; avg_days: number; count: number }[];
+}
+
+export interface LeadReportSummary {
+  total: number;
+  new: number;
+  contacted: number;
+  ringing: number;
+  qualified?: number; // legacy alias for ringing
+  proposal_sent: number;
+  won: number;
+  lost: number;
+}
+
+export interface LeadReportRow {
+  id: number;
+  lead_name: string;
+  company?: string | null;
+  contact_person: string;
+  phone?: string | null;
+  email?: string | null;
+  assigned_member?: string | null;
+  source?: string | null;
+  status: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+  follow_up_date?: string | null;
+}
+
+export interface RevenueReportSummary {
+  total_revenue: number;
+  revenue_this_month: number;
+  total_transactions: number;
+  average_revenue_per_deal: number;
+}
+
+export interface RevenueReportRow {
+  id: number;
+  deal_name?: string | null;
+  client_name?: string | null;
+  assigned_member?: string | null;
+  deal_value?: number | null;
+  amount_received: number;
+  remaining_amount?: number | null;
+  transaction_amount: number;
+  payment_date?: string | null;
+  payment_method?: string | null;
+  transaction_notes?: string | null;
+  deal_status?: string | null;
+}
+
+export interface LeadReportFilters {
+  search?: string;
+  status?: string;
+  assigned_to?: number;
+  date_from?: string;
+  date_to?: string;
+  page?: number;
+  per_page?: number;
+}
+
+export interface RevenueReportFilters {
+  assigned_to?: number;
+  deal_status?: string;
+  payment_mode?: string;
+  date_from?: string;
+  date_to?: string;
+  page?: number;
+  per_page?: number;
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────

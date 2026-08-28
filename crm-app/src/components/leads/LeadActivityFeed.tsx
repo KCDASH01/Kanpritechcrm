@@ -39,6 +39,48 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+function formatDateTime(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleString('en-IN', {
+    day: 'numeric', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
+
+// ── Timeline connector ────────────────────────────────────────────────────────
+function FeedTimelineRow({
+  icon,
+  iconBg,
+  isLast,
+  children,
+}: {
+  icon: React.ReactNode;
+  iconBg: string;
+  isLast: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex gap-3">
+      <div className="flex flex-col items-center shrink-0 w-9">
+        <div className={`w-8 h-8 rounded-full ${iconBg} flex items-center justify-center text-sm shadow-sm border-2 border-white z-10`}>
+          {icon}
+        </div>
+        {!isLast && (
+          <div className="flex flex-col items-center flex-1 py-1 min-h-[28px]">
+            <div className="w-0.5 flex-1 bg-gradient-to-b from-indigo-200 via-gray-200 to-gray-100 rounded-full" />
+            <svg className="w-4 h-4 text-indigo-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+        )}
+      </div>
+      <div className="flex-1 min-w-0 pb-4">
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function isOverdue(iso?: string) {
   if (!iso) return false;
   return new Date(iso) < new Date();
@@ -124,9 +166,16 @@ function ActivityCard({ item, leadId }: { item: Activity; leadId: number }) {
               </span>
             )}
             {item.assigned_to && (
-              <span className="text-gray-400">→ {item.assigned_to.name}</span>
+              <span className="text-gray-400">
+                <span className="text-indigo-300">→</span> {item.assigned_to.name}
+              </span>
             )}
           </div>
+
+          <FeedMetaFooter
+            userName={item.created_by?.name ?? item.assigned_to?.name}
+            createdAt={item.created_at}
+          />
         </div>
 
         {/* Actions */}
@@ -216,11 +265,11 @@ function NoteCard({ item, leadId }: { item: Note; leadId: number }) {
             <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{item.content}</p>
           )}
 
-          <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
-            {item.created_by && <span>{item.created_by.name}</span>}
-            <span>{relativeTime(item.created_at)}</span>
-            {item.is_pinned && <span className="text-amber-600 font-semibold">📌 Pinned</span>}
-          </div>
+          <FeedMetaFooter
+            userName={item.created_by?.name}
+            createdAt={item.created_at}
+          />
+          {item.is_pinned && <span className="inline-block mt-1 text-xs text-amber-600 font-semibold">📌 Pinned</span>}
         </div>
 
         {/* Actions */}
@@ -247,25 +296,50 @@ function NoteCard({ item, leadId }: { item: Note; leadId: number }) {
 }
 
 // ── Timeline entry ────────────────────────────────────────────────────────────
+function FeedMetaFooter({ userName, createdAt }: { userName?: string | null; createdAt: string }) {
+  return (
+    <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5 mt-2.5 pt-2.5 border-t border-gray-100 text-xs text-gray-400">
+      {userName && (
+        <>
+          <span className="font-medium text-gray-500">{userName}</span>
+          <span className="text-indigo-300">→</span>
+        </>
+      )}
+      <span>{formatDateTime(createdAt)}</span>
+      <span className="text-indigo-300">→</span>
+      <span className="text-gray-500">{relativeTime(createdAt)}</span>
+    </div>
+  );
+}
+
 function TimelineCard({ item }: { item: LeadTimelineEntry }) {
-  const cfg = TIMELINE_CONFIG[item.action] ?? { icon: '●', color: 'text-gray-500', bg: 'bg-gray-100' };
   return (
     <motion.div
       layout
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex items-start gap-3 py-2"
+      className="bg-slate-50 border border-slate-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow"
     >
-      <div className={`w-7 h-7 rounded-full ${cfg.bg} flex items-center justify-center text-sm shrink-0`}>
-        {cfg.icon}
-      </div>
-      <div className="flex-1 min-w-0 pt-0.5">
-        <p className="text-sm text-gray-700">{item.description}</p>
-        <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-400">
-          {item.user && <span>{item.user.name}</span>}
-          <span>{relativeTime(item.created_at)}</span>
+      <p className="text-sm font-medium text-gray-800 leading-relaxed">{item.description}</p>
+
+      {item.action === 'updated' && item.meta && (
+        <div className="mt-2.5 bg-white rounded-xl px-3 py-2 space-y-1 border border-gray-100">
+          {Object.entries(item.meta).map(([field, diff]: [string, unknown]) => {
+            const d = diff as { from: string; to: string };
+            return (
+              <p key={field} className="text-xs text-gray-600">
+                <span className="font-semibold capitalize">{field.replace(/_/g, ' ')}</span>
+                <span className="text-indigo-300 mx-1.5">→</span>
+                <span className="line-through text-red-400">{d.from || '—'}</span>
+                <span className="text-indigo-300 mx-1.5">→</span>
+                <span className="text-emerald-600 font-medium">{d.to || '—'}</span>
+              </p>
+            );
+          })}
         </div>
-      </div>
+      )}
+
+      <FeedMetaFooter userName={item.user?.name} createdAt={item.created_at} />
     </motion.div>
   );
 }
@@ -299,7 +373,7 @@ export function LeadActivityFeed({ leadId, leadName, activities, notes, timeline
         <QuickLogForm leadId={leadId} leadName={leadName} />
       </div>
 
-      <div className="px-5 py-4 space-y-3 max-h-[680px] overflow-y-auto">
+      <div className="px-5 py-4 max-h-[680px] overflow-y-auto">
         {feed.length === 0 ? (
           <div className="py-12 text-center">
             <div className="text-4xl mb-2">📋</div>
@@ -307,15 +381,48 @@ export function LeadActivityFeed({ leadId, leadName, activities, notes, timeline
           </div>
         ) : (
           <AnimatePresence>
-            {feed.map((item) => {
+            {feed.map((item, index) => {
+              const isLast = index === feed.length - 1;
+
               if (item.kind === 'activity') {
-                return <ActivityCard key={`a-${item.data.id}`} item={item.data} leadId={leadId} />;
+                const act = item.data;
+                return (
+                  <FeedTimelineRow
+                    key={`a-${act.id}`}
+                    icon={<span>{ACTIVITY_ICONS[act.type] ?? '○'}</span>}
+                    iconBg="bg-indigo-100"
+                    isLast={isLast}
+                  >
+                    <ActivityCard item={act} leadId={leadId} />
+                  </FeedTimelineRow>
+                );
               }
+
               if (item.kind === 'note') {
-                return <NoteCard key={`n-${item.data.id}`} item={item.data} leadId={leadId} />;
+                const note = item.data;
+                return (
+                  <FeedTimelineRow
+                    key={`n-${note.id}`}
+                    icon={<span>📝</span>}
+                    iconBg="bg-amber-100"
+                    isLast={isLast}
+                  >
+                    <NoteCard item={note} leadId={leadId} />
+                  </FeedTimelineRow>
+                );
               }
+
+              const entry = item.data;
+              const cfg = TIMELINE_CONFIG[entry.action] ?? { icon: '●', bg: 'bg-gray-100' };
               return (
-                <TimelineCard key={`t-${item.data.id}`} item={item.data} />
+                <FeedTimelineRow
+                  key={`t-${entry.id}`}
+                  icon={<span className="text-xs">{cfg.icon}</span>}
+                  iconBg={cfg.bg}
+                  isLast={isLast}
+                >
+                  <TimelineCard item={entry} />
+                </FeedTimelineRow>
               );
             })}
           </AnimatePresence>
