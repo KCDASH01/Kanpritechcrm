@@ -1,6 +1,17 @@
 import client from './client';
 import type { ApiResponse, Lead, PaginatedResponse } from '@/types';
 
+export interface LeadDepartmentCount {
+  id: number;
+  name: string;
+  leads_count: number;
+}
+
+export interface LeadDepartmentCounts {
+  total: number;
+  departments: LeadDepartmentCount[];
+}
+
 export interface LeadFilters {
   search?: string;
   status?: string;
@@ -10,6 +21,7 @@ export interface LeadFilters {
   pipeline_id?: number;
   assigned_to?: number | null;
   unassigned?: boolean;
+  department_id?: number;
   date_from?: string;
   date_to?: string;
   sort_by?: string;
@@ -56,7 +68,7 @@ export interface LeadTimelineEntry {
 export interface ConvertPaymentPayload {
   amount: number;
   payment_date: string;
-  payment_mode: 'cash' | 'cheque' | 'bank_transfer' | 'upi' | 'card' | 'other';
+  payment_mode: 'cash' | 'cheque' | 'bank_transfer' | 'upi' | 'card' | 'aggregator' | 'other';
   txn_or_utr_number?: string;
   notes?: string;
 }
@@ -66,6 +78,7 @@ export interface ConvertPayload {
   stage_id:    number;
   title?:      string;
   value?:      number;
+  currency?:   'INR' | 'USD';
   payment?:    ConvertPaymentPayload;
 }
 
@@ -77,6 +90,9 @@ export interface ConvertToDealResponse {
 }
 
 export const leadsApi = {
+  departmentCounts: () =>
+    client.get<{ data: LeadDepartmentCounts }>('/leads/department-counts').then((r) => r.data.data),
+
   list: (filters?: LeadFilters) =>
     client.get<PaginatedResponse<Lead>>('/leads', { params: filters }).then((r) => r.data),
 

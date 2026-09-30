@@ -67,6 +67,21 @@ export const dealsApi = {
       deal_marked_won?: boolean;
     }>(`/deals/${dealId}/payments`, payload).then((r) => r.data),
 
+  updatePayment: (dealId: number, paymentId: number, payload: {
+    amount: number;
+    payment_date: string;
+    payment_mode: string;
+    txn_or_utr_number?: string | null;
+    notes?: string | null;
+  }) =>
+    client.put<{
+      data: DealPayment;
+      message: string;
+      deal_status?: string;
+      deal_marked_won?: boolean;
+      deal_reopened?: boolean;
+    }>(`/deals/${dealId}/payments/${paymentId}`, payload).then((r) => r.data),
+
   delete: (id: number) =>
     client.delete(`/deals/${id}`).then((r) => r.data),
 };

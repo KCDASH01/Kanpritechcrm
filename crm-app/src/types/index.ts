@@ -160,7 +160,7 @@ export interface DealPayment {
   deal_id?: number;
   amount: number;
   payment_date: string;
-  payment_mode: 'cash' | 'cheque' | 'bank_transfer' | 'upi' | 'card' | 'other';
+  payment_mode: 'cash' | 'cheque' | 'bank_transfer' | 'upi' | 'card' | 'aggregator' | 'other';
   txn_or_utr_number?: string | null;
   notes?: string | null;
   created_by?: { id: number; name: string } | null;

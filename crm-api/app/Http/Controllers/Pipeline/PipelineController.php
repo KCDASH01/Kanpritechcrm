@@ -54,7 +54,13 @@ class PipelineController extends Controller
             }
         }
 
-        $pipeline = Pipeline::create(array_merge($request->validated(), [
+        $validated = $request->validated();
+
+        if (($validated['is_default'] ?? false) === true) {
+            Pipeline::where('organization_id', $this->orgId($request))->update(['is_default' => false]);
+        }
+
+        $pipeline = Pipeline::create(array_merge($validated, [
             'organization_id' => $this->orgId($request),
         ]));
 
@@ -81,7 +87,15 @@ class PipelineController extends Controller
     {
         $this->authorizeOrg($request, $pipeline);
 
-        $pipeline->update($request->validated());
+        $validated = $request->validated();
+
+        if (($validated['is_default'] ?? false) === true) {
+            Pipeline::where('organization_id', $pipeline->organization_id)
+                ->where('id', '!=', $pipeline->id)
+                ->update(['is_default' => false]);
+        }
+
+        $pipeline->update($validated);
 
         return response()->json([
             'data'    => new PipelineResource($pipeline->fresh('stages')),
@@ -95,8 +109,16 @@ class PipelineController extends Controller
     {
         $this->authorizeOrg($request, $pipeline);
 
+        $remaining = Pipeline::where('organization_id', $this->orgId($request))
+            ->where('id', '!=', $pipeline->id)
+            ->count();
+
+        if ($remaining === 0) {
+            return response()->json(['message' => 'Cannot delete the only remaining pipeline.'], 422);
+        }
+
         if ($pipeline->is_default) {
-            return response()->json(['message' => 'Cannot delete the default pipeline.'], 422);
+            return response()->json(['message' => 'Cannot delete the default pipeline. Set another pipeline as default first.'], 422);
         }
 
         $pipeline->delete();

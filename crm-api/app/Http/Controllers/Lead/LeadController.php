@@ -9,6 +9,7 @@ use App\Http\Resources\LeadTimelineResource;
 use App\Models\Activity;
 use App\Models\Deal;
 use App\Models\DealPayment;
+use App\Models\Department;
 use App\Models\Lead;
 use App\Models\LeadTimeline;
 use App\Models\Notification;
@@ -29,6 +30,56 @@ class LeadController extends Controller
     private function orgId(Request $request): int
     {
         return $request->user()->organization_id;
+    }
+
+    // ── GET /api/leads/department-counts ──────────────────────────────────────
+
+    public function departmentCounts(Request $request): JsonResponse
+    {
+        if (! $request->user()->isOwner()) {
+            return response()->json(['message' => 'You are not allowed to view department lead counts.'], 403);
+        }
+
+        $orgId = $this->orgId($request);
+
+        // Live leads only (Lead uses SoftDeletes — Eloquent excludes deleted_at automatically).
+        $total = Lead::where('organization_id', $orgId)->count();
+
+        // Count live leads per department via assigned employee. Raw joins skip Eloquent
+        // global scopes, so deleted leads/users/departments must be excluded explicitly.
+        $countsByDepartment = Lead::query()
+            ->join('users', function ($join) {
+                $join->on('users.id', '=', 'leads.assigned_to')
+                     ->whereNull('users.deleted_at');
+            })
+            ->join('department_user', 'department_user.user_id', '=', 'users.id')
+            ->join('departments', function ($join) use ($orgId) {
+                $join->on('departments.id', '=', 'department_user.department_id')
+                     ->where('departments.organization_id', '=', $orgId)
+                     ->whereNull('departments.deleted_at');
+            })
+            ->where('leads.organization_id', $orgId)
+            ->groupBy('departments.id')
+            ->select('departments.id', DB::raw('COUNT(DISTINCT leads.id) as leads_count'))
+            ->pluck('leads_count', 'id');
+
+        $departments = Department::query()
+            ->where('organization_id', $orgId)
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn ($dept) => [
+                'id'          => (int) $dept->id,
+                'name'        => $dept->name,
+                'leads_count' => (int) ($countsByDepartment[$dept->id] ?? 0),
+            ])
+            ->values();
+
+        return response()->json([
+            'data' => [
+                'total'       => $total,
+                'departments' => $departments,
+            ],
+        ]);
     }
 
     // ── GET /api/leads ────────────────────────────────────────────────────────
@@ -81,6 +132,22 @@ class LeadController extends Controller
 
         if ($dateTo = $request->input('date_to')) {
             $query->where('lead_date', '<=', $dateTo);
+        }
+
+        if ($departmentId = $request->input('department_id')) {
+            if (! $request->user()->isOwner()) {
+                return response()->json(['message' => 'You are not allowed to filter leads by department.'], 403);
+            }
+
+            $departmentExists = Department::where('id', $departmentId)
+                ->where('organization_id', $this->orgId($request))
+                ->exists();
+
+            if (! $departmentExists) {
+                return response()->json(['message' => 'Invalid department.'], 422);
+            }
+
+            $query->whereHas('assignedTo.departments', fn ($q) => $q->where('departments.id', $departmentId));
         }
 
         $sortBy  = $request->input('sort_by', 'created_at');
@@ -474,9 +541,10 @@ class LeadController extends Controller
             'stage_id'                 => ['required', 'integer', 'exists:stages,id'],
             'title'                    => ['nullable', 'string', 'max:191'],
             'value'                    => ['nullable', 'numeric', 'min:0'],
+            'currency'                 => ['nullable', 'in:INR,USD'],
             'payment.amount'           => ['nullable', 'numeric', 'min:0.01'],
             'payment.payment_date'     => ['nullable', 'required_with:payment.amount', 'date'],
-            'payment.payment_mode'     => ['nullable', 'required_with:payment.amount', 'in:cash,cheque,bank_transfer,upi,card,other'],
+            'payment.payment_mode'     => ['nullable', 'required_with:payment.amount', 'in:cash,cheque,bank_transfer,upi,card,aggregator,other'],
             'payment.txn_or_utr_number'=> ['nullable', 'string', 'max:100'],
             'payment.notes'            => ['nullable', 'string', 'max:500'],
         ]);
@@ -495,6 +563,7 @@ class LeadController extends Controller
                 'stage_id'        => $request->input('stage_id'),
                 'title'           => $request->input('title', "Deal — {$lead->full_name}"),
                 'value'           => $request->input('value'),
+                'currency'        => $request->input('currency', 'INR') === 'USD' ? 'USD' : 'INR',
                 'status'          => 'open',
             ]);
 

@@ -2,7 +2,7 @@ import client from './client';
 import type { PaginatedResponse, User } from '@/types';
 
 export type MeetingStatus = 'pending' | 'overdue' | 'done';
-export type MeetingDueFilter = 'today' | 'overdue' | 'all';
+export type MeetingDueFilter = 'today' | 'overdue' | 'soon' | 'all';
 
 export interface Meeting {
   id: number;

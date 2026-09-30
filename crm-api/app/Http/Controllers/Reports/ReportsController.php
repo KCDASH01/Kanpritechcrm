@@ -207,7 +207,7 @@ class ReportsController extends Controller
         $request->validate([
             'assigned_to'  => ['nullable', 'integer'],
             'deal_status'  => ['nullable', 'in:open,won,lost'],
-            'payment_mode' => ['nullable', 'in:cash,cheque,bank_transfer,upi,card,other'],
+            'payment_mode' => ['nullable', 'in:cash,cheque,bank_transfer,upi,card,aggregator,other'],
             'date_from'    => ['nullable', 'date'],
             'date_to'      => ['nullable', 'date', 'after_or_equal:date_from'],
             'per_page'     => ['nullable', 'integer', 'min:1', 'max:100'],
@@ -244,7 +244,7 @@ class ReportsController extends Controller
             'format'       => ['nullable', 'in:csv,xlsx'],
             'assigned_to'  => ['nullable', 'integer'],
             'deal_status'  => ['nullable', 'in:open,won,lost'],
-            'payment_mode' => ['nullable', 'in:cash,cheque,bank_transfer,upi,card,other'],
+            'payment_mode' => ['nullable', 'in:cash,cheque,bank_transfer,upi,card,aggregator,other'],
             'date_from'    => ['nullable', 'date'],
             'date_to'      => ['nullable', 'date', 'after_or_equal:date_from'],
         ]);

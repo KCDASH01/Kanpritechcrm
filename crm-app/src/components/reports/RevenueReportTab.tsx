@@ -14,6 +14,7 @@ const PAYMENT_MODES = [
   { value: 'cash',          label: 'Cash' },
   { value: 'cheque',        label: 'Cheque' },
   { value: 'card',          label: 'Card' },
+  { value: 'aggregator',    label: 'Aggregator' },
   { value: 'other',         label: 'Other' },
 ];
 

@@ -688,14 +688,134 @@ function ManagePanel({ pipeline, onClose }: { pipeline: Pipeline; onClose: () =>
   );
 }
 
-// ── New pipeline modal ────────────────────────────────────────────────────────
-function NewPipelineModal({ onClose }: { onClose: () => void }) {
+// ── New / Edit pipeline modal ─────────────────────────────────────────────────
+function PipelineFormModal({
+  pipeline,
+  onClose,
+}: {
+  pipeline?: Pipeline | null;
+  onClose: () => void;
+}) {
   const qc = useQueryClient();
-  const [name, setName] = useState('');
+  const isEdit = !!pipeline;
+  const [name, setName] = useState(pipeline?.name ?? '');
+  const [description, setDescription] = useState(pipeline?.description ?? '');
+  const [isDefault, setIsDefault] = useState(pipeline?.is_default ?? false);
+  const [error, setError] = useState('');
 
-  const createMutation = useMutation({
-    mutationFn: () => pipelinesApi.create({ name: name.trim() }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['pipelines'] }); onClose(); },
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      isEdit
+        ? pipelinesApi.update(pipeline.id, {
+            name: name.trim(),
+            description: description.trim() || undefined,
+            is_default: isDefault,
+          })
+        : pipelinesApi.create({
+            name: name.trim(),
+            description: description.trim() || undefined,
+            is_default: isDefault,
+          }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pipelines'] });
+      onClose();
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setError(msg ?? (isEdit ? 'Failed to update pipeline.' : 'Failed to create pipeline.'));
+    },
+  });
+
+  const inputCls = 'w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white';
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <motion.div
+        initial={{ opacity: 0, y: 20, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 20, scale: 0.97 }}
+        transition={{ type: 'spring', damping: 30, stiffness: 400 }}
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-base font-bold text-gray-900">{isEdit ? 'Edit Pipeline' : 'New Pipeline'}</h3>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Pipeline Name *</label>
+          <input
+            autoFocus
+            value={name}
+            onChange={(e) => { setName(e.target.value); setError(''); }}
+            placeholder="e.g. Enterprise Sales"
+            onKeyDown={(e) => e.key === 'Enter' && name.trim() && saveMutation.mutate()}
+            className={inputCls}
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Description</label>
+          <textarea
+            rows={3}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Optional description"
+            className={`${inputCls} resize-none`}
+          />
+        </div>
+        <label className="flex items-center gap-2.5 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={isDefault}
+            onChange={(e) => setIsDefault(e.target.checked)}
+            className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+          />
+          <span className="text-sm text-gray-700">Set as default pipeline</span>
+        </label>
+        {error && <p className="text-xs text-red-500">{error}</p>}
+        <div className="flex gap-3">
+          <button
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending || !name.trim()}
+            className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors flex items-center justify-center gap-1.5"
+          >
+            {saveMutation.isPending ? (
+              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+              </svg>
+            ) : isEdit ? 'Save Changes' : 'Create Pipeline'}
+          </button>
+          <button onClick={onClose} className="px-4 text-sm text-gray-500 border border-gray-200 rounded-xl hover:bg-gray-50">
+            Cancel
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function DeletePipelineModal({
+  pipeline,
+  onClose,
+  onDeleted,
+}: {
+  pipeline: Pipeline;
+  onClose: () => void;
+  onDeleted: (id: number) => void;
+}) {
+  const qc = useQueryClient();
+  const [error, setError] = useState('');
+
+  const deleteMutation = useMutation({
+    mutationFn: () => pipelinesApi.delete(pipeline.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pipelines'] });
+      qc.invalidateQueries({ queryKey: ['deals'] });
+      onDeleted(pipeline.id);
+      onClose();
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setError(msg ?? 'Failed to delete pipeline.');
+    },
   });
 
   return (
@@ -708,28 +828,37 @@ function NewPipelineModal({ onClose }: { onClose: () => void }) {
         className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-base font-bold text-gray-900">New Pipeline</h3>
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Pipeline Name *</label>
-          <input
-            autoFocus
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Enterprise Sales"
-            onKeyDown={(e) => e.key === 'Enter' && name.trim() && createMutation.mutate()}
-            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
+        <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto">
+          <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+          </svg>
         </div>
+        <div className="text-center">
+          <h3 className="text-base font-bold text-gray-900">Delete “{pipeline.name}”?</h3>
+          <p className="text-sm text-gray-500 mt-1.5">
+            This will permanently remove the pipeline and its stages. Deals in this pipeline will also be deleted.
+          </p>
+        </div>
+        {error && <p className="text-xs text-red-500 text-center">{error}</p>}
         <div className="flex gap-3">
           <button
-            onClick={() => createMutation.mutate()}
-            disabled={createMutation.isPending || !name.trim()}
-            className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors"
+            onClick={onClose}
+            className="flex-1 border border-gray-200 text-gray-700 font-semibold py-2.5 rounded-xl text-sm hover:bg-gray-50 transition-colors"
           >
-            {createMutation.isPending ? 'Creating…' : 'Create Pipeline'}
-          </button>
-          <button onClick={onClose} className="px-4 text-sm text-gray-500 border border-gray-200 rounded-xl hover:bg-gray-50">
             Cancel
+          </button>
+          <button
+            onClick={() => deleteMutation.mutate()}
+            disabled={deleteMutation.isPending}
+            className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-semibold py-2.5 rounded-xl text-sm flex items-center justify-center gap-1.5 transition-colors"
+          >
+            {deleteMutation.isPending ? (
+              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+              </svg>
+            ) : 'Delete Pipeline'}
           </button>
         </div>
       </motion.div>
@@ -747,6 +876,8 @@ export default function PipelinesPage() {
   const [dragOverStageId, setDragOverStageId]   = useState<number | null>(null);
   const [showManage, setShowManage]             = useState(false);
   const [showNewPipeline, setShowNewPipeline]   = useState(false);
+  const [editPipeline, setEditPipeline]         = useState<Pipeline | null>(null);
+  const [deletePipeline, setDeletePipeline]     = useState<Pipeline | null>(null);
   const [handoffDeal, setHandoffDeal]           = useState<Deal | null>(null);
   const [negotiationDeal, setNegotiationDeal]   = useState<Deal | null>(null);
 
@@ -878,8 +1009,38 @@ export default function PipelinesPage() {
           {canManage && (
             <div className="flex items-center gap-2">
               {activePipeline && (
-                <button
-                  onClick={() => setShowManage((v) => !v)}
+                <>
+                  <button
+                    onClick={() => setEditPipeline(activePipeline)}
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-xl border bg-white border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                    title="Edit pipeline"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                    </svg>
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => setDeletePipeline(activePipeline)}
+                    disabled={activePipeline.is_default || pipelineCount <= 1}
+                    title={
+                      activePipeline.is_default
+                        ? 'Cannot delete the default pipeline. Set another pipeline as default first.'
+                        : pipelineCount <= 1
+                          ? 'Cannot delete the only remaining pipeline.'
+                          : 'Delete pipeline'
+                    }
+                    className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-xl border bg-white border-gray-200 text-red-600 hover:bg-red-50 hover:border-red-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:border-gray-200"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                    Delete
+                  </button>
+                  <button
+                    onClick={() => setShowManage((v) => !v)}
                   className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-xl border transition-colors ${
                     showManage
                       ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
@@ -893,6 +1054,7 @@ export default function PipelinesPage() {
                   </svg>
                   Manage Stages
                 </button>
+                </>
               )}
               <button
                 onClick={() => !atPipelineLimit && setShowNewPipeline(true)}
@@ -1149,10 +1311,28 @@ export default function PipelinesPage() {
         </AnimatePresence>
       )}
 
-      {/* New pipeline modal — owner/admin only */}
+      {/* New / Edit pipeline modal — owner/admin only */}
       {canManage && (
         <AnimatePresence>
-          {showNewPipeline && <NewPipelineModal onClose={() => setShowNewPipeline(false)} />}
+          {showNewPipeline && <PipelineFormModal key="new-pipeline" onClose={() => setShowNewPipeline(false)} />}
+          {editPipeline && (
+            <PipelineFormModal
+              key={`edit-pipeline-${editPipeline.id}`}
+              pipeline={editPipeline}
+              onClose={() => setEditPipeline(null)}
+            />
+          )}
+          {deletePipeline && (
+            <DeletePipelineModal
+              key={`delete-pipeline-${deletePipeline.id}`}
+              pipeline={deletePipeline}
+              onClose={() => setDeletePipeline(null)}
+              onDeleted={(id) => {
+                setShowManage(false);
+                if (activePipelineId === id) setActivePipelineId(null);
+              }}
+            />
+          )}
         </AnimatePresence>
       )}
 

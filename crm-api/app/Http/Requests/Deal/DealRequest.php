@@ -33,7 +33,7 @@ class DealRequest extends FormRequest
             'stage_id'            => ['required', 'integer', 'exists:stages,id'],
             'assigned_to'         => ['nullable', 'integer', 'exists:users,id'],
             'value'               => ['nullable', 'numeric', 'min:0'],
-            'currency'            => ['nullable', 'string', 'size:3'],
+            'currency'            => ['nullable', 'in:INR,USD'],
             'status'              => ['nullable', 'in:open,won,lost'],
             'expected_close_date' => ['nullable', 'date'],
             'closed_at'           => ['nullable', 'date'],

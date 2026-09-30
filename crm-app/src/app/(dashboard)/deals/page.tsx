@@ -14,6 +14,8 @@ import { Badge } from '@/components/ui/Badge';
 import { SkeletonTable } from '@/components/ui/Skeleton';
 import MoneyReceipt from '@/components/deals/MoneyReceipt';
 import type { Deal, DealPayment, PaginatedResponse } from '@/types';
+import { PAYMENT_MODES, paymentModeLabel } from '@/lib/paymentModes';
+import { currencyLabel, currencySymbol, formatDealMoney, normalizeDealCurrency } from '@/lib/currency';
 
 const LOST_REASONS = [
   'Price too high',
@@ -22,15 +24,6 @@ const LOST_REASONS = [
   'No response',
   'Not a fit',
   'Other',
-];
-
-const PAYMENT_MODES = [
-  { value: 'bank_transfer', label: 'Bank Transfer' },
-  { value: 'upi',           label: 'UPI' },
-  { value: 'cash',          label: 'Cash' },
-  { value: 'cheque',        label: 'Cheque' },
-  { value: 'card',          label: 'Card' },
-  { value: 'other',         label: 'Other' },
 ];
 
 function fmtDate(d: string) {
@@ -75,6 +68,7 @@ function DealForm({ deal, onClose, onSave, saving }: {
   const set = (k: keyof DealPayload, v: unknown) => setForm((f) => ({ ...f, [k]: v }));
 
   const inputCls = 'w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow';
+  const symbol = currencySymbol(form.currency);
 
   return (
     <div className="space-y-4">
@@ -115,7 +109,18 @@ function DealForm({ deal, onClose, onSave, saving }: {
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1.5">Value (₹)</label>
+          <label className="block text-xs font-semibold text-gray-600 mb-1.5">Type</label>
+          <select
+            value={form.currency ?? 'INR'}
+            onChange={(e) => set('currency', e.target.value)}
+            className={inputCls}
+          >
+            <option value="INR">INR (₹)</option>
+            <option value="USD">Dollar ($)</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1.5">Value ({symbol})</label>
           <input
             type="number"
             min={0}
@@ -125,18 +130,19 @@ function DealForm({ deal, onClose, onSave, saving }: {
             className={inputCls}
           />
         </div>
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1.5">Probability (%)</label>
-          <input
-            type="number"
-            min={0}
-            max={100}
-            value={form.probability ?? ''}
-            onChange={(e) => set('probability', e.target.value ? Number(e.target.value) : undefined)}
-            placeholder="50"
-            className={inputCls}
-          />
-        </div>
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold text-gray-600 mb-1.5">Probability (%)</label>
+        <input
+          type="number"
+          min={0}
+          max={100}
+          value={form.probability ?? ''}
+          onChange={(e) => set('probability', e.target.value ? Number(e.target.value) : undefined)}
+          placeholder="50"
+          className={inputCls}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -199,7 +205,7 @@ function DealForm({ deal, onClose, onSave, saving }: {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                Original Value (₹)
+                Original Value ({symbol})
                 <span className="ml-1 font-normal text-gray-400">— your quote</span>
               </label>
               <input
@@ -213,7 +219,7 @@ function DealForm({ deal, onClose, onSave, saving }: {
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                Counter Offer (₹)
+                Counter Offer ({symbol})
                 <span className="ml-1 font-normal text-gray-400">— client asks</span>
               </label>
               <input
@@ -243,9 +249,9 @@ function DealForm({ deal, onClose, onSave, saving }: {
                                : 'M13 7h8m0 0l-4 4m4-4l-4-4M5 12a9 9 0 1018 0 9 9 0 01-18 0z'} />
                   </svg>
                   {isDown ? 'Client asking' : 'Client offering'}
-                  {' '}₹{Math.abs(diff).toLocaleString('en-IN')} {isDown ? 'less' : 'more'}
+                  {' '}{formatDealMoney(Math.abs(diff), form.currency)} {isDown ? 'less' : 'more'}
                   {' '}({isDown ? '' : '+'}{pct}%) —{' '}
-                  gap between ₹{Number(form.original_value).toLocaleString('en-IN')} and ₹{Number(form.counter_offer_value).toLocaleString('en-IN')}
+                  gap between {formatDealMoney(form.original_value, form.currency)} and {formatDealMoney(form.counter_offer_value, form.currency)}
                 </div>
               );
             })()
@@ -335,7 +341,7 @@ function AddPaymentModal({ deal, onClose, onSave, saving }: {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          Total received so far: <strong>₹{Number(deal.total_received).toLocaleString('en-IN')}</strong>
+          Total received so far: <strong>{formatDealMoney(deal.total_received, deal.currency)}</strong>
           {deal.payments_count != null && deal.payments_count > 0 && (
             <span className="text-emerald-500">({deal.payments_count} payment{deal.payments_count !== 1 ? 's' : ''})</span>
           )}
@@ -344,7 +350,7 @@ function AddPaymentModal({ deal, onClose, onSave, saving }: {
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1.5">Amount (₹) *</label>
+          <label className="block text-xs font-semibold text-gray-600 mb-1.5">Amount ({currencySymbol(deal.currency)}) *</label>
           <input
             type="number"
             min={0.01}
@@ -435,6 +441,15 @@ function TransactionsModal({ deal, onAddPayment, onViewReceipt }: {
   onAddPayment: () => void;
   onViewReceipt: (payment: DealPayment) => void;
 }) {
+  const qc = useQueryClient();
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editAmount, setEditAmount] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editMode, setEditMode] = useState('bank_transfer');
+  const [editUtr, setEditUtr] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [editError, setEditError] = useState('');
+
   const { data, isLoading } = useQuery({
     queryKey: ['deal-payments', deal.id],
     queryFn: () => dealsApi.listPayments(deal.id),
@@ -443,6 +458,85 @@ function TransactionsModal({ deal, onAddPayment, onViewReceipt }: {
 
   const payments = data?.data ?? [];
   const total    = data?.total ?? 0;
+
+  const startEdit = (p: DealPayment) => {
+    setEditingId(p.id);
+    setEditAmount(String(p.amount));
+    setEditDate(p.payment_date.slice(0, 10));
+    setEditMode(p.payment_mode);
+    setEditUtr(p.txn_or_utr_number ?? '');
+    setEditNotes(p.notes ?? '');
+    setEditError('');
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditAmount('');
+    setEditDate('');
+    setEditMode('bank_transfer');
+    setEditUtr('');
+    setEditNotes('');
+    setEditError('');
+  };
+
+  const updatePaymentMutation = useMutation({
+    mutationFn: ({
+      paymentId, amount, payment_date, payment_mode, txn_or_utr_number, notes,
+    }: {
+      paymentId: number;
+      amount: number;
+      payment_date: string;
+      payment_mode: string;
+      txn_or_utr_number: string | null;
+      notes: string | null;
+    }) =>
+      dealsApi.updatePayment(deal.id, paymentId, {
+        amount,
+        payment_date,
+        payment_mode,
+        txn_or_utr_number,
+        notes,
+      }),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ['deal-payments', deal.id] });
+      qc.invalidateQueries({ queryKey: ['deals'] });
+      qc.invalidateQueries({ queryKey: ['sales-targets'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['reports'] });
+      qc.invalidateQueries({ queryKey: ['pipelines'] });
+      cancelEdit();
+      if (result.deal_marked_won || result.deal_reopened) {
+        alert(result.message);
+      }
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setEditError(msg || 'Failed to update payment.');
+    },
+  });
+
+  const saveEdit = () => {
+    const amount = Number(editAmount);
+    if (!editDate || Number.isNaN(amount) || amount <= 0) {
+      setEditError('Enter a valid amount and date.');
+      return;
+    }
+    if (!editMode) {
+      setEditError('Select a payment mode.');
+      return;
+    }
+    if (editingId == null) return;
+    updatePaymentMutation.mutate({
+      paymentId: editingId,
+      amount,
+      payment_date: editDate,
+      payment_mode: editMode,
+      txn_or_utr_number: editUtr.trim() || null,
+      notes: editNotes.trim() || null,
+    });
+  };
+
+  const inputCls = 'border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white';
 
   return (
     <div className="space-y-4">
@@ -454,7 +548,7 @@ function TransactionsModal({ deal, onAddPayment, onViewReceipt }: {
         </p>
         {total > 0 && (
           <span className="text-sm font-bold text-emerald-700">
-            Total: ₹{Number(total).toLocaleString('en-IN')}
+            Total: {formatDealMoney(total, deal.currency)}
           </span>
         )}
       </div>
@@ -489,45 +583,132 @@ function TransactionsModal({ deal, onAddPayment, onViewReceipt }: {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {payments.map((p: DealPayment) => (
-                <tr key={p.id} className="hover:bg-gray-50/60 group">
-                  <td className="py-2.5 text-gray-700 font-medium whitespace-nowrap">
-                    {fmtDate(p.payment_date)}
-                  </td>
-                  <td className="py-2.5 text-right font-semibold text-emerald-700 whitespace-nowrap">
-                    ₹{Number(p.amount).toLocaleString('en-IN')}
-                  </td>
-                  <td className="py-2.5 pl-4 capitalize text-gray-600 whitespace-nowrap">
-                    {p.payment_mode.replace('_', ' ')}
-                  </td>
-                  <td className="py-2.5 pl-4 text-gray-400 font-mono text-xs">
-                    {p.txn_or_utr_number ?? '—'}
-                  </td>
-                  <td className="py-2.5 pl-4 text-gray-400 max-w-[160px] truncate">
-                    {p.notes ?? '—'}
-                  </td>
-                  <td className="py-2.5 pl-4 whitespace-nowrap">
-                    <button
-                      onClick={() => onViewReceipt(p)}
-                      className="flex items-center gap-1 text-xs font-medium text-indigo-500 hover:text-indigo-700 transition-colors"
-                      title="View receipt"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      Receipt
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {payments.map((p: DealPayment) => {
+                const isEditing = editingId === p.id;
+                return (
+                  <tr key={p.id} className="hover:bg-gray-50/60 group">
+                    <td className="py-2.5 text-gray-700 font-medium whitespace-nowrap">
+                      {isEditing ? (
+                        <input
+                          type="date"
+                          value={editDate}
+                          onChange={(e) => { setEditDate(e.target.value); setEditError(''); }}
+                          className={inputCls}
+                        />
+                      ) : (
+                        fmtDate(p.payment_date)
+                      )}
+                    </td>
+                    <td className="py-2.5 text-right font-semibold text-emerald-700 whitespace-nowrap">
+                      {isEditing ? (
+                        <input
+                          type="number"
+                          min={0.01}
+                          step="0.01"
+                          value={editAmount}
+                          onChange={(e) => { setEditAmount(e.target.value); setEditError(''); }}
+                          className={`${inputCls} w-28 text-right`}
+                        />
+                      ) : (
+                        <>{formatDealMoney(p.amount, deal.currency)}</>
+                      )}
+                    </td>
+                    <td className="py-2.5 pl-4 capitalize text-gray-600 whitespace-nowrap">
+                      {isEditing ? (
+                        <select
+                          value={editMode}
+                          onChange={(e) => { setEditMode(e.target.value); setEditError(''); }}
+                          className={inputCls}
+                        >
+                          {PAYMENT_MODES.map((m) => (
+                            <option key={m.value} value={m.value}>{m.label}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        paymentModeLabel(p.payment_mode)
+                      )}
+                    </td>
+                    <td className="py-2.5 pl-4 text-gray-400 font-mono text-xs">
+                      {isEditing ? (
+                        <input
+                          value={editUtr}
+                          onChange={(e) => { setEditUtr(e.target.value); setEditError(''); }}
+                          placeholder="UTR / Txn#"
+                          className={`${inputCls} w-36 font-mono`}
+                        />
+                      ) : (
+                        p.txn_or_utr_number ?? '—'
+                      )}
+                    </td>
+                    <td className="py-2.5 pl-4 text-gray-400 max-w-[160px]">
+                      {isEditing ? (
+                        <input
+                          value={editNotes}
+                          onChange={(e) => { setEditNotes(e.target.value); setEditError(''); }}
+                          placeholder="Notes"
+                          className={`${inputCls} w-40`}
+                        />
+                      ) : (
+                        <span className="truncate block max-w-[160px]">{p.notes ?? '—'}</span>
+                      )}
+                    </td>
+                    <td className="py-2.5 pl-4 whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-2">
+                        {isEditing ? (
+                          <>
+                            <button
+                              onClick={saveEdit}
+                              disabled={updatePaymentMutation.isPending}
+                              className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 transition-colors"
+                            >
+                              {updatePaymentMutation.isPending ? 'Saving…' : 'Save'}
+                            </button>
+                            <button
+                              onClick={cancelEdit}
+                              disabled={updatePaymentMutation.isPending}
+                              className="text-xs font-medium px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => startEdit(p)}
+                              className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-indigo-600 transition-colors"
+                              title="Edit payment"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                              </svg>
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => onViewReceipt(p)}
+                              className="flex items-center gap-1 text-xs font-medium text-indigo-500 hover:text-indigo-700 transition-colors"
+                              title="View receipt"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                              Receipt
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
             {payments.length > 1 && (
               <tfoot>
                 <tr className="border-t-2 border-gray-200">
                   <td className="pt-2.5 text-xs font-semibold text-gray-500 uppercase">Total</td>
                   <td className="pt-2.5 text-right font-bold text-emerald-700">
-                    ₹{Number(total).toLocaleString('en-IN')}
+                    {formatDealMoney(total, deal.currency)}
                   </td>
                   <td colSpan={4} />
                 </tr>
@@ -535,6 +716,10 @@ function TransactionsModal({ deal, onAddPayment, onViewReceipt }: {
             )}
           </table>
         </div>
+      )}
+
+      {editError && (
+        <p className="text-xs text-red-600">{editError}</p>
       )}
 
       {/* Add payment CTA — open deals only */}
@@ -661,7 +846,16 @@ export default function DealsPage() {
   const meta  = data?.meta;
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
-  const totalValue = deals.reduce((sum, d) => sum + (Number(d.value) || 0), 0);
+  const inrTotal = deals
+    .filter((d) => normalizeDealCurrency(d.currency) === 'INR')
+    .reduce((sum, d) => sum + (Number(d.value) || 0), 0);
+  const usdTotal = deals
+    .filter((d) => normalizeDealCurrency(d.currency) === 'USD')
+    .reduce((sum, d) => sum + (Number(d.value) || 0), 0);
+  const totalValueParts = [
+    inrTotal > 0 ? formatDealMoney(inrTotal, 'INR') : null,
+    usdTotal > 0 ? formatDealMoney(usdTotal, 'USD') : null,
+  ].filter(Boolean);
 
   // ── Free plan usage limits ────────────────────────────────────────────────
   const planLimits  = getLimits(user?.subscription?.plan);
@@ -676,7 +870,7 @@ export default function DealsPage() {
           <h1 className="text-xl font-bold text-gray-900">Deals</h1>
           {meta && (
             <p className="text-xs text-gray-400 mt-0.5">
-              {meta.total} deals{totalValue > 0 && ` · ₹${totalValue.toLocaleString('en-IN')} total value`}
+              {meta.total} deals{totalValueParts.length > 0 && ` · ${totalValueParts.join(' · ')} total value`}
               {viewMine ? ' · assigned to you' : ''}
             </p>
           )}
@@ -838,8 +1032,9 @@ export default function DealsPage() {
                       </td>
                       <td className="px-5 py-3.5">
                         <span className="text-sm font-semibold text-gray-800">
-                          {deal.value ? `₹${Number(deal.value).toLocaleString('en-IN')}` : '—'}
+                          {deal.value ? formatDealMoney(deal.value, deal.currency) : '—'}
                         </span>
+                        <p className="text-[11px] text-gray-400 mt-0.5">{currencyLabel(deal.currency)}</p>
                         {deal.probability != null && (
                           <p className="text-xs text-gray-400 mt-0.5">{deal.probability}% prob.</p>
                         )}
@@ -868,7 +1063,7 @@ export default function DealsPage() {
                         <div className="space-y-0.5">
                           {deal.total_received != null && deal.total_received > 0 ? (
                             <span className="text-sm font-semibold text-emerald-700">
-                              ₹{Number(deal.total_received).toLocaleString('en-IN')}
+                              {formatDealMoney(deal.total_received, deal.currency)}
                             </span>
                           ) : (
                             <span className="text-xs text-gray-400">
@@ -896,7 +1091,7 @@ export default function DealsPage() {
                             <span className={`text-sm font-semibold ${
                               remaining === 0 ? 'text-emerald-600' : 'text-amber-700'
                             }`}>
-                              ₹{remaining.toLocaleString('en-IN')}
+                              {formatDealMoney(remaining, deal.currency)}
                             </span>
                           );
                         })()}

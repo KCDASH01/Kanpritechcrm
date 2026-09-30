@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useRef, useState, type CSSProperties } from 'react';
 import type { Proposal, Lead, ProposedSolution } from '@/types';
 
 // ── Theme config ──────────────────────────────────────────────────────────────
@@ -58,7 +58,50 @@ const THEME_STYLES = {
 
 type ThemeStyles = typeof THEME_STYLES.modern;
 
+const KANPRITECH_LOGO = '/KanpriTechText.png';
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace('#', '');
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`Failed to load ${src}`));
+    img.src = src;
+  });
+}
+
+function rowInkRatio(ctx: CanvasRenderingContext2D, y: number, width: number): number {
+  const clampedY = Math.max(0, Math.min(Math.floor(y), ctx.canvas.height - 1));
+  const data = ctx.getImageData(0, clampedY, width, 1).data;
+  let ink = 0;
+  const step = 16;
+  for (let i = 0; i < data.length; i += step) {
+    if (data[i] < 248 || data[i + 1] < 248 || data[i + 2] < 248) ink++;
+  }
+  return ink / (data.length / step);
+}
+
+/** Prefer splitting on a blank row so headings like THANK YOU are not cut in half. */
+function findSplitY(ctx: CanvasRenderingContext2D, startY: number, idealEnd: number): number {
+  const canvasH = ctx.canvas.height;
+  if (idealEnd >= canvasH) return canvasH;
+  const width = ctx.canvas.width;
+  const lookback = Math.min(Math.floor((idealEnd - startY) * 0.35), 280);
+  const minY = startY + 80;
+  for (let y = idealEnd; y > Math.max(minY, idealEnd - lookback); y -= 2) {
+    if (rowInkRatio(ctx, y, width) < 0.015 && rowInkRatio(ctx, y - 8, width) < 0.015) {
+      return y;
+    }
+  }
+  return idealEnd;
+}
 
 function fmtDate(d: string) {
   return new Date(d).toLocaleDateString('en-IN', {
@@ -153,19 +196,128 @@ export function ProposalPDF({ proposal, lead, onClose }: Props) {
         import('html2canvas'),
         import('jspdf'),
       ]);
-      const canvas  = await html2canvas(ref.current, { scale: 2, useCORS: true });
-      const imgData = canvas.toDataURL('image/jpeg', 0.95);
-      const pdf     = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      const pW  = pdf.internal.pageSize.getWidth();
-      const pH  = pdf.internal.pageSize.getHeight();
-      const imgH = (canvas.height * pW) / canvas.width;
 
-      let y = 0;
-      while (y < imgH) {
-        if (y > 0) pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', 0, -y, pW, imgH);
-        y += pH;
+      const canvas = await html2canvas(ref.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        onclone: (doc) => {
+          doc.querySelectorAll('[data-pdf-chrome], [data-pdf-watermark]').forEach((el) => {
+            (el as HTMLElement).style.display = 'none';
+          });
+        },
+      });
+
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const headerH = 18;
+      const footerH = 18;
+      const usableH = pageH - headerH - footerH;
+      const pxPerMm = canvas.width / pageW;
+      const slicePx = usableH * pxPerMm;
+      const [pr, pg, pb] = hexToRgb(styles.primary);
+      const proposalNo = `#${String(proposal.id).padStart(5, '0')}`;
+
+      const srcCtx = canvas.getContext('2d', { willReadFrequently: true });
+      const slices: { start: number; height: number }[] = [];
+      if (srcCtx) {
+        let y = 0;
+        while (y < canvas.height - 1) {
+          const idealEnd = Math.min(y + slicePx, canvas.height);
+          const end = findSplitY(srcCtx, y, idealEnd);
+          const next = end <= y ? idealEnd : end;
+          slices.push({ start: y, height: Math.max(1, next - y) });
+          y = next;
+        }
+      } else {
+        slices.push({ start: 0, height: canvas.height });
       }
+
+      const pageCount = Math.max(1, slices.length);
+
+      let logoDataUrl: string | null = null;
+      let logoW = 0;
+      let logoH = 7;
+      try {
+        const logoImg = await loadImage(KANPRITECH_LOGO);
+        const logoCanvas = document.createElement('canvas');
+        logoCanvas.width = logoImg.naturalWidth;
+        logoCanvas.height = logoImg.naturalHeight;
+        logoCanvas.getContext('2d')!.drawImage(logoImg, 0, 0);
+        logoDataUrl = logoCanvas.toDataURL('image/png');
+        logoW = logoH * (logoImg.naturalWidth / logoImg.naturalHeight);
+      } catch {
+        logoDataUrl = null;
+      }
+
+      slices.forEach((slice, i) => {
+        if (i > 0) pdf.addPage();
+
+        const thisSliceMm = Math.min(slice.height / pxPerMm, usableH);
+
+        const pageCanvas = document.createElement('canvas');
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = slice.height;
+        const ctx = pageCanvas.getContext('2d')!;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+        ctx.drawImage(
+          canvas,
+          0, slice.start, canvas.width, slice.height,
+          0, 0, canvas.width, slice.height,
+        );
+
+        pdf.addImage(
+          pageCanvas.toDataURL('image/jpeg', 0.92),
+          'JPEG',
+          0,
+          headerH,
+          pageW,
+          thisSliceMm,
+        );
+
+        if (isDraft) {
+          try {
+            pdf.saveGraphicsState();
+            const GState = (pdf as unknown as { GState: new (o: { opacity: number }) => object }).GState;
+            pdf.setGState(new GState({ opacity: 0.07 }));
+            pdf.setFont('helvetica', 'bold');
+            pdf.setFontSize(64);
+            pdf.setTextColor(79, 70, 229);
+            pdf.text('DRAFT', pageW / 2, pageH / 2, { align: 'center', angle: 35 });
+            pdf.restoreGraphicsState();
+          } catch {
+            /* watermark is optional */
+          }
+        }
+
+        pdf.setFillColor(255, 255, 255);
+        pdf.rect(0, 0, pageW, headerH, 'F');
+        if (logoDataUrl && logoW > 0) {
+          pdf.addImage(logoDataUrl, 'PNG', 12, (headerH - logoH) / 2, logoW, logoH);
+        }
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(8);
+        pdf.setTextColor(pr, pg, pb);
+        pdf.text('Confidential', pageW - 12, headerH / 2 + 1.2, { align: 'right' });
+        pdf.setDrawColor(229, 231, 235);
+        pdf.setLineWidth(0.25);
+        pdf.line(12, headerH - 0.4, pageW - 12, headerH - 0.4);
+
+        pdf.setFillColor(255, 255, 255);
+        pdf.rect(0, pageH - footerH, pageW, footerH, 'F');
+        pdf.setDrawColor(229, 231, 235);
+        pdf.line(12, pageH - footerH + 0.4, pageW - 12, pageH - footerH + 0.4);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8);
+        pdf.setTextColor(156, 163, 175);
+        pdf.text('Confidential', 12, pageH - 7);
+        pdf.text(`Page ${i + 1} of ${pageCount}`, pageW / 2, pageH - 7, { align: 'center' });
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(pr, pg, pb);
+        pdf.text(`Proposal ${proposalNo}`, pageW - 12, pageH - 7, { align: 'right' });
+      });
 
       const slug = lead.company
         ? lead.company.toLowerCase().replace(/\s+/g, '-')
@@ -187,7 +339,10 @@ export function ProposalPDF({ proposal, lead, onClose }: Props) {
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Arial, sans-serif; background: #fff; }
-        @media print { @page { size: A4; margin: 0; } }
+        @media print {
+          @page { size: A4; margin: 16mm 12mm 18mm 12mm; }
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
       </style>
     </head><body>${html}</body></html>`);
     win.document.close();
@@ -239,9 +394,12 @@ export function ProposalPDF({ proposal, lead, onClose }: Props) {
             position: 'relative',
           }}
         >
-          {/* DRAFT diagonal watermark */}
+          {/* DRAFT watermark (preview only; PDF draws a centered one per page) */}
           {isDraft && (
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none', zIndex: 10, overflow: 'hidden' }}>
+            <div
+              data-pdf-watermark
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none', zIndex: 10, overflow: 'hidden' }}
+            >
               {[0, 1, 2, 3, 4].map((i) => (
                 <div key={i} style={{
                   position: 'absolute', top: `${i * 22}%`, left: '-10%', right: '-10%',
@@ -256,17 +414,27 @@ export function ProposalPDF({ proposal, lead, onClose }: Props) {
           )}
 
           {/* ── Running document header ──────────────────────────────────── */}
-          <div style={{
-            background: '#fff',
-            borderBottom: `1px solid ${styles.border}`,
-            padding: '8px 48px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}>
-            <span style={{ fontSize: '10px', color: '#9ca3af' }}>
-              {lead.company ?? lead.full_name} &nbsp;|&nbsp; Business Proposal
-            </span>
+          <div
+            data-pdf-chrome
+            style={{
+              background: '#fff',
+              borderBottom: `1px solid ${styles.border}`,
+              padding: '10px 48px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+              <img
+                src={KANPRITECH_LOGO}
+                alt="KanpriTech"
+                style={{ height: '22px', width: 'auto', display: 'block', objectFit: 'contain' }}
+              />
+              <span style={{ fontSize: '10px', color: '#9ca3af', whiteSpace: 'nowrap' }}>
+                {lead.company ?? lead.full_name} &nbsp;|&nbsp; Business Proposal
+              </span>
+            </div>
             <span style={{ fontSize: '10px', fontWeight: 700, color: styles.primary }}>
               Confidential
             </span>
@@ -294,36 +462,32 @@ export function ProposalPDF({ proposal, lead, onClose }: Props) {
                     Valid until: {fmtDate(proposal.valid_until)}
                   </div>
                 )}
-                {isDraft && (
-                  <div style={{
-                    marginTop: '8px', padding: '3px 10px', borderRadius: '20px',
-                    background: 'rgba(255,255,255,0.2)', fontSize: '10px',
-                    fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase',
-                  }}>
-                    Draft
-                  </div>
-                )}
               </div>
             </div>
 
             {/* Title */}
-            <div style={{ marginTop: '32px', fontSize: '24px', fontWeight: 700, lineHeight: 1.3 }}>
+            <div style={{ marginTop: '32px', fontSize: '24px', fontWeight: 700, lineHeight: 1.3, textAlign: 'center' }}>
               {content.title}
             </div>
 
             {/* Divider */}
             <div style={{ margin: '20px 0', height: '1px', background: 'rgba(255,255,255,0.25)' }} />
 
-            {/* Lead info pills */}
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              {[lead.full_name, lead.industry, lead.stage?.name].filter(Boolean).map((v, i) => (
-                <span key={i} style={{
-                  background: 'rgba(255,255,255,0.2)', borderRadius: '20px',
-                  padding: '4px 12px', fontSize: '11px', fontWeight: 500,
-                }}>
-                  {v}
-                </span>
-              ))}
+            {/* Name / draft — plain bold text, no pill boxes */}
+            <div style={{
+              textAlign: 'center',
+              fontSize: '18px',
+              fontWeight: 700,
+              color: '#fff',
+              letterSpacing: '0.02em',
+              lineHeight: 1.4,
+            }}>
+              {[
+                isDraft ? 'DRAFT' : null,
+                lead.full_name,
+                lead.industry,
+                lead.stage?.name,
+              ].filter(Boolean).join('  ·  ')}
             </div>
           </div>
 
@@ -836,9 +1000,11 @@ export function ProposalPDF({ proposal, lead, onClose }: Props) {
               </div>
             </div>
 
-            {/* Closing / Thank You */}
+            {/* Closing / Thank You — extra top gap so PDF page-split can land above it */}
             <div style={{
-              textAlign: 'center', padding: '32px 20px',
+              textAlign: 'center',
+              padding: '64px 20px 40px',
+              marginTop: '24px',
               borderTop: `2px solid ${styles.border}`,
             }}>
               <div style={{
@@ -866,13 +1032,22 @@ export function ProposalPDF({ proposal, lead, onClose }: Props) {
 
           </div>
 
-          {/* ── Running footer ────────────────────────────────────────────── */}
-          <div style={{
-            background: '#fff', borderTop: `1px solid ${styles.border}`,
-            padding: '8px 48px', display: 'flex', justifyContent: 'space-between',
-            fontSize: '10px', color: '#9ca3af',
-          }}>
+          {/* ── Running footer (preview only; PDF draws this on every page) ─ */}
+          <div
+            data-pdf-chrome
+            style={{
+              background: '#fff',
+              borderTop: `1px solid ${styles.border}`,
+              padding: '10px 48px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              fontSize: '10px',
+              color: '#9ca3af',
+            }}
+          >
             <span>Confidential</span>
+            <span>KanpriTech</span>
             <span style={{ color: styles.primary, fontWeight: 600 }}>
               Proposal #{String(proposal.id).padStart(5, '0')}
             </span>

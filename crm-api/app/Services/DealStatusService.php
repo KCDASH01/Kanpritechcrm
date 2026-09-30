@@ -40,4 +40,40 @@ class DealStatusService
 
         return true;
     }
+
+    /**
+     * Reopen a won deal when remaining amount is no longer fully paid.
+     */
+    public function reopenIfUnderpaid(Deal $deal): bool
+    {
+        if ($deal->status !== 'won') {
+            return false;
+        }
+
+        $dealValue     = round((float) ($deal->value ?? 0), 2);
+        $totalReceived = round((float) $deal->payments()->sum('amount'), 2);
+
+        if ($dealValue <= 0 || $totalReceived >= $dealValue) {
+            return false;
+        }
+
+        $updates = [
+            'status'    => 'open',
+            'closed_at' => null,
+        ];
+
+        $openStage = Stage::where('pipeline_id', $deal->pipeline_id)
+            ->where('is_won', false)
+            ->where('is_lost', false)
+            ->orderBy('sort_order')
+            ->first();
+
+        if ($openStage) {
+            $updates['stage_id'] = $openStage->id;
+        }
+
+        $deal->update($updates);
+
+        return true;
+    }
 }

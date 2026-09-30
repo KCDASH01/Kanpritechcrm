@@ -11,7 +11,7 @@ export const pipelinesApi = {
   create: (payload: { name: string; description?: string; is_default?: boolean }) =>
     client.post<ApiResponse<Pipeline>>('/pipelines', payload).then((r) => r.data.data),
 
-  update: (id: number, payload: { name?: string; description?: string }) =>
+  update: (id: number, payload: { name?: string; description?: string; is_default?: boolean }) =>
     client.put<ApiResponse<Pipeline>>(`/pipelines/${id}`, payload).then((r) => r.data.data),
 
   delete: (id: number) =>

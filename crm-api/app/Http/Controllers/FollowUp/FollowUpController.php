@@ -60,6 +60,11 @@ class FollowUpController extends Controller
                     'today' => $q->where('a.is_done', false)
                         ->where('a.due_at', '>=', now())
                         ->where('a.due_at', '<=', now()->endOfDay()),
+                    // Pending items due within 30 minutes — used by My Schedule to
+                    // surface a lead 5 minutes before due_at on the client.
+                    'soon' => $q->where('a.is_done', false)
+                        ->where('a.due_at', '>=', now()->subMinute())
+                        ->where('a.due_at', '<=', now()->addMinutes(30)),
                     'overdue' => $q->where('a.is_done', false)
                         ->where('a.due_at', '<', now()),
                     default => null,

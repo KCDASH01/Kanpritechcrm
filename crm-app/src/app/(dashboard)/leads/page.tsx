@@ -88,6 +88,7 @@ function LeadForm({ lead, onSave, onClose, saving, phoneError, onPhoneChange }: 
     phone:      lead?.phone      ?? '',
     company:    lead?.company    ?? '',
     job_title:  lead?.job_title  ?? '',
+    website:    lead?.website    ?? '',
     status:     lead?.status     ?? 'new',
     source:     lead?.source     ?? 'manual',
     types:      lead?.types      ?? '',
@@ -110,6 +111,7 @@ function LeadForm({ lead, onSave, onClose, saving, phoneError, onPhoneChange }: 
     ['job_title',  'Job Title'],
     ['city',       'City'],
     ['country',    'Country'],
+    ['website',    'Website'],
   ];
 
   const canSubmit = !!form.first_name.trim() && !!form.types;
@@ -133,6 +135,7 @@ function LeadForm({ lead, onSave, onClose, saving, phoneError, onPhoneChange }: 
               type={type ?? 'text'}
               value={(form[key] as string) ?? ''}
               onChange={(e) => set(key, e.target.value)}
+              placeholder={key === 'website' ? 'https://example.com' : undefined}
               className={`${inputCls} ${key === 'phone' && phoneError ? 'border-red-300 ring-1 ring-red-200' : ''}`}
             />
             {key === 'phone' && phoneError && (
@@ -225,6 +228,7 @@ function LeadPanel({ lead, onClose, onEdit }: { lead: Lead; onClose: () => void;
     ['Phone',    lead.phone],
     ['Company',  lead.company],
     ['Job Title',lead.job_title],
+    ['Website',  lead.website],
     ['Status',   lead.status],
     ['Type',     lead.types ? LEAD_TYPE_LABELS[lead.types] : null],
     ['Source',   lead.source],
@@ -289,8 +293,14 @@ function LeadPanel({ lead, onClose, onEdit }: { lead: Lead; onClose: () => void;
             {INFO_ROWS.filter(([, v]) => v).map(([label, value]) => (
               <div key={label} className="flex items-start gap-3">
                 <span className="text-xs text-gray-400 w-20 shrink-0 pt-0.5">{label}</span>
-                <span className="text-sm text-gray-800 font-medium flex-1">
-                  {label === 'Status' ? <Badge value={value!} /> : value}
+                <span className="text-sm text-gray-800 font-medium flex-1 break-all">
+                  {label === 'Status' ? (
+                    <Badge value={value!} />
+                  ) : label === 'Website' ? (
+                    <a href={value!.startsWith('http') ? value! : `https://${value}`} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">
+                      {value!.replace(/^https?:\/\//, '')}
+                    </a>
+                  ) : value}
                 </span>
               </div>
             ))}
@@ -768,9 +778,11 @@ export default function LeadsPage() {
   const typeFilter       = searchParams.get('types') ?? '';
   const dateFromFilter   = searchParams.get('date_from') ?? '';
   const dateToFilter     = searchParams.get('date_to') ?? '';
+  const departmentFilter = searchParams.get('department') ?? '';
   const page             = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1);
   const viewMine         = !isManager ? true : (searchParams.get('view') ?? 'all') === 'mine';
   const teamMemberFilter = searchParams.get('member') ?? '';
+  const showDepartmentFilters = isOwner();
 
   const updateParams = (patch: Record<string, string | null | undefined>) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -818,25 +830,38 @@ export default function LeadsPage() {
         : undefined;
 
   const listFilters = {
-    search:      search || undefined,
-    status:      statusFilter || undefined,
-    types:       typeFilter || undefined,
-    date_from:   dateFromFilter || undefined,
-    date_to:     dateToFilter || undefined,
-    assigned_to: assignedToFilter,
-    unassigned:  unassignedFilter || undefined,
+    search:        search || undefined,
+    status:        statusFilter || undefined,
+    types:         typeFilter || undefined,
+    date_from:     dateFromFilter || undefined,
+    date_to:       dateToFilter || undefined,
+    department_id: showDepartmentFilters && departmentFilter ? Number(departmentFilter) : undefined,
+    assigned_to:   assignedToFilter,
+    unassigned:    unassignedFilter || undefined,
     page,
   };
 
-  const hasActiveFilters = !!(search || statusFilter || typeFilter || teamMemberFilter || dateFromFilter || dateToFilter);
+  const hasActiveFilters = !!(
+    search || statusFilter || typeFilter || teamMemberFilter || dateFromFilter || dateToFilter || departmentFilter
+  );
 
   const clearAllFilters = () =>
-    updateParams({ search: null, status: null, types: null, member: null, date_from: null, date_to: null, page: null });
+    updateParams({
+      search: null, status: null, types: null, member: null,
+      date_from: null, date_to: null, department: null, page: null,
+    });
 
   const { data: liveSub } = useQuery({
     queryKey: ['subscription'],
     queryFn:  subscriptionApi.get,
     staleTime: 5 * 60_000,
+  });
+
+  const { data: departmentCounts, isLoading: loadingDeptCounts } = useQuery({
+    queryKey: ['lead-department-counts'],
+    queryFn:  () => leadsApi.departmentCounts(),
+    enabled:  showDepartmentFilters,
+    staleTime: 60_000,
   });
 
   const { data, isLoading, isFetching } = useQuery({
@@ -850,6 +875,7 @@ export default function LeadsPage() {
     mutationFn: (payload: LeadPayload) => leadsApi.create(payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['leads'] });
+      qc.invalidateQueries({ queryKey: ['lead-department-counts'] });
       setLeadPhoneError(null);
       setModalLead(undefined);
     },
@@ -868,6 +894,7 @@ export default function LeadsPage() {
     mutationFn: ({ id, payload }: { id: number; payload: Partial<LeadPayload> }) => leadsApi.update(id, payload),
     onSuccess: (updated) => {
       qc.invalidateQueries({ queryKey: ['leads'] });
+      qc.invalidateQueries({ queryKey: ['lead-department-counts'] });
       qc.invalidateQueries({ queryKey: ['lead-timeline', updated.id] });
       setLeadPhoneError(null);
       setModalLead(undefined);
@@ -896,6 +923,7 @@ export default function LeadsPage() {
       }),
     onSuccess: (updated) => {
       qc.invalidateQueries({ queryKey: ['leads'] });
+      qc.invalidateQueries({ queryKey: ['lead-department-counts'] });
       qc.invalidateQueries({ queryKey: ['lead-timeline', updated.id] });
       qc.invalidateQueries({ queryKey: ['activities'] });
       qc.invalidateQueries({ queryKey: ['lead-activities', updated.id] });
@@ -935,7 +963,10 @@ export default function LeadsPage() {
     onError: (_err, _id, ctx) => {
       if (ctx?.prev) qc.setQueryData(['leads', listFilters], ctx.prev);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['leads'] }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['leads'] });
+      qc.invalidateQueries({ queryKey: ['lead-department-counts'] });
+    },
   });
 
   // Convert to deal
@@ -943,6 +974,7 @@ export default function LeadsPage() {
     mutationFn: ({ id, payload }: { id: number; payload: ConvertPayload }) => leadsApi.convertToDeal(id, payload),
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['leads'] });
+      qc.invalidateQueries({ queryKey: ['lead-department-counts'] });
       qc.invalidateQueries({ queryKey: ['deals'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
       setConvertLead(null);
@@ -975,6 +1007,9 @@ export default function LeadsPage() {
 
   const leads = data?.data ?? [];
   const meta  = data?.meta;
+  const selectedDepartment = departmentCounts?.departments.find(
+    (d) => String(d.id) === departmentFilter,
+  );
 
   // ── Plan usage limits (free: 100, business: 5,000, enterprise: unlimited) ───
   const activePlan  = liveSub?.plan ?? user?.subscription?.plan;
@@ -992,7 +1027,11 @@ export default function LeadsPage() {
             <p className="text-xs text-gray-400 mt-0.5">
               {!isManager
                 ? 'Showing leads assigned to you'
-                : viewMine ? 'Showing leads assigned to you' : 'Showing all leads in your organization'}
+                : viewMine
+                  ? 'Showing leads assigned to you'
+                  : selectedDepartment
+                    ? `Showing leads in ${selectedDepartment.name}`
+                    : 'Showing all leads in your organization'}
             </p>
             {planLimits.leads !== Infinity && meta && (
               <div className="mt-2">
@@ -1040,6 +1079,56 @@ export default function LeadsPage() {
             )}
           </div>
         </div>
+
+        {/* Department filter cards — Owner only */}
+        {showDepartmentFilters && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Departments</p>
+            <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-thin">
+              <button
+                type="button"
+                onClick={() => updateParams({ department: null, page: null })}
+                className={[
+                  'shrink-0 min-w-[140px] rounded-2xl border px-4 py-3 text-left transition-all',
+                  !departmentFilter
+                    ? 'border-indigo-500 bg-indigo-50 shadow-sm shadow-indigo-500/10'
+                    : 'border-gray-100 bg-white hover:border-indigo-200 hover:bg-indigo-50/40',
+                ].join(' ')}
+              >
+                <p className={`text-xs font-semibold ${!departmentFilter ? 'text-indigo-700' : 'text-gray-500'}`}>
+                  All Departments
+                </p>
+                <p className={`text-xl font-bold mt-0.5 ${!departmentFilter ? 'text-indigo-700' : 'text-gray-900'}`}>
+                  {loadingDeptCounts ? '…' : (departmentCounts?.total ?? 0).toLocaleString()}
+                </p>
+              </button>
+
+              {(departmentCounts?.departments ?? []).map((dept) => {
+                const active = departmentFilter === String(dept.id);
+                return (
+                  <button
+                    key={dept.id}
+                    type="button"
+                    onClick={() => updateParams({ department: String(dept.id), page: null })}
+                    className={[
+                      'shrink-0 min-w-[140px] rounded-2xl border px-4 py-3 text-left transition-all',
+                      active
+                        ? 'border-indigo-500 bg-indigo-50 shadow-sm shadow-indigo-500/10'
+                        : 'border-gray-100 bg-white hover:border-indigo-200 hover:bg-indigo-50/40',
+                    ].join(' ')}
+                  >
+                    <p className={`text-xs font-semibold truncate max-w-[160px] ${active ? 'text-indigo-700' : 'text-gray-500'}`}>
+                      {dept.name}
+                    </p>
+                    <p className={`text-xl font-bold mt-0.5 ${active ? 'text-indigo-700' : 'text-gray-900'}`}>
+                      {dept.leads_count.toLocaleString()}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Filters */}
         <div className="flex gap-3 flex-wrap items-center">

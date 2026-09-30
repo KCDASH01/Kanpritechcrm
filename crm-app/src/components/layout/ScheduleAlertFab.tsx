@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAuthStore } from '@/store/authStore';
-import { scheduleAlertsApi, type ScheduleAlertItem } from '@/lib/api/scheduleAlerts';
+import { scheduleAlertsApi, splitScheduleAlerts, type ScheduleAlertItem } from '@/lib/api/scheduleAlerts';
 import { activitiesApi } from '@/lib/api/activities';
 
 function fmtDue(iso?: string) {
@@ -126,12 +126,18 @@ export function ScheduleAlertFab() {
   const isEmployee = useAuthStore((s) => s.isEmployee());
   const [open, setOpen] = useState(false);
   const [marking, setMarking] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 5_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const { data, isLoading } = useQuery({
     queryKey: ['schedule-alerts', user?.id],
     queryFn:  scheduleAlertsApi.fetch,
     enabled:  isEmployee && !!user?.id,
-    refetchInterval: 60_000,
+    refetchInterval: 15_000,
     refetchOnWindowFocus: true,
   });
 
@@ -147,9 +153,8 @@ export function ScheduleAlertFab() {
 
   if (!isEmployee) return null;
 
-  const dueToday = data?.dueToday ?? [];
-  const missed   = data?.missed ?? [];
-  const total    = dueToday.length + missed.length;
+  const { dueToday, missed } = splitScheduleAlerts(data?.upcoming ?? [], data?.missed ?? [], nowMs);
+  const total = dueToday.length + missed.length;
 
   const handleDone = async (activityId: number) => {
     setMarking(activityId);
@@ -184,7 +189,7 @@ export function ScheduleAlertFab() {
               <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-indigo-50 to-violet-50">
                 <div>
                   <h3 className="text-sm font-bold text-gray-900">My Schedule</h3>
-                  <p className="text-[11px] text-gray-500 mt-0.5">Follow-ups & meetings assigned to you</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">Appears 5 minutes before due time</p>
                 </div>
                 <button
                   type="button"
@@ -206,14 +211,14 @@ export function ScheduleAlertFab() {
                       ✓
                     </div>
                     <p className="text-sm font-semibold text-gray-700">All caught up!</p>
-                    <p className="text-xs text-gray-400 mt-1">No follow-ups or meetings due today or missed.</p>
+                    <p className="text-xs text-gray-400 mt-1">Nothing due in the next 5 minutes, and nothing missed.</p>
                   </div>
                 ) : (
                   <>
                     <Section
                       title="Due today"
                       items={dueToday}
-                      emptyText="Nothing due today"
+                      emptyText="Nothing due in the next 5 minutes"
                       onDone={handleDone}
                       marking={marking}
                     />

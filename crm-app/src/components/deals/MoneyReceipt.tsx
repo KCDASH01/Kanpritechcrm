@@ -20,8 +20,9 @@ function belowThousand(n: number): string {
   return ONES[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + belowHundred(n % 100) : '');
 }
 
-export function amountInWords(amount: number): string {
-  if (!amount || amount <= 0) return 'Zero Rupees Only';
+export function amountInWords(amount: number, currency: string = 'INR'): string {
+  const isUsd = currency === 'USD';
+  if (!amount || amount <= 0) return isUsd ? 'Zero Dollars Only' : 'Zero Rupees Only';
   const intPart  = Math.floor(amount);
   const decPart  = Math.round((amount - intPart) * 100);
 
@@ -36,8 +37,8 @@ export function amountInWords(amount: number): string {
   if (thou)  words += belowThousand(thou)  + ' Thousand ';
   if (rem)   words += belowThousand(rem)   + ' ';
 
-  words += 'Rupees';
-  if (decPart) words += ' and ' + belowHundred(decPart) + ' Paise';
+  words += isUsd ? 'Dollars' : 'Rupees';
+  if (decPart) words += ' and ' + belowHundred(decPart) + (isUsd ? ' Cents' : ' Paise');
   return words.trim() + ' Only';
 }
 
@@ -54,7 +55,7 @@ function fmtLong(d: string) {
 function fmtMode(m: string) {
   const map: Record<string, string> = {
     cash: 'Cash', cheque: 'Cheque', bank_transfer: 'Bank Transfer',
-    upi: 'UPI', card: 'Card', other: 'Other',
+    upi: 'UPI', card: 'Card', aggregator: 'Aggregator', other: 'Other',
   };
   return map[m] ?? m;
 }
@@ -284,10 +285,10 @@ export default function MoneyReceipt({ payment, deal, settings, onClose }: Props
                 Payment Details
               </div>
               <div style={{ fontSize: 26, fontWeight: 800, color: '#15803d', marginBottom: 4 }}>
-                ₹{Number(payment.amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {deal.currency === 'USD' ? '$' : '₹'}{Number(payment.amount).toLocaleString(deal.currency === 'USD' ? 'en-US' : 'en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
               <div style={{ fontSize: 10, color: '#166534', fontStyle: 'italic', marginBottom: 10, lineHeight: 1.4 }}>
-                {amountInWords(Number(payment.amount))}
+                {amountInWords(Number(payment.amount), deal.currency)}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>

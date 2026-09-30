@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import type { ConvertPayload } from '@/lib/api/leads';
 import type { Lead, Pipeline } from '@/types';
+import { PAYMENT_MODES } from '@/lib/paymentModes';
+import { currencySymbol, type DealCurrency } from '@/lib/currency';
 
 const inputCls =
   'w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-shadow bg-white';
@@ -26,6 +28,7 @@ export function ConvertToDealForm({ leadName, pipelines, onSave, onClose, saving
     stage_id: 0,
     title: `Deal — ${leadName}`,
     value: undefined,
+    currency: 'INR',
   });
   const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
   const [paymentDate, setPaymentDate] = useState(todayIso);
@@ -55,6 +58,7 @@ export function ConvertToDealForm({ leadName, pipelines, onSave, onClose, saving
   const dealValue = Number(form.value ?? 0);
   const received = paymentAmount ? Number(paymentAmount) : 0;
   const willAutoWin = dealValue > 0 && received >= dealValue;
+  const symbol = currencySymbol(form.currency);
 
   return (
     <div className="space-y-4">
@@ -112,25 +116,40 @@ export function ConvertToDealForm({ leadName, pipelines, onSave, onClose, saving
         </div>
       </div>
 
-      <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">Deal Value (₹)</label>
-        <input
-          type="number"
-          min={0}
-          value={form.value ?? ''}
-          onChange={(e) =>
-            setForm((f) => ({ ...f, value: e.target.value ? Number(e.target.value) : undefined }))
-          }
-          placeholder="0"
-          className={inputCls}
-        />
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Type</label>
+          <select
+            value={form.currency ?? 'INR'}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, currency: e.target.value as DealCurrency }))
+            }
+            className={inputCls}
+          >
+            <option value="INR">INR (₹)</option>
+            <option value="USD">Dollar ($)</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Deal Value ({symbol})</label>
+          <input
+            type="number"
+            min={0}
+            value={form.value ?? ''}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, value: e.target.value ? Number(e.target.value) : undefined }))
+            }
+            placeholder="0"
+            className={inputCls}
+          />
+        </div>
       </div>
 
       <div className="border border-gray-100 rounded-xl p-3 space-y-3 bg-gray-50/50">
         <p className="text-xs font-semibold text-gray-600">Initial Payment (optional)</p>
         <div>
           <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">
-            Amount Received (₹)
+            Amount Received ({symbol})
           </label>
           <input
             type="number"
@@ -166,12 +185,9 @@ export function ConvertToDealForm({ leadName, pipelines, onSave, onClose, saving
                 }
                 className={inputCls}
               >
-                <option value="upi">UPI</option>
-                <option value="bank_transfer">Bank Transfer</option>
-                <option value="cash">Cash</option>
-                <option value="cheque">Cheque</option>
-                <option value="card">Card</option>
-                <option value="other">Other</option>
+                {PAYMENT_MODES.map((m) => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
               </select>
             </div>
           </div>

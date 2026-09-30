@@ -17,8 +17,41 @@ export interface ScheduleAlertItem {
 }
 
 export interface ScheduleAlertsData {
-  dueToday: ScheduleAlertItem[];
+  upcoming: ScheduleAlertItem[];
   missed: ScheduleAlertItem[];
+}
+
+/** Show under Due today from 5 minutes before due_at until the due time. */
+export const DUE_SOON_MS = 5 * 60 * 1000;
+
+export function splitScheduleAlerts(
+  upcoming: ScheduleAlertItem[],
+  missed: ScheduleAlertItem[],
+  nowMs: number = Date.now(),
+): { dueToday: ScheduleAlertItem[]; missed: ScheduleAlertItem[] } {
+  const justDue: ScheduleAlertItem[] = [];
+  const dueToday: ScheduleAlertItem[] = [];
+
+  for (const item of upcoming) {
+    const t = item.due_at ? new Date(item.due_at).getTime() : NaN;
+    if (!Number.isFinite(t)) continue;
+    if (t <= nowMs) {
+      justDue.push({ ...item, state: 'missed' });
+    } else if (t - nowMs <= DUE_SOON_MS) {
+      dueToday.push({ ...item, state: 'today' });
+    }
+  }
+
+  const missedIds = new Set(missed.map((i) => i.id));
+  const mergedMissed = [
+    ...missed,
+    ...justDue.filter((i) => !missedIds.has(i.id)),
+  ];
+
+  return {
+    dueToday: sortByDueAt(dueToday, 'asc'),
+    missed: sortByDueAt(mergedMissed, 'asc'),
+  };
 }
 
 function mapFollowUp(item: FollowUp, state: ScheduleAlertState): ScheduleAlertItem {
@@ -59,6 +92,8 @@ function sortByDueAt(items: ScheduleAlertItem[], dir: 'asc' | 'desc'): ScheduleA
 
 export const scheduleAlertsApi = {
   fetch: async (): Promise<ScheduleAlertsData> => {
+    // Remaining today stays in memory so the FAB can surface a lead at T-5min
+    // without a page refresh. The 5-minute window is applied in splitScheduleAlerts.
     const [fuToday, fuOverdue, mtToday, mtOverdue] = await Promise.all([
       followUpsApi.list({ due: 'today', per_page: 50 }),
       followUpsApi.list({ due: 'overdue', per_page: 50 }),
@@ -66,7 +101,7 @@ export const scheduleAlertsApi = {
       meetingsApi.list({ due: 'overdue', per_page: 50 }),
     ]);
 
-    const dueToday = sortByDueAt([
+    const upcoming = sortByDueAt([
       ...fuToday.data.map((r) => mapFollowUp(r, 'today')),
       ...mtToday.data.map((r) => mapMeeting(r, 'today')),
     ], 'asc');
@@ -76,6 +111,6 @@ export const scheduleAlertsApi = {
       ...mtOverdue.data.map((r) => mapMeeting(r, 'missed')),
     ], 'asc');
 
-    return { dueToday, missed };
+    return { upcoming, missed };
   },
 };

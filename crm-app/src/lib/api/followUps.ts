@@ -2,7 +2,7 @@ import client from './client';
 import type { PaginatedResponse, User } from '@/types';
 
 export type FollowUpStatus = 'pending' | 'overdue' | 'done';
-export type FollowUpDueFilter = 'today' | 'overdue' | 'all';
+export type FollowUpDueFilter = 'today' | 'overdue' | 'soon' | 'all';
 
 export interface FollowUp {
   id: number;

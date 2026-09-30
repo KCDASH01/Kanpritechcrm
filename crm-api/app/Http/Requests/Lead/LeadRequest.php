@@ -11,6 +11,24 @@ class LeadRequest extends FormRequest
 {
     public function authorize(): bool { return true; }
 
+    protected function prepareForValidation(): void
+    {
+        $website = $this->input('website');
+        if (! is_string($website)) {
+            return;
+        }
+
+        $website = trim($website);
+        if ($website === '') {
+            $this->merge(['website' => null]);
+            return;
+        }
+
+        if (! preg_match('#^https?://#i', $website)) {
+            $this->merge(['website' => 'https://'.$website]);
+        }
+    }
+
     public function rules(): array
     {
         $isUpdate = $this->isMethod('PUT') || $this->isMethod('PATCH');

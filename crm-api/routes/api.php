@@ -96,14 +96,16 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('pipelines/{pipeline}/stages/reorder',          [StageController::class, 'reorder']);
 
         // Leads
+        Route::get('leads/department-counts',     [LeadController::class, 'departmentCounts']);
         Route::get('leads/{lead}/timeline',       [LeadController::class, 'timeline']);
         Route::post('leads/{lead}/convert',       [LeadController::class, 'convertToDeal']);
         Route::apiResource('leads',               LeadController::class);
 
         // Deals
         Route::patch('deals/{deal}/stage',          [DealController::class, 'moveStage']);
-        Route::get('deals/{deal}/payments',         [DealPaymentController::class, 'index']);
-        Route::post('deals/{deal}/payments',        [DealPaymentController::class, 'store']);
+        Route::get('deals/{deal}/payments',              [DealPaymentController::class, 'index']);
+        Route::post('deals/{deal}/payments',             [DealPaymentController::class, 'store']);
+        Route::put('deals/{deal}/payments/{payment}',    [DealPaymentController::class, 'update']);
         Route::apiResource('deals',                 DealController::class);
 
         // Follow-ups (lead activities with due dates)

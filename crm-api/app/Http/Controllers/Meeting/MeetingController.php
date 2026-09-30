@@ -60,6 +60,9 @@ class MeetingController extends Controller
                     'today' => $q->where('a.is_done', false)
                         ->where('a.due_at', '>=', now())
                         ->where('a.due_at', '<=', now()->endOfDay()),
+                    'soon' => $q->where('a.is_done', false)
+                        ->where('a.due_at', '>=', now()->subMinute())
+                        ->where('a.due_at', '<=', now()->addMinutes(30)),
                     'overdue' => $q->where('a.is_done', false)
                         ->where('a.due_at', '<', now()),
                     default => null,

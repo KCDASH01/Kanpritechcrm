@@ -13,7 +13,7 @@ class DealResource extends JsonResource
             'id'                  => $this->id,
             'title'               => $this->title,
             'value'               => $this->value,
-            'currency'            => $this->currency,
+            'currency'            => $this->currency ?: 'INR',
             'status'              => $this->status,
             'lost_reason'         => $this->lost_reason,
             'original_value'      => $this->original_value,
