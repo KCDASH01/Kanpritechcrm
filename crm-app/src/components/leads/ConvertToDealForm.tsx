@@ -15,20 +15,24 @@ function todayIso(): string {
 
 interface Props {
   leadName: string;
+  initialTitle?: string;
+  initialValue?: number;
+  initialCurrency?: 'INR' | 'USD';
+  recurring?: boolean;
   pipelines: Pipeline[] | undefined;
   onSave: (payload: ConvertPayload) => void;
   onClose: () => void;
   saving?: boolean;
 }
 
-export function ConvertToDealForm({ leadName, pipelines, onSave, onClose, saving }: Props) {
+export function ConvertToDealForm({ leadName, initialTitle, initialValue, initialCurrency, recurring, pipelines, onSave, onClose, saving }: Props) {
   const [selectedPipelineId, setSelectedPipelineId] = useState<number>(0);
   const [form, setForm] = useState<ConvertPayload>({
     pipeline_id: 0,
     stage_id: 0,
-    title: `Deal — ${leadName}`,
-    value: undefined,
-    currency: 'INR',
+    title: initialTitle || `Deal — ${leadName}`,
+    value: initialValue,
+    currency: initialCurrency ?? 'INR',
   });
   const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
   const [paymentDate, setPaymentDate] = useState(todayIso);
@@ -57,13 +61,14 @@ export function ConvertToDealForm({ leadName, pipelines, onSave, onClose, saving
 
   const dealValue = Number(form.value ?? 0);
   const received = paymentAmount ? Number(paymentAmount) : 0;
-  const willAutoWin = dealValue > 0 && received >= dealValue;
+  const willAutoWin = !recurring && dealValue > 0 && received >= dealValue;
   const symbol = currencySymbol(form.currency);
 
   return (
     <div className="space-y-4">
       <div className="bg-indigo-50 rounded-xl p-3 text-sm text-indigo-700">
         Converting <strong>{leadName}</strong> to a deal.
+        {recurring && <p className="mt-1 text-violet-700 font-medium">Recurring payments will be recognized individually and will not auto-close this contract.</p>}
         {willAutoWin && (
           <p className="mt-1 text-emerald-700 font-medium">
             Full payment recorded — deal will be marked as Won.
@@ -224,5 +229,9 @@ export function ConvertToDealFormFromLead({
   lead,
   ...props
 }: Omit<Props, 'leadName'> & { lead: Lead }) {
-  return <ConvertToDealForm {...props} leadName={lead.full_name} />;
+  const title = lead.types ? `${lead.types.replaceAll('_', ' ')} — ${lead.company || lead.full_name}` : `Deal — ${lead.company || lead.full_name}`;
+  const value = lead.business_type === 'RECURRING'
+    ? (lead.contract_value ?? lead.expected_value ?? lead.recurring_amount)
+    : lead.expected_value;
+  return <ConvertToDealForm {...props} leadName={lead.full_name} initialTitle={title} initialValue={value} initialCurrency={lead.currency} recurring={lead.business_type === 'RECURRING'} />;
 }

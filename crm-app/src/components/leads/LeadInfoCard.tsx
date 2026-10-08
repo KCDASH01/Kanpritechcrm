@@ -31,6 +31,7 @@ export function LeadInfoCard({ lead, onUpdate, saving, canEdit = true, phoneErro
       website:    lead.website    ?? '',
       industry:   lead.industry   ?? '',
       city:       lead.city       ?? '',
+      state:      lead.state      ?? '',
       country:    lead.country    ?? '',
       notes:      lead.notes      ?? '',
     });
@@ -57,6 +58,7 @@ export function LeadInfoCard({ lead, onUpdate, saving, canEdit = true, phoneErro
     { label: 'Website',   key: 'website',   editKey: 'website',   type: 'url'   },
     { label: 'Industry',  key: 'industry',  editKey: 'industry'                 },
     { label: 'City',      key: 'city',      editKey: 'city'                     },
+    { label: 'State',     key: 'state',     editKey: 'state'                    },
     { label: 'Country',   key: 'country',   editKey: 'country'                  },
   ];
 
@@ -149,6 +151,13 @@ export function LeadInfoCard({ lead, onUpdate, saving, canEdit = true, phoneErro
             )}
           </div>
         ))}
+
+        {!editing && [
+          ['Client Type', lead.client_type === 'EXISTING' ? 'Existing Client' : 'New Client'],
+          ['Business', lead.business_type === 'RECURRING' ? 'Recurring' : 'One Time'],
+          ['Market', lead.market_type ? lead.market_type[0] + lead.market_type.slice(1).toLowerCase() : null],
+          ['Value', lead.business_type === 'RECURRING' ? lead.recurring_amount : lead.expected_value],
+        ].map(([label, value]) => <div key={String(label)} className="flex items-start gap-3"><span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-20 shrink-0">{label}</span><span className="text-sm text-gray-800">{typeof value === 'number' ? `${lead.currency === 'USD' ? '$' : '₹'}${value.toLocaleString('en-IN')}` : value || '—'}</span></div>)}
 
         {/* Notes */}
         <div className="flex items-start gap-3 pt-1 border-t border-gray-50">

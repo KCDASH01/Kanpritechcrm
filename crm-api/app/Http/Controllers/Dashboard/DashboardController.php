@@ -3,14 +3,16 @@
 namespace App\Http\Controllers\Dashboard;
 
 use App\Http\Controllers\Controller;
-use App\Http\Controllers\SalesTarget\SalesTargetController;
 use App\Http\Resources\ActivityResource;
 use App\Http\Resources\DealResource;
 use App\Http\Resources\LeadResource;
 use App\Models\Activity;
 use App\Models\Deal;
+use App\Models\DealPayment;
 use App\Models\Lead;
-use App\Models\SalesTarget;
+use App\Models\User;
+use App\Services\RevenueRecognitionService;
+use App\Services\TargetProgressService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -19,10 +21,20 @@ class DashboardController extends Controller
     /** @var list<string> */
     private const LEAD_SUBJECT_TYPES = ['lead', Lead::class];
 
+    public function __construct(
+        private readonly RevenueRecognitionService $revenue,
+        private readonly TargetProgressService $targets,
+    ) {}
+
     public function index(Request $request): JsonResponse
     {
-        $orgId      = $request->user()->organization_id;
-        $assignedTo = $request->input('assigned_to'); // null = org-wide (manager), set = personal (team member)
+        $request->validate([
+            'assigned_to' => ['nullable', 'integer'],
+            'month' => ['nullable', 'date_format:Y-m'],
+            'page' => ['nullable', 'integer', 'min:1'],
+        ]);
+        $orgId = (int) $request->user()->organization_id;
+        $assignedTo = $this->resolveAssignedTo($request);
 
         // ── Counts ────────────────────────────────────────────────────────────
         $totalLeads = Lead::where('organization_id', $orgId)
@@ -56,14 +68,14 @@ class DashboardController extends Controller
         // ── Recent data ───────────────────────────────────────────────────────
         $recentLeads = Lead::where('organization_id', $orgId)
             ->when($assignedTo, fn($q) => $q->where('assigned_to', $assignedTo))
-            ->with(['stage', 'assignedTo'])
+            ->with(['stage', 'assignedTo', 'client', 'department'])
             ->latest()
             ->limit(5)
             ->get();
 
         $recentDeals = Deal::where('organization_id', $orgId)
             ->when($assignedTo, fn($q) => $q->where('assigned_to', $assignedTo))
-            ->with(['stage', 'lead', 'assignedTo'])
+            ->with(['stage', 'lead', 'client', 'assignedTo', 'department'])
             ->latest()
             ->limit(5)
             ->get();
@@ -137,39 +149,18 @@ class DashboardController extends Controller
                 'stage'       => $r->stage ? ['id' => $r->stage->id, 'name' => $r->stage->name, 'color' => $r->stage->color] : null,
             ]);
 
-        // Revenue (won deals) per day — last 30 days
-        $revenueTrend = Deal::where('organization_id', $orgId)
-            ->when($assignedTo, fn($q) => $q->where('assigned_to', $assignedTo))
-            ->where('status', 'won')
-            ->where('updated_at', '>=', now()->subDays(29)->startOfDay())
-            ->selectRaw('DATE(updated_at) as date, SUM(value) as revenue')
-            ->groupBy('date')
-            ->orderBy('date')
-            ->get()
-            ->map(fn($r) => ['date' => $r->date, 'revenue' => (float) $r->revenue]);
+        $trendStart = now()->subDays(29)->startOfDay();
+        $trendEnd = now()->endOfDay();
+        $revenueTrend = $this->revenue->dailyTrend($orgId, $assignedTo ? (int) $assignedTo : null, $trendStart, $trendEnd);
+        $revenueBreakdown = $this->revenue->breakdown($orgId, $assignedTo ? (int) $assignedTo : null);
 
-        // ── Sales target progress (only for team member / personal view) ────────
-        $targetProgress = null;
-        if ($assignedTo) {
-            $periodStart = now()->startOfMonth()->toDateString();
-            $periodEnd   = now()->endOfMonth()->toDateString();
-
-            $target = SalesTarget::where('organization_id', $orgId)
-                ->where('user_id', $assignedTo)
-                ->where('period_start', $periodStart)
-                ->first();
-
-            if ($target) {
-                $achieved = SalesTargetController::calcAchieved($orgId, (int) $assignedTo, $periodStart, $periodEnd);
-                $targetProgress = [
-                    'target_amount'     => (float) $target->target_amount,
-                    'receivable_amount' => (float) $target->receivable_amount,
-                    'received_amount'   => $target->received_amount !== null ? (float) $target->received_amount : null,
-                    'achieved_amount'   => $achieved,
-                    'target_id'         => $target->id,
-                ];
-            }
-        }
+        [$periodStart, $periodEnd, $periodLabel] = $this->targets->period($request->input('month'));
+        $targetProgress = $this->targets->progress($orgId, $assignedTo, $periodStart, $periodEnd);
+        $collectionSummary = $this->revenue->collectionSummary($orgId, $assignedTo, now());
+        $teamMembers = $request->user()->isAdmin()
+            ? User::query()->where('organization_id', $orgId)->where('is_active', true)->where('role', '!=', 'owner')
+                ->orderBy('name')->get(['id', 'name'])->map(fn (User $member) => ['id' => $member->id, 'name' => $member->name])->values()
+            : collect();
 
         return response()->json([
             'data' => [
@@ -181,11 +172,20 @@ class DashboardController extends Controller
                     'deal_value'           => round($dealValue, 2),
                     'due_today_activities' => $dueTodayActs,
                     'overdue_activities'   => $overdueActs,
+                    ...$revenueBreakdown,
                 ],
                 'recent_leads'        => LeadResource::collection($recentLeads)->resolve(),
                 'recent_deals'        => DealResource::collection($recentDeals)->resolve(),
                 'reminders'           => ActivityResource::collection($reminders)->resolve(),
                 'target_progress'     => $targetProgress,
+                'performance' => [
+                    'period_start' => $periodStart,
+                    'period_label' => $periodLabel,
+                    'selected_user_id' => $assignedTo,
+                    'target' => $targetProgress,
+                    'revenue' => $collectionSummary,
+                    'team_members' => $teamMembers,
+                ],
                 'charts' => [
                     'leads_trend'    => $leadsTrend,
                     'deals_by_stage' => $dealsByStage,
@@ -193,6 +193,104 @@ class DashboardController extends Controller
                 ],
             ],
         ]);
+    }
+
+    public function performanceDetails(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'type' => ['required', 'in:sales,target_collections,collections_month,collections_all,receivables'],
+            'assigned_to' => ['nullable', 'integer'],
+            'month' => ['nullable', 'date_format:Y-m'],
+        ]);
+        $orgId = (int) $request->user()->organization_id;
+        $assignedTo = $this->resolveAssignedTo($request);
+        [$periodStart, $periodEnd, $periodLabel] = $this->targets->period($data['month'] ?? null);
+        $page = max(1, $request->integer('page', 1));
+        $perPage = 50;
+
+        if ($data['type'] === 'sales') {
+            $paginator = $this->targets->salesDetailsQuery($orgId, $assignedTo, $periodStart, $periodEnd)
+                ->with(['client', 'lead', 'assignedTo', 'recurringBusiness'])
+                ->withSum('payments', 'amount')
+                ->latest('closed_at')
+                ->paginate($perPage, ['*'], 'page', $page);
+            $rows = $paginator->getCollection()->map(fn (Deal $deal) => [
+                    'id' => $deal->id,
+                    'deal_id' => $deal->id,
+                    'deal' => $deal->title,
+                    'client' => $deal->client?->company ?: $deal->client?->full_name,
+                    'lead' => $deal->lead?->full_name,
+                    'service' => $deal->service_type,
+                    'employee' => $deal->assignedTo?->name,
+                    'deal_value' => (float) $deal->value,
+                    'deal_status' => $deal->status,
+                    'date' => $deal->closed_at?->toDateString(),
+                    'business_type' => $deal->business_type,
+                    'market_type' => $deal->market_type,
+                    'collected' => (float) ($deal->payments_sum_amount ?? 0),
+                    'outstanding' => $this->revenue->dealReceivable($deal, now()),
+                    'currency' => $deal->currency ?: 'INR',
+                ]);
+            $meta = ['current_page' => $paginator->currentPage(), 'last_page' => $paginator->lastPage(), 'total' => $paginator->total()];
+        } elseif (in_array($data['type'], ['target_collections', 'collections_month', 'collections_all'], true)) {
+            $rowsQuery = $data['type'] === 'target_collections'
+                ? $this->targets->collectionDetailsQuery($orgId, $assignedTo, $periodStart, $periodEnd)
+                : $this->revenue->collectionDetailsQuery(
+                    $orgId,
+                    $assignedTo,
+                    $data['type'] === 'collections_month' ? $periodStart : null,
+                    $data['type'] === 'collections_month' ? $periodEnd : null,
+                );
+            $paginator = $rowsQuery->with(['deal' => fn ($deal) => $deal
+                    ->withSum('payments', 'amount')
+                    ->with(['client', 'lead', 'assignedTo', 'recurringBusiness'])])
+                ->latest('payment_date')
+                ->paginate($perPage, ['*'], 'page', $page);
+            $rows = $paginator->getCollection()->map(fn (DealPayment $payment) => [
+                    'id' => $payment->id,
+                    'date' => $payment->payment_date?->toDateString(),
+                    'client' => $payment->deal?->client?->company ?: $payment->deal?->client?->full_name,
+                    'deal' => $payment->deal?->title,
+                    'deal_id' => $payment->deal_id,
+                    'lead' => $payment->deal?->lead?->full_name,
+                    'service' => $payment->deal?->service_type,
+                    'employee' => $payment->deal?->assignedTo?->name,
+                    'amount' => (float) $payment->amount,
+                    'deal_value' => (float) ($payment->deal?->value ?? 0),
+                    'total_collected' => (float) ($payment->deal?->payments_sum_amount ?? 0),
+                    'outstanding' => $payment->deal ? $this->revenue->dealReceivable($payment->deal, now()) : 0,
+                    'payment_method' => $payment->payment_mode,
+                    'reference' => $payment->txn_or_utr_number,
+                    'currency' => $payment->deal?->currency ?: 'INR',
+                    'status' => $payment->deal?->status,
+                ]);
+            $meta = ['current_page' => $paginator->currentPage(), 'last_page' => $paginator->lastPage(), 'total' => $paginator->total()];
+        } else {
+            $allRows = $this->revenue->receivableRows($orgId, $assignedTo, now());
+            $rows = $allRows->slice(($page - 1) * $perPage, $perPage)->values();
+            $meta = ['current_page' => $page, 'last_page' => max(1, (int) ceil($allRows->count() / $perPage)), 'total' => $allRows->count()];
+        }
+
+        return response()->json(['data' => [
+            'type' => $data['type'],
+            'period_label' => $periodLabel,
+            'rows' => $rows,
+            'meta' => $meta,
+        ]]);
+    }
+
+    private function resolveAssignedTo(Request $request): ?int
+    {
+        $user = $request->user();
+        if ($user->isEmployee()) return (int) $user->id;
+        if (! $request->filled('assigned_to')) return null;
+
+        return (int) User::query()
+            ->where('organization_id', $user->organization_id)
+            ->where('is_active', true)
+            ->where('role', '!=', 'owner')
+            ->findOrFail($request->integer('assigned_to'))
+            ->id;
     }
 
     private function countDueTodayLeads(string $orgId, ?int $assignedTo): int

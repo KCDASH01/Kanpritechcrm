@@ -6,6 +6,7 @@ import { keepPreviousData } from '@tanstack/react-query';
 import { reportsApi } from '@/lib/api/reports';
 import { employeesApi } from '@/lib/api/employees';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS } from '@/lib/leadStatuses';
+import { LEAD_TYPES, LEAD_TYPE_LABELS } from '@/lib/leadTypes';
 import { Badge } from '@/components/ui/Badge';
 import { SkeletonTable } from '@/components/ui/Skeleton';
 import type { LeadReportFilters } from '@/types';
@@ -43,6 +44,10 @@ export function LeadReportTab({ assignedToFilter, canFilterByMember = true }: Pr
   const [search, setSearch]           = useState('');
   const [status, setStatus]             = useState('');
   const [assignedTo, setAssignedTo]     = useState('');
+  const [clientType, setClientType]     = useState('');
+  const [businessType, setBusinessType] = useState('');
+  const [marketType, setMarketType]     = useState('');
+  const [serviceType, setServiceType]   = useState('');
   const [dateFrom, setDateFrom]         = useState('');
   const [dateTo, setDateTo]             = useState('');
   const [page, setPage]                 = useState(1);
@@ -51,6 +56,10 @@ export function LeadReportTab({ assignedToFilter, canFilterByMember = true }: Pr
   const filters: LeadReportFilters = {
     search:      search || undefined,
     status:      status || undefined,
+    client_type: clientType as LeadReportFilters['client_type'] || undefined,
+    business_type: businessType as LeadReportFilters['business_type'] || undefined,
+    market_type: marketType as LeadReportFilters['market_type'] || undefined,
+    service_type: serviceType || undefined,
     assigned_to: canFilterByMember
       ? (assignedTo ? Number(assignedTo) : undefined)
       : assignedToFilter,
@@ -91,12 +100,13 @@ export function LeadReportTab({ assignedToFilter, canFilterByMember = true }: Pr
     setSearch('');
     setStatus('');
     setAssignedTo('');
+    setClientType(''); setBusinessType(''); setMarketType(''); setServiceType('');
     setDateFrom('');
     setDateTo('');
     setPage(1);
   };
 
-  const hasFilters = !!(search || status || assignedTo || dateFrom || dateTo);
+  const hasFilters = !!(search || status || assignedTo || clientType || businessType || marketType || serviceType || dateFrom || dateTo);
 
   return (
     <div className="space-y-5">
@@ -152,6 +162,10 @@ export function LeadReportTab({ assignedToFilter, canFilterByMember = true }: Pr
             <option key={s} value={s}>{LEAD_STATUS_LABELS[s]}</option>
           ))}
         </select>
+        <select value={clientType} onChange={(e) => { setClientType(e.target.value); setPage(1); }} className={inputCls}><option value="">All clients</option><option value="NEW">New</option><option value="EXISTING">Existing</option></select>
+        <select value={businessType} onChange={(e) => { setBusinessType(e.target.value); setPage(1); }} className={inputCls}><option value="">All business</option><option value="ONE_TIME">One Time</option><option value="RECURRING">Recurring</option></select>
+        <select value={marketType} onChange={(e) => { setMarketType(e.target.value); setPage(1); }} className={inputCls}><option value="">All markets</option><option value="DOMESTIC">Domestic</option><option value="INTERNATIONAL">International</option></select>
+        <select value={serviceType} onChange={(e) => { setServiceType(e.target.value); setPage(1); }} className={inputCls}><option value="">All services</option>{LEAD_TYPES.map((type) => <option key={type} value={type}>{LEAD_TYPE_LABELS[type]}</option>)}</select>
         {canFilterByMember && (
           <select value={assignedTo} onChange={(e) => { setAssignedTo(e.target.value); setPage(1); }} className={inputCls}>
             <option value="">All members</option>

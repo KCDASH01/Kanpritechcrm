@@ -7,15 +7,22 @@ use App\Http\Requests\Lead\LeadRequest;
 use App\Http\Resources\LeadResource;
 use App\Http\Resources\LeadTimelineResource;
 use App\Models\Activity;
+use App\Models\Client;
 use App\Models\Deal;
 use App\Models\DealPayment;
 use App\Models\Department;
 use App\Models\Lead;
 use App\Models\LeadTimeline;
 use App\Models\Notification;
+use App\Models\Pipeline;
+use App\Models\RecurringBusiness;
+use App\Models\Stage;
+use App\Models\User;
 use App\Services\LeadAuthorizationService;
 use App\Services\DealStatusService;
+use App\Services\RecurringRevenueService;
 use App\Support\PhoneNormalizer;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -25,6 +32,7 @@ class LeadController extends Controller
     public function __construct(
         private readonly LeadAuthorizationService $leadAuth,
         private readonly DealStatusService $dealStatus,
+        private readonly RecurringRevenueService $recurringRevenue,
     ) {}
 
     private function orgId(Request $request): int
@@ -87,8 +95,12 @@ class LeadController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Lead::where('organization_id', $this->orgId($request))
-                     ->with(['stage', 'pipeline', 'assignedTo', 'createdBy'])
+                     ->with(['stage', 'pipeline', 'assignedTo', 'createdBy', 'client', 'department'])
                      ->withCount('proposals');
+
+        if ($request->user()->isEmployee()) {
+            $query->where('assigned_to', $request->user()->id);
+        }
 
         if ($search = $request->input('search')) {
             $query->where(function ($q) use ($search) {
@@ -110,6 +122,12 @@ class LeadController extends Controller
 
         if ($types = $request->input('types')) {
             $query->where('types', $types);
+        }
+
+        foreach (['client_type', 'business_type', 'market_type'] as $field) {
+            if ($value = $request->input($field)) {
+                $query->where($field, $value);
+            }
         }
 
         if ($stageId = $request->input('stage_id')) {
@@ -205,6 +223,13 @@ class LeadController extends Controller
 
         $payload = $this->leadAuth->attributesForCreate($user, $request->validated());
 
+        if (($payload['client_type'] ?? null) === 'EXISTING') {
+            $client = $this->visibleClientQuery($request)->findOrFail($payload['client_id']);
+            $payload = array_merge($payload, $this->clientSnapshot($client));
+        }
+
+        $payload['department_id'] ??= $this->departmentForAssignee($payload['assigned_to'] ?? null, $this->orgId($request));
+
         $lead = Lead::create(array_merge($payload, [
             'organization_id' => $this->orgId($request),
             'created_by'      => $user->id,
@@ -221,7 +246,7 @@ class LeadController extends Controller
         );
 
         return response()->json([
-            'data'    => new LeadResource($lead->load(['stage', 'pipeline', 'assignedTo'])),
+            'data'    => new LeadResource($lead->load(['stage', 'pipeline', 'assignedTo', 'client', 'department'])),
             'message' => 'Lead created successfully.',
         ], 201);
     }
@@ -233,7 +258,7 @@ class LeadController extends Controller
         $this->authorizeOrg($request, $lead);
 
         $lead->loadCount('proposals');
-        $lead->load(['stage', 'pipeline', 'assignedTo', 'createdBy', 'activities', 'notes.createdBy']);
+        $lead->load(['stage', 'pipeline', 'assignedTo', 'createdBy', 'client', 'department', 'activities', 'notes.createdBy']);
 
         return response()->json(['data' => new LeadResource($lead)]);
     }
@@ -251,6 +276,13 @@ class LeadController extends Controller
         }
 
         $validated   = $this->leadAuth->attributesForUpdate($user, $request->validated());
+        if (($validated['client_type'] ?? $lead->client_type) === 'EXISTING' && isset($validated['client_id'])) {
+            $client = $this->visibleClientQuery($request)->findOrFail($validated['client_id']);
+            $validated = array_merge($validated, $this->clientSnapshot($client));
+        }
+        if (array_key_exists('assigned_to', $validated) && ! array_key_exists('department_id', $validated)) {
+            $validated['department_id'] = $this->departmentForAssignee($validated['assigned_to'], $this->orgId($request));
+        }
         $scheduleAt  = $validated['schedule_at'] ?? null;
         $remark      = isset($validated['remark']) ? trim((string) $validated['remark']) : null;
         if ($remark === '') {
@@ -458,45 +490,17 @@ class LeadController extends Controller
         $userId = $request->user()->id;
         $now    = now();
         $rows   = [];
-        $seenNormalizedPhones = [];
-
-        foreach ($request->input('leads') as $index => $row) {
+        foreach ($request->input('leads') as $row) {
             $normalizedPhone = PhoneNormalizer::normalize($row['phone'] ?? null);
-
-            if ($normalizedPhone) {
-                $duplicateLead = Lead::with('assignedTo:id,name')
-                    ->where('organization_id', $orgId)
-                    ->where('phone_normalized', $normalizedPhone)
-                    ->first();
-
-                if ($duplicateLead) {
-                    $assigneeName = $duplicateLead->assignedTo?->name ?? 'Unassigned';
-
-                    return response()->json([
-                        'message' => "This lead is already assigned to {$assigneeName}",
-                        'errors' => [
-                            "leads.{$index}.phone" => ["This lead is already assigned to {$assigneeName}"],
-                        ],
-                    ], 422);
-                }
-
-                if (isset($seenNormalizedPhones[$normalizedPhone])) {
-                    return response()->json([
-                        'message' => 'Duplicate phone numbers found in the import file.',
-                        'errors' => [
-                            "leads.{$index}.phone" => ['This phone number is duplicated in the import file.'],
-                        ],
-                    ], 422);
-                }
-
-                $seenNormalizedPhones[$normalizedPhone] = true;
-            }
 
             $rows[] = array_merge($row, [
                 'phone_normalized' => $normalizedPhone,
                 'organization_id'  => $orgId,
                 'created_by'       => $userId,
                 'lead_date'        => $now->toDateString(),
+                'client_type'      => $row['client_type'] ?? 'NEW',
+                'business_type'    => $row['business_type'] ?? 'ONE_TIME',
+                'market_type'      => $row['market_type'] ?? 'DOMESTIC',
                 'created_at'       => $now,
                 'updated_at'       => $now,
             ]);
@@ -536,6 +540,10 @@ class LeadController extends Controller
             return response()->json(['message' => 'This lead has already been converted to a deal.'], 422);
         }
 
+        if (! $this->leadAuth->canUpdate($request->user(), $lead)) {
+            return response()->json(['message' => 'You are not allowed to convert this lead.'], 403);
+        }
+
         $request->validate([
             'pipeline_id'              => ['required', 'integer', 'exists:pipelines,id'],
             'stage_id'                 => ['required', 'integer', 'exists:stages,id'],
@@ -549,23 +557,93 @@ class LeadController extends Controller
             'payment.notes'            => ['nullable', 'string', 'max:500'],
         ]);
 
+        $pipeline = Pipeline::where('organization_id', $this->orgId($request))->find($request->integer('pipeline_id'));
+        $stage = Stage::where('pipeline_id', $request->integer('pipeline_id'))->find($request->integer('stage_id'));
+        if (! $pipeline || ! $stage) {
+            return response()->json(['message' => 'Invalid pipeline or stage.'], 422);
+        }
+
         $user       = $request->user();
         $oldStatus  = $lead->status;
         $dealMarkedWon = false;
 
         $deal = DB::transaction(function () use ($request, $lead, $user, &$dealMarkedWon) {
+            $client = $lead->client;
+            if (! $client) {
+                $client = Client::create([
+                    'organization_id' => $lead->organization_id,
+                    'created_by' => $user->id,
+                    'assigned_to' => $lead->assigned_to,
+                    ...$this->clientSnapshot($lead),
+                ]);
+                $lead->update(['client_id' => $client->id, 'client_type' => $lead->client_type ?: 'NEW']);
+            }
+
+            $businessType = $lead->business_type ?: 'ONE_TIME';
+            $contractValue = $lead->contract_value;
+            if ($businessType === 'RECURRING' && $contractValue === null && $lead->billing_cycles) {
+                $contractValue = round((float) $lead->recurring_amount * (int) $lead->billing_cycles, 2);
+            }
+            $nextBilling = $lead->next_billing_date;
+            if ($businessType === 'RECURRING' && ! $nextBilling) {
+                $nextBilling = $this->recurringRevenue->nextBillingDate($lead->recurring_start_date, $lead->recurring_frequency)->toDateString();
+            }
+            $dealValue = $request->input('value');
+            if ($dealValue === null) {
+                $dealValue = $businessType === 'RECURRING'
+                    ? ($contractValue ?? $lead->expected_value ?? $lead->recurring_amount)
+                    : $lead->expected_value;
+            }
+
             $deal = Deal::create([
                 'organization_id' => $this->orgId($request),
+                'client_id'       => $client->id,
                 'lead_id'         => $lead->id,
                 'created_by'      => $user->id,
                 'assigned_to'     => $lead->assigned_to,
+                'department_id'   => $lead->department_id,
                 'pipeline_id'     => $request->input('pipeline_id'),
                 'stage_id'        => $request->input('stage_id'),
                 'title'           => $request->input('title', "Deal — {$lead->full_name}"),
-                'value'           => $request->input('value'),
+                'value'           => $dealValue,
                 'currency'        => $request->input('currency', 'INR') === 'USD' ? 'USD' : 'INR',
                 'status'          => 'open',
+                'client_type'     => $lead->client_type ?: 'NEW',
+                'business_type'   => $businessType,
+                'market_type'     => $lead->market_type,
+                'service_type'    => $lead->types,
+                'recurring_frequency' => $lead->recurring_frequency,
+                'recurring_amount' => $lead->recurring_amount,
+                'recurring_start_date' => $lead->recurring_start_date,
+                'recurring_end_date' => $lead->recurring_end_date,
+                'next_billing_date' => $nextBilling,
+                'billing_cycles' => $lead->billing_cycles,
+                'contract_value' => $contractValue,
             ]);
+
+            if ($businessType === 'RECURRING') {
+                RecurringBusiness::create([
+                    'organization_id' => $lead->organization_id,
+                    'client_id' => $client->id,
+                    'lead_id' => $lead->id,
+                    'deal_id' => $deal->id,
+                    'assigned_to' => $lead->assigned_to,
+                    'department_id' => $lead->department_id,
+                    'created_by' => $user->id,
+                    'business_name' => $deal->title,
+                    'service_type' => $lead->types,
+                    'amount' => $lead->recurring_amount,
+                    'currency' => $deal->currency,
+                    'frequency' => $lead->recurring_frequency,
+                    'start_date' => $lead->recurring_start_date,
+                    'end_date' => $lead->recurring_end_date,
+                    'next_billing_date' => $nextBilling,
+                    'billing_cycles' => $lead->billing_cycles,
+                    'contract_value' => $contractValue,
+                    'status' => 'ACTIVE',
+                    'notes' => $lead->notes,
+                ]);
+            }
 
             if ($request->filled('payment.amount')) {
                 DealPayment::create([
@@ -585,7 +663,7 @@ class LeadController extends Controller
 
             $lead->update(['status' => 'converted']);
 
-            return $deal->fresh(['stage', 'pipeline']);
+            return $deal->fresh(['stage', 'pipeline', 'client', 'department']);
         });
 
         LeadTimeline::log(
@@ -624,6 +702,29 @@ class LeadController extends Controller
             'deal_marked_won' => $dealMarkedWon,
             'message'         => $message,
         ], 201);
+    }
+
+    /** @return array<string, mixed> */
+    private function clientSnapshot(Client|Lead $source): array
+    {
+        return [
+            'first_name' => $source->first_name,
+            'last_name' => $source->last_name,
+            'company' => $source->company,
+            'email' => $source->email,
+            'phone' => $source->phone,
+            'job_title' => $source->job_title,
+            'website' => $source->website,
+            'city' => $source->city,
+            'state' => $source->state,
+            'country' => $source->country,
+        ];
+    }
+
+    private function departmentForAssignee(?int $userId, int $organizationId): ?int
+    {
+        if (! $userId) return null;
+        return User::where('organization_id', $organizationId)->find($userId)?->departments()->value('departments.id');
     }
 
     // ── Helper ────────────────────────────────────────────────────────────────
@@ -765,5 +866,20 @@ class LeadController extends Controller
         if ($lead->organization_id !== $this->orgId($request)) {
             abort(404);
         }
+        if ($request->user()->isEmployee() && $lead->assigned_to !== $request->user()->id) {
+            abort(404);
+        }
+    }
+
+    private function visibleClientQuery(Request $request): Builder
+    {
+        $user = $request->user();
+
+        return Client::query()
+            ->where('organization_id', $this->orgId($request))
+            ->when($user->isEmployee(), fn ($q) => $q->where(fn ($visible) => $visible
+                ->where('assigned_to', $user->id)
+                ->orWhereHas('leads', fn ($lead) => $lead->where('assigned_to', $user->id))
+                ->orWhereHas('deals', fn ($deal) => $deal->where('assigned_to', $user->id))));
     }
 }

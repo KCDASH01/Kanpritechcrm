@@ -9,6 +9,11 @@ class DealStatusService
 {
     public function markWonIfFullyPaid(Deal $deal): bool
     {
+        // A recurring contract is not complete after one billing-cycle payment.
+        // Its lifecycle is managed through recurring_businesses instead.
+        if ($deal->business_type === 'RECURRING') {
+            return false;
+        }
         if ($deal->status !== 'open') {
             return false;
         }
@@ -46,6 +51,9 @@ class DealStatusService
      */
     public function reopenIfUnderpaid(Deal $deal): bool
     {
+        if ($deal->business_type === 'RECURRING') {
+            return false;
+        }
         if ($deal->status !== 'won') {
             return false;
         }

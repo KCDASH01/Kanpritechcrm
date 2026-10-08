@@ -25,9 +25,13 @@ class DealController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Deal::where('organization_id', $this->orgId($request))
-                     ->with(['stage', 'pipeline', 'lead', 'assignedTo', 'createdBy'])
+                     ->with(['stage', 'pipeline', 'lead', 'client', 'department', 'assignedTo', 'createdBy'])
                      ->withSum('payments', 'amount')
                      ->withCount('payments');
+
+        if ($request->user()->isEmployee()) {
+            $query->where('assigned_to', $request->user()->id);
+        }
 
         if ($search = $request->input('search')) {
             $query->where(function ($q) use ($search) {
@@ -42,6 +46,10 @@ class DealController extends Controller
 
         if ($status = $request->input('status')) {
             $query->where('status', $status);
+        }
+
+        foreach (['client_type', 'business_type', 'market_type', 'service_type'] as $field) {
+            if ($value = $request->input($field)) $query->where($field, $value);
         }
 
         if ($stageId = $request->input('stage_id')) {
@@ -134,7 +142,7 @@ class DealController extends Controller
         }
 
         return response()->json([
-            'data'    => new DealResource($deal->load(['stage', 'pipeline', 'lead', 'assignedTo'])),
+            'data'    => new DealResource($deal->load(['stage', 'pipeline', 'lead', 'client', 'department', 'assignedTo'])),
             'message' => 'Deal created successfully.',
         ], 201);
     }
@@ -147,7 +155,7 @@ class DealController extends Controller
 
         $deal->loadCount('payments');
         $deal->loadSum('payments', 'amount');
-        $deal->load(['stage', 'pipeline', 'lead', 'assignedTo', 'createdBy', 'activities', 'notes.createdBy']);
+        $deal->load(['stage', 'pipeline', 'lead', 'client', 'department', 'assignedTo', 'createdBy', 'activities', 'notes.createdBy']);
 
         return response()->json(['data' => new DealResource($deal)]);
     }
@@ -238,7 +246,7 @@ class DealController extends Controller
         }
 
         return response()->json([
-            'data'    => new DealResource($deal->fresh(['stage', 'pipeline', 'lead', 'assignedTo'])),
+            'data'    => new DealResource($deal->fresh(['stage', 'pipeline', 'lead', 'client', 'department', 'assignedTo'])),
             'message' => 'Deal updated successfully.',
         ]);
     }
@@ -319,6 +327,9 @@ class DealController extends Controller
     private function authorizeOrg(Request $request, Deal $deal): void
     {
         if ($deal->organization_id !== $this->orgId($request)) {
+            abort(404);
+        }
+        if ($request->user()->isEmployee() && $deal->assigned_to !== $request->user()->id) {
             abort(404);
         }
     }

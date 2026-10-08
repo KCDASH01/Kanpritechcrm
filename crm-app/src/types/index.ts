@@ -90,8 +90,37 @@ export interface Pipeline {
 }
 
 // ── Lead ──────────────────────────────────────────────────────────────────────
+export type ClientType = 'NEW' | 'EXISTING';
+export type BusinessType = 'ONE_TIME' | 'RECURRING';
+export type MarketType = 'DOMESTIC' | 'INTERNATIONAL';
+export type RecurringFrequency = 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY';
+
+export interface Client {
+  id: number;
+  full_name: string;
+  first_name: string;
+  last_name?: string;
+  company?: string;
+  email?: string;
+  phone?: string;
+  job_title?: string;
+  website?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  assigned_to?: User;
+  leads_count?: number;
+  deals_count?: number;
+  created_at?: string;
+}
+
 export interface Lead {
   id: number;
+  client_id?: number;
+  client_type?: ClientType;
+  business_type?: BusinessType;
+  market_type?: MarketType;
+  client?: Client;
   full_name: string;
   first_name: string;
   last_name?: string;
@@ -105,9 +134,22 @@ export interface Lead {
   types?: 'webapp_development' | 'mobile_app_development' | 'website_development' | 'digital_marketing' | 'others' | null;
   industry?: string;
   city?: string;
+  state?: string;
   country?: string;
   notes?: string;
   score?: number;
+  expected_value?: number;
+  currency?: 'INR' | 'USD';
+  recurring_frequency?: RecurringFrequency;
+  recurring_amount?: number;
+  recurring_start_date?: string;
+  recurring_end_type?: 'ONGOING' | 'FIXED';
+  recurring_end_date?: string;
+  next_billing_date?: string;
+  billing_cycles?: number;
+  contract_value?: number;
+  department_id?: number;
+  department?: Department;
   pipeline_id?: number;
   stage_id?: number;
   external_lead_id?: string;
@@ -146,6 +188,21 @@ export interface Deal {
   stage_id: number;
   lead_id?: number;
   lead?: Lead;
+  client_id?: number;
+  client?: Client;
+  client_type?: ClientType;
+  business_type?: BusinessType;
+  market_type?: MarketType;
+  service_type?: string;
+  recurring_frequency?: RecurringFrequency;
+  recurring_amount?: number;
+  recurring_start_date?: string;
+  recurring_end_date?: string;
+  next_billing_date?: string;
+  billing_cycles?: number;
+  contract_value?: number;
+  department_id?: number;
+  department?: Department;
   stage?: Stage;
   pipeline?: Pipeline;
   assigned_to?: User;
@@ -245,11 +302,37 @@ export interface MyTargetProgress {
 
 // Embedded in DashboardData for team-member view
 export interface TargetProgress {
+  period_start: string;
+  has_target: boolean;
+  target_count: number;
   target_amount: number;
   receivable_amount: number;
-  received_amount: number | null;
+  received_amount: number;
   achieved_amount: number;
-  target_id: number;
+  sales_percentage: number | null;
+  collection_percentage: number | null;
+  scope: 'team' | 'member';
+  user_id: number | null;
+}
+
+export interface DashboardPerformance {
+  period_start: string;
+  period_label: string;
+  selected_user_id: number | null;
+  target: TargetProgress;
+  revenue: {
+    total_collected: number;
+    collected_this_month: number;
+    receivable: number;
+  };
+  team_members: { id: number; name: string }[];
+}
+
+export interface DashboardPerformanceDetail {
+  type: 'sales' | 'target_collections' | 'collections_month' | 'collections_all' | 'receivables';
+  period_label: string;
+  rows: Record<string, string | number | null>[];
+  meta: { current_page: number; last_page: number; total: number };
 }
 
 // ── Proposals ─────────────────────────────────────────────────────────────────
@@ -427,6 +510,8 @@ export interface RevenueReportSummary {
   revenue_this_month: number;
   total_transactions: number;
   average_revenue_per_deal: number;
+  one_time_revenue: number;
+  recurring_revenue: number;
 }
 
 export interface RevenueReportRow {
@@ -452,6 +537,10 @@ export interface LeadReportFilters {
   date_to?: string;
   page?: number;
   per_page?: number;
+  client_type?: ClientType;
+  business_type?: BusinessType;
+  market_type?: MarketType;
+  service_type?: string;
 }
 
 export interface RevenueReportFilters {
@@ -462,6 +551,44 @@ export interface RevenueReportFilters {
   date_to?: string;
   page?: number;
   per_page?: number;
+  client_type?: ClientType;
+  business_type?: BusinessType;
+  market_type?: MarketType;
+  service_type?: string;
+}
+
+export interface RecurringBusiness {
+  id: number;
+  business_name: string;
+  service_type?: string;
+  amount: number;
+  currency: string;
+  frequency: RecurringFrequency;
+  start_date: string;
+  next_billing_date?: string;
+  end_date?: string;
+  billing_cycles?: number;
+  contract_value?: number;
+  status: 'ACTIVE' | 'PAUSED' | 'EXPIRED' | 'CANCELLED' | 'COMPLETED';
+  notes?: string;
+  collected_revenue: number;
+  due_revenue: number;
+  outstanding: number;
+  client?: Client;
+  deal?: Deal;
+  assigned_to?: User;
+  department?: Department;
+}
+
+export interface RecurringBusinessSummary {
+  active_count: number;
+  mrr: number;
+  arr: number;
+  expected_this_month: number;
+  collected_this_month: number;
+  overdue: number;
+  upcoming_renewals: number;
+  cancelled_or_expired: number;
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
@@ -473,12 +600,15 @@ export interface DashboardStats {
   deal_value: number;
   due_today_activities: number;
   overdue_activities: number;
+  total_revenue: number;
+  one_time_revenue: number;
+  recurring_revenue: number;
 }
 
 export interface DashboardCharts {
   leads_trend:    { date: string; count: number }[];
   deals_by_stage: { stage_id: number; count: number; total_value: number; stage?: { id: number; name: string; color: string } | null }[];
-  revenue_trend:  { date: string; revenue: number }[];
+  revenue_trend:  { date: string; revenue: number; one_time_revenue?: number; recurring_revenue?: number }[];
 }
 
 export interface DashboardData {
@@ -488,4 +618,5 @@ export interface DashboardData {
   reminders:           Activity[];
   charts:              DashboardCharts;
   target_progress?:    TargetProgress;
+  performance:         DashboardPerformance;
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Deal;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class DealRequest extends FormRequest
 {
@@ -26,6 +27,7 @@ class DealRequest extends FormRequest
 
     public function rules(): array
     {
+        $orgId = $this->user()?->organization_id;
         return [
             'title'               => ['required', 'string', 'max:191'],
             'lead_id'             => ['nullable', 'integer', 'exists:leads,id'],
@@ -47,6 +49,19 @@ class DealRequest extends FormRequest
             'handed_off_at'       => ['nullable', 'string'],
             'received_amount'     => ['nullable', 'numeric', 'min:0'],
             'received_at'         => ['nullable', 'date'],
+            'client_id'           => ['nullable', 'integer', Rule::exists('clients', 'id')->where(fn ($q) => $q->where('organization_id', $orgId)->whereNull('deleted_at'))],
+            'department_id'       => ['nullable', 'integer', Rule::exists('departments', 'id')->where(fn ($q) => $q->where('organization_id', $orgId)->whereNull('deleted_at'))],
+            'client_type'         => ['nullable', 'in:NEW,EXISTING'],
+            'business_type'       => ['nullable', 'in:ONE_TIME,RECURRING'],
+            'market_type'         => ['nullable', 'in:DOMESTIC,INTERNATIONAL'],
+            'service_type'        => ['nullable', 'string', 'max:64'],
+            'recurring_frequency' => ['nullable', 'in:MONTHLY,QUARTERLY,HALF_YEARLY,YEARLY'],
+            'recurring_amount'    => ['nullable', 'numeric', 'gt:0'],
+            'recurring_start_date'=> ['nullable', 'date'],
+            'recurring_end_date'  => ['nullable', 'date', 'after_or_equal:recurring_start_date'],
+            'next_billing_date'   => ['nullable', 'date', 'after_or_equal:recurring_start_date'],
+            'billing_cycles'      => ['nullable', 'integer', 'min:1'],
+            'contract_value'      => ['nullable', 'numeric', 'min:0'],
         ];
     }
 }

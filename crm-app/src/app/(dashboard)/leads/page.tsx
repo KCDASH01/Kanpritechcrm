@@ -26,6 +26,8 @@ import { RemarkStatusModal } from '@/components/leads/RemarkStatusModal';
 import { ConvertToDealFormFromLead } from '@/components/leads/ConvertToDealForm';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_MENU, isScheduledLeadStatus, isRemarkLeadStatus, type ScheduledLeadStatus, type RemarkLeadStatus } from '@/lib/leadStatuses';
 import { LEAD_TYPES, LEAD_TYPE_LABELS } from '@/lib/leadTypes';
+import { clientsApi } from '@/lib/api/clients';
+import type { Client } from '@/types';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -60,8 +62,9 @@ function formatLeadTableDate(lead: Lead) {
 }
 
 // ── Lead form (create / edit) ─────────────────────────────────────────────────
-function LeadForm({ lead, onSave, onClose, saving, phoneError, onPhoneChange }: {
+function LeadForm({ lead, presetClientId, onSave, onClose, saving, phoneError, onPhoneChange }: {
   lead?: Lead | null;
+  presetClientId?: number;
   onSave: (d: LeadPayload) => void;
   onClose: () => void;
   saving?: boolean;
@@ -82,6 +85,10 @@ function LeadForm({ lead, onSave, onClose, saving, phoneError, onPhoneChange }: 
   const employeeOptions = employees ?? [];
 
   const [form, setForm] = useState<LeadPayload>({
+    client_type: lead?.client_type ?? (presetClientId ? 'EXISTING' : 'NEW'),
+    client_id: lead?.client_id ?? presetClientId ?? null,
+    business_type: lead?.business_type ?? 'ONE_TIME',
+    market_type: lead?.market_type ?? 'DOMESTIC',
     first_name: lead?.first_name ?? '',
     last_name:  lead?.last_name  ?? '',
     email:      lead?.email      ?? '',
@@ -94,57 +101,153 @@ function LeadForm({ lead, onSave, onClose, saving, phoneError, onPhoneChange }: 
     types:      lead?.types      ?? '',
     assigned_to: lead?.assigned_to?.id ?? null,
     city:       lead?.city       ?? '',
+    state:      lead?.state      ?? '',
     country:    lead?.country    ?? '',
     notes:      lead?.notes      ?? '',
+    expected_value: lead?.expected_value ?? null,
+    currency: lead?.currency ?? 'INR',
+    recurring_frequency: lead?.recurring_frequency ?? 'MONTHLY',
+    recurring_amount: lead?.recurring_amount ?? null,
+    recurring_start_date: lead?.recurring_start_date ?? '',
+    recurring_end_type: lead?.recurring_end_type ?? 'ONGOING',
+    recurring_end_date: lead?.recurring_end_date ?? null,
+    next_billing_date: lead?.next_billing_date ?? null,
+    billing_cycles: lead?.billing_cycles ?? null,
+    contract_value: lead?.contract_value ?? null,
   });
+  const [clientSearch, setClientSearch] = useState('');
+
+  const duplicateTerm = form.client_type === 'EXISTING'
+    ? clientSearch
+    : (form.email?.trim() || form.phone?.trim() || form.company?.trim() || '');
+  const { data: clientResults, isFetching: clientsLoading } = useQuery({
+    queryKey: ['clients', 'lead-picker', duplicateTerm],
+    queryFn: () => clientsApi.list({ search: duplicateTerm, per_page: 8 }),
+    enabled: duplicateTerm.length >= 2,
+    staleTime: 30_000,
+  });
+  const { data: presetClient } = useQuery({
+    queryKey: ['client', presetClientId],
+    queryFn: () => clientsApi.get(presetClientId!),
+    enabled: !!presetClientId && !lead,
+  });
+
+  const applyClient = (client: Client) => {
+    setForm((f) => ({
+      ...f, client_type: 'EXISTING', client_id: client.id,
+      first_name: client.first_name ?? '', last_name: client.last_name ?? '', company: client.company ?? '',
+      email: client.email ?? '', phone: client.phone ?? '', job_title: client.job_title ?? '',
+      website: client.website ?? '', city: client.city ?? '', state: client.state ?? '', country: client.country ?? '',
+    }));
+    setClientSearch(client.company || client.full_name);
+    onPhoneChange?.();
+  };
+
+  useEffect(() => {
+    if (presetClient?.client) applyClient(presetClient.client);
+  // apply once when the requested client loads
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetClient?.client.id]);
+
   const set = (k: keyof LeadPayload, v: string) => {
     if (k === 'phone') onPhoneChange?.();
     setForm((f) => ({ ...f, [k]: v }));
   };
+  const number = (k: keyof LeadPayload, v: string) => setForm((f) => ({ ...f, [k]: v === '' ? null : Number(v) }));
 
-  const TEXT_FIELDS: [keyof LeadPayload, string, string?][] = [
-    ['first_name', 'First Name *'],
-    ['last_name',  'Last Name'],
-    ['email',      'Email',   'email'],
-    ['phone',      'Phone',   'tel'],
-    ['company',    'Company'],
-    ['job_title',  'Job Title'],
-    ['city',       'City'],
-    ['country',    'Country'],
-    ['website',    'Website'],
-  ];
+  const addFrequency = (iso: string, frequency?: string | null) => {
+    if (!iso) return null;
+    const d = new Date(`${iso}T00:00:00`);
+    const months = frequency === 'QUARTERLY' ? 3 : frequency === 'HALF_YEARLY' ? 6 : frequency === 'YEARLY' ? 12 : 1;
+    d.setMonth(d.getMonth() + months);
+    return d.toISOString().slice(0, 10);
+  };
 
-  const canSubmit = !!form.first_name.trim() && !!form.types;
+  const calculatedContract = form.recurring_amount && form.billing_cycles
+    ? Number(form.recurring_amount) * Number(form.billing_cycles) : null;
+  const canSubmit = !!form.types && !!form.client_type && !!form.business_type && !!form.market_type
+    && (form.client_type === 'EXISTING' ? !!form.client_id : !!form.first_name.trim())
+    && (form.business_type !== 'RECURRING' || (!!form.recurring_frequency && !!form.recurring_amount && !!form.recurring_start_date
+      && (form.recurring_end_type !== 'FIXED' || !!form.recurring_end_date)));
+
+  const submit = () => onSave({
+    ...form,
+    contract_value: form.business_type === 'RECURRING' ? (calculatedContract ?? form.contract_value ?? null) : null,
+    next_billing_date: form.business_type === 'RECURRING'
+      ? (form.next_billing_date || addFrequency(form.recurring_start_date ?? '', form.recurring_frequency)) : null,
+  });
+
+  const field = (key: keyof LeadPayload, label: string, type = 'text', required = false, readOnly = false) => (
+    <div>
+      <label className="block text-xs font-semibold text-gray-600 mb-1">{label}{required ? ' *' : ''}</label>
+      <input type={type} value={(form[key] as string | number | null) ?? ''} readOnly={readOnly}
+        onChange={(e) => type === 'number' ? number(key, e.target.value) : set(key, e.target.value)}
+        className={`${inputCls} ${readOnly ? 'bg-gray-50 text-gray-500' : ''} ${key === 'phone' && phoneError ? 'border-red-300 ring-1 ring-red-200' : ''}`} />
+      {key === 'phone' && phoneError && <p className="mt-1 text-xs text-red-600">{phoneError}</p>}
+    </div>
+  );
 
   return (
-    <div className="space-y-4">
-      <div>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">Lead Date</label>
-        <input
-          type="text"
-          readOnly
-          value={formatLeadDateDisplay(lead?.lead_date)}
-          className={`${inputCls} bg-gray-50 text-gray-600 cursor-not-allowed`}
-        />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        {TEXT_FIELDS.map(([key, label, type]) => (
-          <div key={key}>
-            <label className="block text-xs font-semibold text-gray-600 mb-1">{label}</label>
-            <input
-              type={type ?? 'text'}
-              value={(form[key] as string) ?? ''}
-              onChange={(e) => set(key, e.target.value)}
-              placeholder={key === 'website' ? 'https://example.com' : undefined}
-              className={`${inputCls} ${key === 'phone' && phoneError ? 'border-red-300 ring-1 ring-red-200' : ''}`}
-            />
-            {key === 'phone' && phoneError && (
-              <p className="mt-1 text-xs text-red-600">{phoneError}</p>
-            )}
+    <div className="space-y-5 max-h-[72vh] overflow-y-auto pr-1">
+      <section>
+        <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-600 mb-3">Client Information</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div><label className="block text-xs font-semibold text-gray-600 mb-1">Lead Date</label><input value={formatLeadDateDisplay(lead?.lead_date)} readOnly className={`${inputCls} bg-gray-50 text-gray-500`} /></div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Client Type *</label>
+            <select value={form.client_type} onChange={(e) => setForm((f) => ({ ...f, client_type: e.target.value as 'NEW' | 'EXISTING', client_id: e.target.value === 'NEW' ? null : f.client_id }))} className={inputCls}>
+              <option value="NEW">New Client</option><option value="EXISTING">Existing Client</option>
+            </select>
           </div>
-        ))}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Market Type *</label>
+            <select value={form.market_type} onChange={(e) => setForm((f) => ({ ...f, market_type: e.target.value as 'DOMESTIC' | 'INTERNATIONAL' }))} className={inputCls}>
+              <option value="DOMESTIC">Domestic</option><option value="INTERNATIONAL">International</option>
+            </select>
+          </div>
+          {form.client_type === 'EXISTING' && (
+            <div className="md:col-span-2 lg:col-span-3 relative">
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Select Existing Client *</label>
+              <input value={clientSearch} onChange={(e) => { setClientSearch(e.target.value); setForm((f) => ({ ...f, client_id: null })); }}
+                placeholder="Search name, company, email or phone…" className={inputCls} />
+              {clientSearch.length >= 2 && !form.client_id && (
+                <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-xl max-h-48 overflow-auto">
+                  {clientsLoading ? <p className="p-3 text-sm text-gray-400">Searching…</p> : clientResults?.data.length ? clientResults.data.map((client) => (
+                    <button type="button" key={client.id} onClick={() => applyClient(client)} className="w-full text-left px-3 py-2.5 hover:bg-indigo-50 border-b border-gray-50 last:border-0">
+                      <p className="text-sm font-semibold text-gray-800">{client.company || client.full_name}</p>
+                      <p className="text-xs text-gray-400">{[client.full_name, client.email, client.phone].filter(Boolean).join(' · ')}</p>
+                    </button>
+                  )) : <p className="p-3 text-sm text-gray-400">No matching clients.</p>}
+                </div>
+              )}
+            </div>
+          )}
+          {field('first_name', 'First Name', 'text', form.client_type === 'NEW', form.client_type === 'EXISTING')}
+          {field('last_name', 'Last Name', 'text', false, form.client_type === 'EXISTING')}
+          {field('company', 'Company', 'text', false, form.client_type === 'EXISTING')}
+          {field('email', 'Email', 'email', false, form.client_type === 'EXISTING')}
+          {field('phone', 'Phone', 'tel', false, form.client_type === 'EXISTING')}
+          {field('job_title', 'Job Title', 'text', false, form.client_type === 'EXISTING')}
+          {field('city', 'City', 'text', false, form.client_type === 'EXISTING')}
+          {field('state', 'State / Province', 'text', false, form.client_type === 'EXISTING')}
+          {field('country', 'Country', 'text', false, form.client_type === 'EXISTING')}
+          {field('website', 'Website', 'url', false, form.client_type === 'EXISTING')}
+        </div>
+        {form.client_type === 'NEW' && duplicateTerm.length >= 2 && !!clientResults?.data.length && (
+          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <p className="text-xs font-semibold text-amber-800">An existing client with similar contact information may already exist.</p>
+            <div className="mt-2 flex flex-wrap gap-2">{clientResults.data.slice(0, 3).map((client) => (
+              <button type="button" key={client.id} onClick={() => applyClient(client)} className="text-xs bg-white border border-amber-200 rounded-lg px-2.5 py-1.5 text-amber-800 hover:bg-amber-100">Use {client.company || client.full_name}</button>
+            ))}</div>
+          </div>
+        )}
+      </section>
+
+      <section className="border-t border-gray-100 pt-4">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-600 mb-3">Opportunity & Business</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Type *</label>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Service / Product *</label>
           <select
             value={form.types ?? ''}
             onChange={(e) => set('types', e.target.value)}
@@ -154,6 +257,12 @@ function LeadForm({ lead, onSave, onClose, saving, phoneError, onPhoneChange }: 
             {LEAD_TYPES.map((t) => (
               <option key={t} value={t}>{LEAD_TYPE_LABELS[t]}</option>
             ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Business Type *</label>
+          <select value={form.business_type} onChange={(e) => setForm((f) => ({ ...f, business_type: e.target.value as 'ONE_TIME' | 'RECURRING' }))} className={inputCls}>
+            <option value="ONE_TIME">One Time</option><option value="RECURRING">Recurring</option>
           </select>
         </div>
         <div>
@@ -168,6 +277,13 @@ function LeadForm({ lead, onSave, onClose, saving, phoneError, onPhoneChange }: 
             <option value="email_campaign">Email Campaign</option>
             <option value="google_ads">Google Ads</option>
             <option value="other">Other</option>
+          </select>
+        </div>
+        {form.business_type === 'ONE_TIME' && field('expected_value', 'Expected Value', 'number')}
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Currency</label>
+          <select value={form.currency ?? 'INR'} onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value as 'INR' | 'USD' }))} className={inputCls}>
+            <option value="INR">INR</option><option value="USD">USD</option>
           </select>
         </div>
         {isAdmin && (
@@ -190,6 +306,28 @@ function LeadForm({ lead, onSave, onClose, saving, phoneError, onPhoneChange }: 
         </div>
         )}
       </div>
+      </section>
+
+      {form.business_type === 'RECURRING' && (
+        <section className="border-t border-gray-100 pt-4 rounded-xl bg-indigo-50/40 p-4">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-600 mb-3">Recurring Business</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div><label className="block text-xs font-semibold text-gray-600 mb-1">Frequency *</label>
+              <select value={form.recurring_frequency ?? 'MONTHLY'} onChange={(e) => setForm((f) => ({ ...f, recurring_frequency: e.target.value as LeadPayload['recurring_frequency'], next_billing_date: addFrequency(f.recurring_start_date ?? '', e.target.value) }))} className={inputCls}>
+                <option value="MONTHLY">Monthly</option><option value="QUARTERLY">Quarterly</option><option value="HALF_YEARLY">Half-Yearly</option><option value="YEARLY">Yearly</option>
+              </select></div>
+            {field('recurring_amount', 'Recurring Amount', 'number', true)}
+            <div><label className="block text-xs font-semibold text-gray-600 mb-1">Start Date *</label><input type="date" value={form.recurring_start_date ?? ''} onChange={(e) => setForm((f) => ({ ...f, recurring_start_date: e.target.value, next_billing_date: addFrequency(e.target.value, f.recurring_frequency) }))} className={inputCls}/></div>
+            <div><label className="block text-xs font-semibold text-gray-600 mb-1">End Type *</label><select value={form.recurring_end_type ?? 'ONGOING'} onChange={(e) => setForm((f) => ({ ...f, recurring_end_type: e.target.value as 'ONGOING' | 'FIXED', recurring_end_date: e.target.value === 'ONGOING' ? null : f.recurring_end_date }))} className={inputCls}><option value="ONGOING">Ongoing / No End Date</option><option value="FIXED">Fixed End Date</option></select></div>
+            {form.recurring_end_type === 'FIXED' && field('recurring_end_date', 'End Date', 'date', true)}
+            {field('next_billing_date', 'Next Billing Date', 'date')}
+            {field('billing_cycles', 'Number of Billing Cycles', 'number')}
+            <div><label className="block text-xs font-semibold text-gray-600 mb-1">Estimated Contract Value</label><input readOnly value={calculatedContract ?? form.contract_value ?? ''} className={`${inputCls} bg-gray-50 text-gray-600`} /></div>
+          </div>
+          <p className="text-[11px] text-gray-500 mt-2">Contract value is projected only. Revenue is recognized from recorded payments.</p>
+        </section>
+      )}
+
       <div>
         <label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
         <textarea rows={3} value={form.notes ?? ''} onChange={(e) => set('notes', e.target.value)}
@@ -197,7 +335,7 @@ function LeadForm({ lead, onSave, onClose, saving, phoneError, onPhoneChange }: 
       </div>
       <div className="flex gap-3 pt-1">
         <button
-          onClick={() => onSave(form)}
+          onClick={submit}
           disabled={saving || !canSubmit}
           className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-semibold
                      py-2.5 rounded-xl text-sm flex items-center justify-center gap-2 transition-colors"
@@ -776,6 +914,9 @@ export default function LeadsPage() {
   const search           = searchParams.get('search') ?? '';
   const statusFilter     = searchParams.get('status') ?? '';
   const typeFilter       = searchParams.get('types') ?? '';
+  const clientTypeFilter = searchParams.get('client_type') ?? '';
+  const businessTypeFilter = searchParams.get('business_type') ?? '';
+  const marketTypeFilter = searchParams.get('market_type') ?? '';
   const dateFromFilter   = searchParams.get('date_from') ?? '';
   const dateToFilter     = searchParams.get('date_to') ?? '';
   const departmentFilter = searchParams.get('department') ?? '';
@@ -796,6 +937,7 @@ export default function LeadsPage() {
 
   // modal states
   const [modalLead, setModalLead]           = useState<Lead | null | undefined>(undefined); // undefined=closed
+  const presetClientId = Number(searchParams.get('client_id')) || undefined;
   const [panelLead, setPanelLead]           = useState<Lead | null>(null);
   const [convertLead, setConvertLead]       = useState<Lead | null>(null);
   const [reminderLead, setReminderLead]     = useState<Lead | null>(null);
@@ -804,6 +946,10 @@ export default function LeadsPage() {
   const [remarkStatusLead, setRemarkStatusLead] = useState<{ lead: Lead; status: RemarkLeadStatus } | null>(null);
   const [waLead, setWaLead]                 = useState<Lead | null>(null); // WhatsApp template picker
   const [leadPhoneError, setLeadPhoneError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (searchParams.get('new') === '1') setModalLead(null);
+  }, [searchParams]);
 
   // Fetch pipelines at page level so they're ready before the modal opens
   const { data: pipelines } = useQuery({
@@ -833,6 +979,9 @@ export default function LeadsPage() {
     search:        search || undefined,
     status:        statusFilter || undefined,
     types:         typeFilter || undefined,
+    client_type:   clientTypeFilter || undefined,
+    business_type: businessTypeFilter || undefined,
+    market_type:   marketTypeFilter || undefined,
     date_from:     dateFromFilter || undefined,
     date_to:       dateToFilter || undefined,
     department_id: showDepartmentFilters && departmentFilter ? Number(departmentFilter) : undefined,
@@ -842,12 +991,12 @@ export default function LeadsPage() {
   };
 
   const hasActiveFilters = !!(
-    search || statusFilter || typeFilter || teamMemberFilter || dateFromFilter || dateToFilter || departmentFilter
+    search || statusFilter || typeFilter || clientTypeFilter || businessTypeFilter || marketTypeFilter || teamMemberFilter || dateFromFilter || dateToFilter || departmentFilter
   );
 
   const clearAllFilters = () =>
     updateParams({
-      search: null, status: null, types: null, member: null,
+      search: null, status: null, types: null, client_type: null, business_type: null, market_type: null, member: null,
       date_from: null, date_to: null, department: null, page: null,
     });
 
@@ -1160,6 +1309,15 @@ export default function LeadsPage() {
               <option key={t} value={t}>{LEAD_TYPE_LABELS[t]}</option>
             ))}
           </select>
+          <select value={clientTypeFilter} onChange={(e) => updateParams({ client_type: e.target.value || null, page: null })} className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white text-gray-600">
+            <option value="">All clients</option><option value="NEW">New client</option><option value="EXISTING">Existing client</option>
+          </select>
+          <select value={businessTypeFilter} onChange={(e) => updateParams({ business_type: e.target.value || null, page: null })} className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white text-gray-600">
+            <option value="">All business</option><option value="ONE_TIME">One time</option><option value="RECURRING">Recurring</option>
+          </select>
+          <select value={marketTypeFilter} onChange={(e) => updateParams({ market_type: e.target.value || null, page: null })} className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white text-gray-600">
+            <option value="">All markets</option><option value="DOMESTIC">Domestic</option><option value="INTERNATIONAL">International</option>
+          </select>
           {isManager && !viewMine && (
             <select
               value={teamMemberFilter}
@@ -1262,7 +1420,11 @@ export default function LeadsPage() {
 
                         {/* Requirement */}
                         <td className="px-5 py-3.5 text-sm text-gray-600">
-                          {lead.types ? LEAD_TYPE_LABELS[lead.types] : '—'}
+                          <p>{lead.types ? LEAD_TYPE_LABELS[lead.types] : '—'}</p>
+                          <div className="flex gap-1 mt-1">
+                            {lead.business_type && <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-50 text-violet-700">{lead.business_type === 'RECURRING' ? 'Recurring' : 'One time'}</span>}
+                            {lead.market_type && <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 capitalize">{lead.market_type.toLowerCase()}</span>}
+                          </div>
                         </td>
 
                         {/* Company */}
@@ -1345,10 +1507,11 @@ export default function LeadsPage() {
           setModalLead(undefined);
         }}
         title={modalLead ? 'Edit Lead' : 'Add Lead'}
-        maxWidth="max-w-xl"
+        maxWidth="max-w-6xl"
       >
         <LeadForm
           lead={modalLead}
+          presetClientId={modalLead ? undefined : presetClientId}
           onSave={handleSave}
           onClose={() => {
             setLeadPhoneError(null);

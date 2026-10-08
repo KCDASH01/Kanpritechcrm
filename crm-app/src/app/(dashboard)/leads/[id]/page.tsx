@@ -13,7 +13,7 @@ import { LeadInfoCard } from '@/components/leads/LeadInfoCard';
 import { StatusStepperCard } from '@/components/leads/StatusStepperCard';
 import { ScheduleStatusModal } from '@/components/leads/ScheduleStatusModal';
 import { RemarkStatusModal } from '@/components/leads/RemarkStatusModal';
-import { ConvertToDealForm } from '@/components/leads/ConvertToDealForm';
+import { ConvertToDealFormFromLead } from '@/components/leads/ConvertToDealForm';
 import { isScheduledLeadStatus, isRemarkLeadStatus, type LeadStatus, type ScheduledLeadStatus, type RemarkLeadStatus } from '@/lib/leadStatuses';
 import { AssignmentCard } from '@/components/leads/AssignmentCard';
 import { LeadActivityFeed } from '@/components/leads/LeadActivityFeed';
@@ -333,6 +333,11 @@ export default function LeadDetailPage() {
                 💰 Convert to Deal
               </button>
             )}
+            {lead.client_id && (
+              <Link href={`/leads?new=1&client_id=${lead.client_id}`} className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm">
+                + New Opportunity
+              </Link>
+            )}
             {isAdmin() && (
             <button
               onClick={() => { if (confirm(`Delete ${lead.full_name}? This cannot be undone.`)) deleteMutation.mutate(); }}
@@ -406,8 +411,8 @@ export default function LeadDetailPage() {
         title="Convert Lead to Deal"
         maxWidth="max-w-md"
       >
-        <ConvertToDealForm
-          leadName={lead.full_name}
+        <ConvertToDealFormFromLead
+          lead={lead}
           pipelines={pipelines}
           onSave={(p) => convertMutation.mutate(p)}
           onClose={() => setConvertOpen(false)}

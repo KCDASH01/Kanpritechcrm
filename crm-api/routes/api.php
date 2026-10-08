@@ -11,6 +11,7 @@ use App\Http\Controllers\Department\DepartmentController;
 use App\Http\Controllers\EmailTemplate\EmailTemplateController;
 use App\Http\Controllers\Employee\EmployeeController;
 use App\Http\Controllers\Calendar\CalendarController;
+use App\Http\Controllers\Client\ClientController;
 use App\Http\Controllers\FollowUp\FollowUpController;
 use App\Http\Controllers\Important\ImportantController;
 use App\Http\Controllers\Meeting\MeetingController;
@@ -21,6 +22,7 @@ use App\Http\Controllers\Pipeline\PipelineController;
 use App\Http\Controllers\Pipeline\StageController;
 use App\Http\Controllers\Proposal\ProposalController;
 use App\Http\Controllers\Reports\ReportsController;
+use App\Http\Controllers\RecurringBusiness\RecurringBusinessController;
 use App\Http\Controllers\SalesTarget\SalesTargetController;
 use App\Http\Controllers\Subscription\PaymentHistoryController;
 use App\Http\Controllers\Subscription\SeatController;
@@ -79,6 +81,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Dashboard
         Route::get('dashboard', [DashboardController::class, 'index']);
+        Route::get('dashboard/performance-details', [DashboardController::class, 'performanceDetails']);
 
         // Notifications
         Route::prefix('notifications')->group(function () {
@@ -101,12 +104,21 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('leads/{lead}/convert',       [LeadController::class, 'convertToDeal']);
         Route::apiResource('leads',               LeadController::class);
 
+        // Canonical clients and their complete commercial history
+        Route::get('clients', [ClientController::class, 'index']);
+        Route::get('clients/{client}', [ClientController::class, 'show']);
+
         // Deals
         Route::patch('deals/{deal}/stage',          [DealController::class, 'moveStage']);
         Route::get('deals/{deal}/payments',              [DealPaymentController::class, 'index']);
         Route::post('deals/{deal}/payments',             [DealPaymentController::class, 'store']);
         Route::put('deals/{deal}/payments/{payment}',    [DealPaymentController::class, 'update']);
         Route::apiResource('deals',                 DealController::class);
+
+        // Converted recurring contracts (actual revenue remains in deal_payments)
+        Route::get('recurring-businesses', [RecurringBusinessController::class, 'index']);
+        Route::get('recurring-businesses/{recurringBusiness}', [RecurringBusinessController::class, 'show']);
+        Route::put('recurring-businesses/{recurringBusiness}', [RecurringBusinessController::class, 'update']);
 
         // Follow-ups (lead activities with due dates)
         Route::get('follow-ups', [FollowUpController::class, 'index']);

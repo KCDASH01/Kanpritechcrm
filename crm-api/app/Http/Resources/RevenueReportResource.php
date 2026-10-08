@@ -16,7 +16,7 @@ class RevenueReportResource extends JsonResource
         return [
             'id'                 => $this->id,
             'deal_name'          => $this->deal?->title,
-            'client_name'        => $this->deal?->lead?->full_name,
+            'client_name'        => $this->deal?->client?->company ?: ($this->deal?->client?->full_name ?: $this->deal?->lead?->full_name),
             'assigned_member'    => $this->deal?->assignedTo?->name,
             'deal_value'         => $dealValue,
             'amount_received'    => $amountReceived,
@@ -26,6 +26,10 @@ class RevenueReportResource extends JsonResource
             'payment_method'     => $this->payment_mode,
             'transaction_notes'  => $this->notes,
             'deal_status'        => $this->deal?->status,
+            'client_type'        => $this->deal?->client_type,
+            'business_type'      => $this->deal?->business_type,
+            'market_type'        => $this->deal?->market_type,
+            'service_type'       => $this->deal?->service_type,
         ];
     }
 }

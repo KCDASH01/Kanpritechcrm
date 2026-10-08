@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -15,7 +16,9 @@ return new class extends Migration
         // Existing deals were always displayed as INR; the column default was USD.
         DB::table('deals')->where('currency', 'USD')->update(['currency' => 'INR']);
 
-        DB::statement("ALTER TABLE deals MODIFY currency VARCHAR(3) NOT NULL DEFAULT 'INR'");
+        Schema::table('deals', function (Blueprint $table) {
+            $table->string('currency', 3)->default('INR')->change();
+        });
     }
 
     public function down(): void
@@ -24,6 +27,8 @@ return new class extends Migration
             return;
         }
 
-        DB::statement("ALTER TABLE deals MODIFY currency VARCHAR(3) NOT NULL DEFAULT 'USD'");
+        Schema::table('deals', function (Blueprint $table) {
+            $table->string('currency', 3)->default('USD')->change();
+        });
     }
 };

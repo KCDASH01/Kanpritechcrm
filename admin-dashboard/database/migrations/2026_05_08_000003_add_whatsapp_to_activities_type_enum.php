@@ -1,19 +1,26 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
     public function up(): void
     {
-        // ALTER the ENUM column to include 'whatsapp'
-        DB::statement("ALTER TABLE activities MODIFY COLUMN type ENUM('call','email','meeting','task','note','deadline','whatsapp') NOT NULL DEFAULT 'task'");
+        Schema::table('activities', function (Blueprint $table) {
+            $table->enum('type', ['call', 'email', 'meeting', 'task', 'note', 'deadline', 'whatsapp'])
+                ->default('task')
+                ->change();
+        });
     }
 
     public function down(): void
     {
-        // Remove whatsapp — existing rows with 'whatsapp' will become '' (truncated); acceptable for rollback
-        DB::statement("ALTER TABLE activities MODIFY COLUMN type ENUM('call','email','meeting','task','note','deadline') NOT NULL DEFAULT 'task'");
+        Schema::table('activities', function (Blueprint $table) {
+            $table->enum('type', ['call', 'email', 'meeting', 'task', 'note', 'deadline'])
+                ->default('task')
+                ->change();
+        });
     }
 };

@@ -3,16 +3,18 @@
 namespace App\Http\Controllers\SalesTarget;
 
 use App\Http\Controllers\Controller;
-use App\Models\Deal;
-use App\Models\DealPayment;
 use App\Models\SalesTarget;
 use App\Models\User;
+use App\Services\TargetProgressService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\Rule;
 
 class SalesTargetController extends Controller
 {
+    public function __construct(private readonly TargetProgressService $progress) {}
+
     private function orgId(Request $request): int
     {
         return $request->user()->organization_id;
@@ -23,17 +25,17 @@ class SalesTargetController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        $request->validate(['month' => ['nullable', 'date_format:Y-m']]);
         $orgId      = $this->orgId($request);
         $user       = $request->user();
         $canManage  = in_array($user->role, ['owner', 'admin']);
         $monthParam = $request->input('month', now()->format('Y-m'));
 
-        [$year, $month] = explode('-', $monthParam);
-        $periodStart = Carbon::createFromDate((int)$year, (int)$month, 1)->toDateString();
-        $periodEnd   = Carbon::createFromDate((int)$year, (int)$month, 1)->endOfMonth()->toDateString();
+        [$periodStart, $periodEnd] = $this->progress->period($monthParam);
 
         $query = SalesTarget::where('organization_id', $orgId)
-            ->where('period_start', $periodStart)
+            ->whereDate('period_start', $periodStart)
+            ->whereHas('user', fn ($member) => $member->where('is_active', true)->where('role', '!=', 'owner'))
             ->with('user:id,name,email');
 
         if (!$canManage) {
@@ -41,8 +43,8 @@ class SalesTargetController extends Controller
         }
 
         $rows = $query->get()->map(function (SalesTarget $t) use ($orgId, $periodStart, $periodEnd) {
-            $achieved  = self::calcAchieved($orgId, (int)$t->user_id, $periodStart, $periodEnd);
-            $received  = self::calcReceived($orgId, (int)$t->user_id, $periodStart, $periodEnd);
+            $achieved  = $this->progress->achieved($orgId, (int)$t->user_id, $periodStart, $periodEnd);
+            $received  = $this->progress->received($orgId, (int)$t->user_id, $periodStart, $periodEnd);
             return [
                 'id'                => $t->id,
                 'user'              => $t->user ? ['id' => $t->user->id, 'name' => $t->user->name] : null,
@@ -67,23 +69,38 @@ class SalesTargetController extends Controller
         }
 
         $data = $request->validate([
-            'user_id'           => ['required', 'integer', 'exists:users,id'],
+            'user_id'           => ['required', 'integer', Rule::exists('users', 'id')->where(fn ($query) => $query
+                ->where('organization_id', $this->orgId($request))
+                ->where('is_active', true)
+                ->where('role', '!=', 'owner'))],
             'target_amount'     => ['required', 'numeric', 'min:0'],
             'receivable_amount' => ['required', 'numeric', 'min:0'],
             'period_start'      => ['required', 'date'],
         ]);
 
-        $target = SalesTarget::updateOrCreate(
-            [
+        $periodStart = Carbon::parse($data['period_start'])->startOfMonth();
+
+        // SQLite stores Eloquent date casts with a time component. Match on the
+        // calendar date so an existing member/month target is updated instead
+        // of attempting a duplicate insert against the unique constraint.
+        $target = SalesTarget::query()
+            ->where('organization_id', $this->orgId($request))
+            ->where('user_id', $data['user_id'])
+            ->whereDate('period_start', $periodStart->toDateString())
+            ->first();
+
+        if (! $target) {
+            $target = new SalesTarget([
                 'organization_id' => $this->orgId($request),
                 'user_id'         => $data['user_id'],
-                'period_start'    => $data['period_start'],
-            ],
-            [
-                'target_amount'     => $data['target_amount'],
-                'receivable_amount' => $data['receivable_amount'],
-            ]
-        );
+                'period_start'    => $periodStart,
+            ]);
+        }
+
+        $target->fill([
+            'target_amount'     => $data['target_amount'],
+            'receivable_amount' => $data['receivable_amount'],
+        ])->save();
 
         return response()->json(['data' => $target]);
     }
@@ -95,6 +112,8 @@ class SalesTargetController extends Controller
     {
         $user = $request->user();
         $canManage = in_array($user->role, ['owner', 'admin']);
+
+        if ($salesTarget->organization_id !== $this->orgId($request)) abort(404);
 
         if (!$canManage && $salesTarget->user_id !== $user->id) {
             return response()->json(['message' => 'Forbidden.'], 403);
@@ -126,7 +145,8 @@ class SalesTargetController extends Controller
 
         $targets = SalesTarget::where('organization_id', $orgId)
             ->where('user_id', $userId)
-            ->whereIn('period_start', $months)
+            ->whereDate('period_start', '>=', $months[0])
+            ->whereDate('period_start', '<=', $months[count($months) - 1])
             ->orderBy('period_start')
             ->get();
 
@@ -136,8 +156,8 @@ class SalesTargetController extends Controller
         $progress = array_map(function (string $periodStart) use ($orgId, $userId, $indexed) {
             $periodEnd = Carbon::parse($periodStart)->endOfMonth()->toDateString();
             $target    = $indexed->get($periodStart);
-            $achieved  = self::calcAchieved($orgId, $userId, $periodStart, $periodEnd);
-            $received  = self::calcReceived($orgId, $userId, $periodStart, $periodEnd);
+            $achieved  = $this->progress->achieved($orgId, $userId, $periodStart, $periodEnd);
+            $received  = $this->progress->received($orgId, $userId, $periodStart, $periodEnd);
 
             return [
                 'period_start'      => $periodStart,
@@ -179,7 +199,8 @@ class SalesTargetController extends Controller
 
         $targets = SalesTarget::where('organization_id', $orgId)
             ->where('user_id', $userId)
-            ->whereIn('period_start', $months)
+            ->whereDate('period_start', '>=', $months[0])
+            ->whereDate('period_start', '<=', $months[count($months) - 1])
             ->orderBy('period_start')
             ->get();
 
@@ -188,8 +209,8 @@ class SalesTargetController extends Controller
         $progress = array_map(function (string $periodStart) use ($orgId, $userId, $indexed) {
             $periodEnd = Carbon::parse($periodStart)->endOfMonth()->toDateString();
             $target    = $indexed->get($periodStart);
-            $achieved  = self::calcAchieved($orgId, $userId, $periodStart, $periodEnd);
-            $received  = self::calcReceived($orgId, $userId, $periodStart, $periodEnd);
+            $achieved  = $this->progress->achieved($orgId, $userId, $periodStart, $periodEnd);
+            $received  = $this->progress->received($orgId, $userId, $periodStart, $periodEnd);
 
             return [
                 'period_start'      => $periodStart,
@@ -207,24 +228,4 @@ class SalesTargetController extends Controller
         ]);
     }
 
-    // ── Static helper: sum of won deals value for a given user/org/period ────
-
-    public static function calcAchieved(int $orgId, int $userId, string $from, string $to): float
-    {
-        return (float) Deal::where('organization_id', $orgId)
-            ->where('assigned_to', $userId)
-            ->where('status', 'won')
-            ->whereBetween('closed_at', [$from, $to])
-            ->sum('value');
-    }
-
-    // ── Static helper: sum of payments from deal_payments for a given user/org/period ─
-
-    public static function calcReceived(int $orgId, int $userId, string $from, string $to): ?float
-    {
-        $sum = (float) DealPayment::whereHas('deal', function ($q) use ($orgId, $userId) {
-            $q->where('organization_id', $orgId)->where('assigned_to', $userId);
-        })->whereBetween('payment_date', [$from, $to])->sum('amount');
-        return $sum > 0 ? $sum : null;
-    }
 }

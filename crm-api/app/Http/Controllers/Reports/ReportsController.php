@@ -25,7 +25,7 @@ class ReportsController extends Controller
     public function index(Request $request): JsonResponse
     {
         $orgId      = $request->user()->organization_id;
-        $assignedTo = $request->input('assigned_to');
+        $assignedTo = $this->resolveReportAssignedTo($request);
 
         $funnelRaw = Lead::where('organization_id', $orgId)
             ->when($assignedTo, fn ($q) => $q->where('assigned_to', $assignedTo))
@@ -128,6 +128,10 @@ class ReportsController extends Controller
             'search'      => ['nullable', 'string', 'max:191'],
             'status'      => ['nullable', 'string', 'max:32'],
             'assigned_to' => ['nullable', 'integer'],
+            'client_type' => ['nullable', 'in:NEW,EXISTING'],
+            'business_type' => ['nullable', 'in:ONE_TIME,RECURRING'],
+            'market_type' => ['nullable', 'in:DOMESTIC,INTERNATIONAL'],
+            'service_type' => ['nullable', 'string', 'max:64'],
             'date_from'   => ['nullable', 'date'],
             'date_to'     => ['nullable', 'date', 'after_or_equal:date_from'],
             'per_page'    => ['nullable', 'integer', 'min:1', 'max:100'],
@@ -164,6 +168,10 @@ class ReportsController extends Controller
             'search'      => ['nullable', 'string', 'max:191'],
             'status'      => ['nullable', 'string', 'max:32'],
             'assigned_to' => ['nullable', 'integer'],
+            'client_type' => ['nullable', 'in:NEW,EXISTING'],
+            'business_type' => ['nullable', 'in:ONE_TIME,RECURRING'],
+            'market_type' => ['nullable', 'in:DOMESTIC,INTERNATIONAL'],
+            'service_type' => ['nullable', 'string', 'max:64'],
             'date_from'   => ['nullable', 'date'],
             'date_to'     => ['nullable', 'date', 'after_or_equal:date_from'],
         ]);
@@ -177,6 +185,7 @@ class ReportsController extends Controller
         $headers = [
             'Lead Name', 'Company', 'City', 'Contact Person', 'Phone', 'Email',
             'Assigned Member', 'Lead Source', 'Lead Status',
+            'Client Type', 'Business Type', 'Market Type', 'Service / Product',
             'Created Date', 'Last Updated', 'Follow-up Date',
         ];
 
@@ -190,6 +199,10 @@ class ReportsController extends Controller
             $lead->assignedTo?->name,
             $lead->source,
             $lead->status,
+            $lead->client_type,
+            $lead->business_type,
+            $lead->market_type,
+            $lead->types,
             $lead->created_at?->format('Y-m-d H:i'),
             $lead->updated_at?->format('Y-m-d H:i'),
             $lead->follow_up_date ? Carbon::parse($lead->follow_up_date)->format('Y-m-d H:i') : '',
@@ -208,6 +221,10 @@ class ReportsController extends Controller
             'assigned_to'  => ['nullable', 'integer'],
             'deal_status'  => ['nullable', 'in:open,won,lost'],
             'payment_mode' => ['nullable', 'in:cash,cheque,bank_transfer,upi,card,aggregator,other'],
+            'client_type'   => ['nullable', 'in:NEW,EXISTING'],
+            'business_type' => ['nullable', 'in:ONE_TIME,RECURRING'],
+            'market_type'   => ['nullable', 'in:DOMESTIC,INTERNATIONAL'],
+            'service_type'  => ['nullable', 'string', 'max:64'],
             'date_from'    => ['nullable', 'date'],
             'date_to'      => ['nullable', 'date', 'after_or_equal:date_from'],
             'per_page'     => ['nullable', 'integer', 'min:1', 'max:100'],
@@ -245,6 +262,10 @@ class ReportsController extends Controller
             'assigned_to'  => ['nullable', 'integer'],
             'deal_status'  => ['nullable', 'in:open,won,lost'],
             'payment_mode' => ['nullable', 'in:cash,cheque,bank_transfer,upi,card,aggregator,other'],
+            'client_type'   => ['nullable', 'in:NEW,EXISTING'],
+            'business_type' => ['nullable', 'in:ONE_TIME,RECURRING'],
+            'market_type'   => ['nullable', 'in:DOMESTIC,INTERNATIONAL'],
+            'service_type'  => ['nullable', 'string', 'max:64'],
             'date_from'    => ['nullable', 'date'],
             'date_to'      => ['nullable', 'date', 'after_or_equal:date_from'],
         ]);
@@ -260,6 +281,7 @@ class ReportsController extends Controller
             'Deal Name', 'Client Name', 'Assigned Member', 'Deal Value',
             'Amount Received', 'Remaining Amount', 'Transaction Amount',
             'Payment Date', 'Payment Method', 'Transaction Notes', 'Deal Status',
+            'Client Type', 'Business Type', 'Market Type', 'Service / Product',
         ];
 
         $data = $rows->map(function (DealPayment $payment) {
@@ -279,6 +301,10 @@ class ReportsController extends Controller
                 $payment->payment_mode,
                 $payment->notes,
                 $payment->deal?->status,
+                $payment->deal?->client_type,
+                $payment->deal?->business_type,
+                $payment->deal?->market_type,
+                $payment->deal?->service_type,
             ];
         });
 
@@ -324,6 +350,11 @@ class ReportsController extends Controller
         if ($status = $request->input('status')) {
             $query->where('status', $status);
         }
+
+        foreach (['client_type', 'business_type', 'market_type'] as $field) {
+            if ($value = $request->input($field)) $query->where($field, $value);
+        }
+        if ($service = $request->input('service_type')) $query->where('types', $service);
 
         if ($assignedTo) {
             $query->where('assigned_to', $assignedTo);
@@ -377,11 +408,11 @@ class ReportsController extends Controller
             ->where('deal_payments.organization_id', $orgId)
             ->with([
                 'deal' => fn ($q) => $q
-                    ->select('id', 'title', 'value', 'status', 'lead_id', 'assigned_to')
+                    ->select('id', 'title', 'value', 'status', 'lead_id', 'client_id', 'assigned_to', 'client_type', 'business_type', 'market_type', 'service_type')
                     ->withSum('payments', 'amount')
                     ->with([
                         'lead:id,first_name,last_name',
-                        'assignedTo:id,name',
+                        'assignedTo:id,name', 'client:id,first_name,last_name,company',
                     ]),
             ])
             ->join('deals', 'deals.id', '=', 'deal_payments.deal_id')
@@ -399,6 +430,11 @@ class ReportsController extends Controller
         if ($paymentMode = $request->input('payment_mode')) {
             $query->where('deal_payments.payment_mode', $paymentMode);
         }
+
+        foreach (['client_type', 'business_type', 'market_type'] as $field) {
+            if ($value = $request->input($field)) $query->where("deals.{$field}", $value);
+        }
+        if ($service = $request->input('service_type')) $query->where('deals.service_type', $service);
 
         if ($dateFrom = $request->input('date_from')) {
             $query->where('deal_payments.payment_date', '>=', Carbon::parse($dateFrom)->toDateString());
@@ -419,6 +455,8 @@ class ReportsController extends Controller
                 DB::raw('COALESCE(SUM(deal_payments.amount), 0) as total_revenue'),
                 DB::raw('COUNT(*) as total_transactions'),
                 DB::raw('COUNT(DISTINCT deal_payments.deal_id) as deal_count'),
+                DB::raw("COALESCE(SUM(CASE WHEN deals.business_type = 'RECURRING' THEN deal_payments.amount ELSE 0 END), 0) as recurring_revenue"),
+                DB::raw("COALESCE(SUM(CASE WHEN deals.business_type = 'ONE_TIME' OR deals.business_type IS NULL THEN deal_payments.amount ELSE 0 END), 0) as one_time_revenue"),
             ])
             ->reorder()
             ->first();
@@ -438,6 +476,8 @@ class ReportsController extends Controller
             'revenue_this_month'       => (float) $monthRevenue,
             'total_transactions'       => (int) ($stats->total_transactions ?? 0),
             'average_revenue_per_deal' => $dealCount > 0 ? round($totalRevenue / $dealCount, 2) : 0.0,
+            'one_time_revenue'         => (float) ($stats->one_time_revenue ?? 0),
+            'recurring_revenue'        => (float) ($stats->recurring_revenue ?? 0),
         ];
     }
 

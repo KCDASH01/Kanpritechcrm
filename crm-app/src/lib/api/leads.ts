@@ -22,6 +22,9 @@ export interface LeadFilters {
   assigned_to?: number | null;
   unassigned?: boolean;
   department_id?: number;
+  client_type?: string;
+  business_type?: string;
+  market_type?: string;
   date_from?: string;
   date_to?: string;
   sort_by?: string;
@@ -31,6 +34,10 @@ export interface LeadFilters {
 }
 
 export interface LeadPayload {
+  client_id?: number | null;
+  client_type: 'NEW' | 'EXISTING';
+  business_type: 'ONE_TIME' | 'RECURRING';
+  market_type: 'DOMESTIC' | 'INTERNATIONAL';
   first_name: string;
   last_name?: string;
   email?: string;
@@ -43,6 +50,7 @@ export interface LeadPayload {
   types?: string;
   industry?: string;
   city?: string;
+  state?: string;
   country?: string;
   notes?: string;
   score?: number;
@@ -54,6 +62,17 @@ export interface LeadPayload {
   lost_reason?: string;
   schedule_at?: string;
   remark?:     string;
+  department_id?: number | null;
+  expected_value?: number | null;
+  currency?: 'INR' | 'USD';
+  recurring_frequency?: 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY' | null;
+  recurring_amount?: number | null;
+  recurring_start_date?: string;
+  recurring_end_type?: 'ONGOING' | 'FIXED';
+  recurring_end_date?: string | null;
+  next_billing_date?: string | null;
+  billing_cycles?: number | null;
+  contract_value?: number | null;
 }
 
 export interface LeadTimelineEntry {

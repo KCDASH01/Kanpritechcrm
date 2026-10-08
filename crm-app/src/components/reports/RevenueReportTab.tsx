@@ -7,6 +7,7 @@ import { employeesApi } from '@/lib/api/employees';
 import { Badge } from '@/components/ui/Badge';
 import { SkeletonTable } from '@/components/ui/Skeleton';
 import type { RevenueReportFilters } from '@/types';
+import { LEAD_TYPES, LEAD_TYPE_LABELS } from '@/lib/leadTypes';
 
 const PAYMENT_MODES = [
   { value: 'bank_transfer', label: 'Bank Transfer' },
@@ -43,6 +44,10 @@ export function RevenueReportTab({ assignedToFilter, canFilterByMember = true }:
   const [assignedTo, setAssignedTo]   = useState('');
   const [dealStatus, setDealStatus]   = useState('');
   const [paymentMode, setPaymentMode] = useState('');
+  const [clientType, setClientType] = useState('');
+  const [businessType, setBusinessType] = useState('');
+  const [marketType, setMarketType] = useState('');
+  const [serviceType, setServiceType] = useState('');
   const [dateFrom, setDateFrom]       = useState('');
   const [dateTo, setDateTo]           = useState('');
   const [page, setPage]               = useState(1);
@@ -54,6 +59,10 @@ export function RevenueReportTab({ assignedToFilter, canFilterByMember = true }:
       : assignedToFilter,
     deal_status:  dealStatus || undefined,
     payment_mode: paymentMode || undefined,
+    client_type: clientType as RevenueReportFilters['client_type'] || undefined,
+    business_type: businessType as RevenueReportFilters['business_type'] || undefined,
+    market_type: marketType as RevenueReportFilters['market_type'] || undefined,
+    service_type: serviceType || undefined,
     date_from:    dateFrom || undefined,
     date_to:      dateTo || undefined,
     page,
@@ -91,12 +100,13 @@ export function RevenueReportTab({ assignedToFilter, canFilterByMember = true }:
     setAssignedTo('');
     setDealStatus('');
     setPaymentMode('');
+    setClientType(''); setBusinessType(''); setMarketType(''); setServiceType('');
     setDateFrom('');
     setDateTo('');
     setPage(1);
   };
 
-  const hasFilters = !!(assignedTo || dealStatus || paymentMode || dateFrom || dateTo);
+  const hasFilters = !!(assignedTo || dealStatus || paymentMode || clientType || businessType || marketType || serviceType || dateFrom || dateTo);
 
   return (
     <div className="space-y-5">
@@ -127,12 +137,14 @@ export function RevenueReportTab({ assignedToFilter, canFilterByMember = true }:
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         {[
           { label: 'Total Revenue',            value: fmtCurrency(summary?.total_revenue ?? 0),            color: 'text-emerald-600', bg: 'bg-emerald-50' },
           { label: 'Revenue This Month',       value: fmtCurrency(summary?.revenue_this_month ?? 0),       color: 'text-blue-600',    bg: 'bg-blue-50'    },
           { label: 'Total Transactions',       value: (summary?.total_transactions ?? 0).toLocaleString(), color: 'text-indigo-600',  bg: 'bg-indigo-50'  },
           { label: 'Avg Revenue Per Deal',     value: fmtCurrency(summary?.average_revenue_per_deal ?? 0), color: 'text-violet-600',  bg: 'bg-violet-50'  },
+          { label: 'One-Time Revenue',         value: fmtCurrency(summary?.one_time_revenue ?? 0),         color: 'text-sky-600',     bg: 'bg-sky-50'     },
+          { label: 'Recurring Revenue',        value: fmtCurrency(summary?.recurring_revenue ?? 0),        color: 'text-fuchsia-600', bg: 'bg-fuchsia-50' },
         ].map((card) => (
           <div key={card.label} className={`${card.bg} rounded-2xl p-4 border border-white`}>
             <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">{card.label}</p>
@@ -162,6 +174,10 @@ export function RevenueReportTab({ assignedToFilter, canFilterByMember = true }:
             <option key={m.value} value={m.value}>{m.label}</option>
           ))}
         </select>
+        <select value={clientType} onChange={(e) => { setClientType(e.target.value); setPage(1); }} className={inputCls}><option value="">All clients</option><option value="NEW">New</option><option value="EXISTING">Existing</option></select>
+        <select value={businessType} onChange={(e) => { setBusinessType(e.target.value); setPage(1); }} className={inputCls}><option value="">All business</option><option value="ONE_TIME">One Time</option><option value="RECURRING">Recurring</option></select>
+        <select value={marketType} onChange={(e) => { setMarketType(e.target.value); setPage(1); }} className={inputCls}><option value="">All markets</option><option value="DOMESTIC">Domestic</option><option value="INTERNATIONAL">International</option></select>
+        <select value={serviceType} onChange={(e) => { setServiceType(e.target.value); setPage(1); }} className={inputCls}><option value="">All services</option>{LEAD_TYPES.map((type) => <option key={type} value={type}>{LEAD_TYPE_LABELS[type]}</option>)}</select>
         <input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1); }} className={inputCls} />
         <input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} className={inputCls} />
         {hasFilters && (

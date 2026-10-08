@@ -20,7 +20,8 @@ class DealPaymentController extends Controller
 
     public function index(Request $request, Deal $deal): JsonResponse
     {
-        if ($deal->organization_id !== $request->user()->organization_id) {
+        if ($deal->organization_id !== $request->user()->organization_id
+            || ($request->user()->isEmployee() && $deal->assigned_to !== $request->user()->id)) {
             abort(404);
         }
 

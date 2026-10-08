@@ -19,6 +19,10 @@ class LeadReportResource extends JsonResource
             'assigned_member' => $this->assignedTo?->name,
             'source'          => $this->source,
             'status'          => $this->status,
+            'client_type'     => $this->client_type,
+            'business_type'   => $this->business_type,
+            'market_type'     => $this->market_type,
+            'service_type'    => $this->types,
             'created_at'      => $this->created_at?->toIso8601String(),
             'updated_at'      => $this->updated_at?->toIso8601String(),
             'follow_up_date'  => $this->follow_up_date

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -8,7 +9,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import client from '@/lib/api/client';
-import type { ApiResponse, DashboardData } from '@/types';
+import type { ApiResponse, DashboardData, DashboardPerformance, DashboardPerformanceDetail } from '@/types';
 import { useAuthStore } from '@/store/authStore';
 import { SkeletonCard, SkeletonTable } from '@/components/ui/Skeleton';
 import { Badge } from '@/components/ui/Badge';
@@ -65,15 +66,106 @@ function fmtCurrency(n: number) {
   return `₹${n.toFixed(0)}`;
 }
 
+type DetailType = DashboardPerformanceDetail['type'];
+
+function progressTone(pct: number | null) {
+  if (pct === null || pct < 50) return { fill: 'bg-red-500', text: 'text-red-700', badge: 'bg-red-50' };
+  if (pct <= 75) return { fill: 'bg-orange-500', text: 'text-orange-700', badge: 'bg-orange-50' };
+  if (pct <= 100) return { fill: 'bg-emerald-400', text: 'text-emerald-700', badge: 'bg-emerald-50' };
+  return { fill: 'bg-emerald-700', text: 'text-emerald-800', badge: 'bg-emerald-100' };
+}
+
+function TargetProgressRow({ label, actual, target, percentage, onClick }: {
+  label: string; actual: number; target: number; percentage: number | null; onClick: () => void;
+}) {
+  const tone = progressTone(percentage);
+  const displayPct = percentage === null ? null : Number(percentage.toFixed(2));
+  return (
+    <button type="button" onClick={onClick} className="w-full text-left rounded-xl p-4 hover:bg-gray-50 transition-colors group">
+      <div className="flex items-start justify-between gap-4 mb-2.5">
+        <div>
+          <p className="text-sm font-semibold text-gray-800 group-hover:text-indigo-700">{label}</p>
+          {target > 0 ? (
+            <p className="text-sm text-gray-500 mt-0.5">{fmtCurrency(actual)} / {fmtCurrency(target)}</p>
+          ) : (
+            <p className="text-sm text-gray-400 mt-0.5">No Target Set · Achieved {fmtCurrency(actual)}</p>
+          )}
+        </div>
+        {displayPct !== null ? (
+          <span className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-bold ${tone.badge} ${tone.text}`}>
+            {displayPct}%{displayPct > 100 ? ' Achieved' : ''}
+          </span>
+        ) : <span className="text-xs font-semibold text-gray-400">View details →</span>}
+      </div>
+      <div className="h-[18px] bg-gray-100 rounded-full overflow-hidden ring-1 ring-inset ring-gray-200">
+        <div className={`h-full rounded-full transition-all duration-700 ${tone.fill}`} style={{ width: `${Math.min(Math.max(percentage ?? 0, 0), 100)}%` }} />
+      </div>
+      {displayPct !== null && displayPct > 100 && <div className="h-1 mt-1 rounded-full bg-emerald-700" style={{ width: `${Math.min(displayPct - 100, 100)}%` }} />}
+    </button>
+  );
+}
+
+function PerformanceOverview({ performance, canManage, selectedMember, onSelectMember, onOpen }: {
+  performance: DashboardPerformance; canManage: boolean; selectedMember: string;
+  onSelectMember: (value: string) => void; onOpen: (type: DetailType) => void;
+}) {
+  const target = performance.target;
+  const revenueCards: { label: string; value: number; type: DetailType; color: string; icon: string }[] = [
+    { label: 'Total Revenue Collected', value: performance.revenue.total_collected, type: 'collections_all', color: 'text-indigo-700 bg-indigo-50', icon: '₹' },
+    { label: 'Collected This Month', value: performance.revenue.collected_this_month, type: 'collections_month', color: 'text-emerald-700 bg-emerald-50', icon: '✓' },
+    { label: 'Receivable', value: performance.revenue.receivable, type: 'receivables', color: 'text-amber-700 bg-amber-50', icon: '↗' },
+  ];
+
+  return <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+    <div className="px-5 py-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
+      <div><h2 className="text-base font-bold text-gray-900">Performance Overview</h2><p className="text-xs text-gray-400 mt-0.5">Target Progress — {performance.period_label}</p></div>
+      {canManage && <label className="flex items-center gap-2 text-xs text-gray-500">View:
+        <select value={selectedMember} onChange={(e) => onSelectMember(e.target.value)} className="min-w-48 bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          <option value="">Overall Team</option>
+          {performance.team_members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
+        </select>
+      </label>}
+    </div>
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 p-2 border-b border-gray-100">
+      <TargetProgressRow label="Sales Target" actual={target.achieved_amount} target={target.target_amount} percentage={target.sales_percentage} onClick={() => onOpen('sales')} />
+      <TargetProgressRow label="Collection Target" actual={target.received_amount} target={target.receivable_amount} percentage={target.collection_percentage} onClick={() => onOpen('target_collections')} />
+    </div>
+    <div className="p-5"><p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">Revenue</p><div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {revenueCards.map((card) => <button key={card.type} type="button" onClick={() => onOpen(card.type)} className="text-left rounded-2xl border border-gray-100 p-4 hover:border-indigo-200 hover:shadow-md transition-all group">
+        <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold ${card.color}`}>{card.icon}</div>
+        <p className="text-xs text-gray-500 mt-3 group-hover:text-indigo-600">{card.label}</p><p className="text-xl font-bold text-gray-900 mt-1">₹{card.value.toLocaleString('en-IN')}</p><p className="text-[10px] text-gray-400 mt-2">View details →</p>
+      </button>)}
+    </div></div>
+  </motion.section>;
+}
+
+function PerformanceDetailsModal({ type, detail, loading, page, onPage, onClose }: { type: DetailType; detail?: DashboardPerformanceDetail; loading: boolean; page: number; onPage: (page: number) => void; onClose: () => void }) {
+  const titles: Record<DetailType, string> = { sales: 'Sales Target Details', target_collections: 'Collection Target Details', collections_month: 'Collected This Month', collections_all: 'Full Collection History', receivables: 'Receivables' };
+  const columns = type === 'sales'
+    ? [['deal','Deal'],['client','Client'],['lead','Lead'],['service','Service'],['employee','Employee'],['deal_value','Deal Value'],['collected','Collected'],['outstanding','Outstanding'],['date','Won Date'],['business_type','Business Type'],['market_type','Market'],['_actions','Actions']]
+    : type === 'receivables'
+      ? [['client','Client'],['deal','Deal'],['service','Service'],['employee','Employee'],['deal_value','Deal Value'],['collected','Collected'],['receivable','Receivable'],['due_date','Due Date'],['status','Status'],['_actions','Actions']]
+      : [['date','Date'],['client','Client'],['deal','Deal'],['lead','Lead'],['service','Service'],['employee','Employee'],['amount','Payment Amount'],['payment_method','Method'],['reference','Reference'],['deal_value','Deal Value'],['total_collected','Total Collected'],['outstanding','Outstanding'],['status','Deal Status'],['_actions','Actions']];
+  const moneyFields = new Set(['deal_value','collected','total_collected','outstanding','receivable','amount']);
+  return <div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} /><div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-7xl max-h-[86vh] flex flex-col overflow-hidden">
+    <div className="px-6 py-4 border-b flex items-center justify-between"><div><h3 className="font-bold text-gray-900">{titles[type]}{detail?.period_label ? ` — ${detail.period_label}` : ''}</h3><p className="text-xs text-gray-400">Only records contributing to this value are shown.</p></div><button onClick={onClose} className="w-9 h-9 rounded-xl hover:bg-gray-100 text-gray-500">✕</button></div>
+    <div className="overflow-auto flex-1">{loading ? <p className="p-12 text-center text-gray-400">Loading details…</p> : !detail?.rows.length ? <p className="p-12 text-center text-gray-400">No contributing records found.</p> : <table className="min-w-[1100px] w-full text-sm"><thead className="sticky top-0 bg-gray-50"><tr>{columns.map(([key,label]) => <th key={key} className="px-4 py-3 text-left text-[11px] uppercase tracking-wide text-gray-500">{label}</th>)}</tr></thead><tbody className="divide-y divide-gray-100">{detail.rows.map((row, i) => <tr key={String(row.id ?? row.deal_id ?? i)} className="hover:bg-gray-50">{columns.map(([key]) => <td key={key} className="px-4 py-3 text-gray-700 whitespace-nowrap">{key === '_actions' ? <a href={`/deals?search=${encodeURIComponent(String(row.deal ?? ''))}`} className="text-indigo-600 font-medium hover:underline">View Deal</a> : moneyFields.has(key) && typeof row[key] === 'number' ? `₹${Number(row[key]).toLocaleString('en-IN')}` : String(row[key] ?? '—').replaceAll('_',' ')}</td>)}</tr>)}</tbody></table>}</div>
+    {detail?.meta && detail.meta.last_page > 1 && <div className="px-6 py-3 border-t flex items-center justify-between text-xs text-gray-500"><span>{detail.meta.total} records</span><div className="flex items-center gap-2"><button disabled={page <= 1 || loading} onClick={() => onPage(page - 1)} className="px-3 py-1.5 border rounded-lg disabled:opacity-40">Previous</button><span>Page {page} of {detail.meta.last_page}</span><button disabled={page >= detail.meta.last_page || loading} onClick={() => onPage(page + 1)} className="px-3 py-1.5 border rounded-lg disabled:opacity-40">Next</button></div></div>}
+  </div></div>;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const { user, isOwner, isAdmin, isBusinessPlan, isEnterprisePlan } = useAuthStore();
+  const [selectedMember, setSelectedMember] = useState('');
+  const [detailType, setDetailType] = useState<DetailType | null>(null);
+  const [detailPage, setDetailPage] = useState(1);
 
   const canManage      = isOwner() || isAdmin();
   const planLabel      = isEnterprisePlan() ? 'Enterprise Plan' : isBusinessPlan() ? 'Business Plan' : 'Free Plan';
   const planClass      = isEnterprisePlan() ? 'text-violet-600 font-medium' : isBusinessPlan() ? 'text-indigo-600 font-medium' : 'text-gray-500';
-  // Team members only see their personal data; managers see org-wide
-  const assignedFilter = canManage ? undefined : user?.id;
+  // Employees are always forced to their own ID by the API. Managers may select a team member.
+  const assignedFilter = canManage ? (selectedMember ? Number(selectedMember) : undefined) : user?.id;
 
   const dashboardQueryKey = ['dashboard', assignedFilter];
 
@@ -85,6 +177,17 @@ export default function DashboardPage() {
           params: assignedFilter ? { assigned_to: assignedFilter } : {},
         })
         .then((r) => r.data.data),
+  });
+
+  const { data: detail, isLoading: detailLoading } = useQuery({
+    queryKey: ['dashboard-performance-details', detailType, assignedFilter, data?.performance?.period_start, detailPage],
+    enabled: detailType !== null && !!data?.performance,
+    queryFn: () => client.get<ApiResponse<DashboardPerformanceDetail>>('/dashboard/performance-details', { params: {
+      type: detailType,
+      assigned_to: assignedFilter,
+      month: data!.performance.period_start.slice(0, 7),
+      page: detailPage,
+    } }).then((r) => r.data.data),
   });
 
   const stats = data?.stats;
@@ -115,6 +218,14 @@ export default function DashboardPage() {
       icon:     'M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z',
     },
     {
+      label:    'Total Revenue',
+      value:    `₹${Number(stats?.total_revenue ?? 0).toLocaleString('en-IN')}`,
+      sub:      `One-time ₹${Number(stats?.one_time_revenue ?? 0).toLocaleString('en-IN')} · Recurring ₹${Number(stats?.recurring_revenue ?? 0).toLocaleString('en-IN')}`,
+      gradient: 'from-violet-500 to-purple-600',
+      shadow:   'shadow-violet-500/25',
+      icon:     'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V5m0 11v3',
+    },
+    {
       label:    canManage ? 'Due Today'    : 'My Due Today',
       value:    stats?.due_today_activities ?? 0,
       sub:      'follow-ups & meetings',
@@ -141,7 +252,7 @@ export default function DashboardPage() {
           <div className="skeleton h-8 w-64 rounded-xl" />
           <div className="skeleton h-4 w-40 rounded-lg" />
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
           {[...Array(5)].map((_, i) => <SkeletonCard key={i} />)}
         </div>
         {/* Reminders skeleton */}
@@ -190,17 +301,8 @@ export default function DashboardPage() {
       </motion.div>
 
       {/* Stat cards */}
-      <motion.div className="grid grid-cols-2 lg:grid-cols-5 gap-3" variants={container} initial="hidden" animate="show">
-        {STAT_CARDS.map((card, idx) => {
-          // Show target progress bar for team members on Sales (idx=1 = Open Deals card → replaced by target)
-          const showSalesProgress = !canManage && idx === 1;
-          const showCollProgress  = !canManage && idx === 2;
-          const tp = data?.target_progress ?? null;
-          const progress = showSalesProgress && tp
-            ? { actual: tp.achieved_amount, target: tp.target_amount, pct: tp.target_amount > 0 ? Math.round((tp.achieved_amount / tp.target_amount) * 100) : 0, label: 'sales achieved' }
-            : showCollProgress && tp
-            ? { actual: tp.received_amount ?? 0, target: tp.receivable_amount, pct: tp.receivable_amount > 0 && tp.received_amount != null ? Math.round(((tp.received_amount ?? 0) / tp.receivable_amount) * 100) : 0, label: 'collected' }
-            : null;
+      <motion.div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3" variants={container} initial="hidden" animate="show">
+        {STAT_CARDS.map((card) => {
           return (
             <motion.div key={card.label} variants={cardItem}>
               <div
@@ -220,24 +322,19 @@ export default function DashboardPage() {
                 <p className="text-white/70 text-[10px] font-semibold uppercase tracking-wider mb-1.5 pr-8">{card.label}</p>
                 <p className="text-2xl font-bold leading-none">{card.value.toLocaleString()}</p>
                 <p className="text-white/60 text-[11px] mt-1">{card.sub}</p>
-                {progress && (
-                  <div className="mt-3">
-                    <div className="w-full bg-white/20 rounded-full h-1.5 overflow-hidden">
-                      <div
-                        className={`h-1.5 rounded-full ${progress.pct >= 100 ? 'bg-white' : progress.pct >= 50 ? 'bg-white/80' : 'bg-white/50'}`}
-                        style={{ width: `${Math.min(progress.pct, 100)}%` }}
-                      />
-                    </div>
-                    <p className="text-white/70 text-[10px] mt-1">
-                      {fmtCurrency(progress.actual)} / {fmtCurrency(progress.target)} {progress.label} ({progress.pct}%)
-                    </p>
-                  </div>
-                )}
               </div>
             </motion.div>
           );
         })}
       </motion.div>
+
+      {data?.performance && <PerformanceOverview
+        performance={data.performance}
+        canManage={canManage}
+        selectedMember={selectedMember}
+        onSelectMember={setSelectedMember}
+        onOpen={(type) => { setDetailPage(1); setDetailType(type); }}
+      />}
 
       {/* Quick actions */}
       <motion.div className="flex gap-2.5 flex-wrap" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.35 }}>
@@ -252,6 +349,8 @@ export default function DashboardPage() {
           </button>
         ))}
       </motion.div>
+
+      {detailType && <PerformanceDetailsModal type={detailType} detail={detail} loading={detailLoading} page={detailPage} onPage={setDetailPage} onClose={() => setDetailType(null)} />}
 
       {/* ⏰ Reminders — highlighted, full width */}
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.42, duration: 0.35 }}>
@@ -346,7 +445,7 @@ export default function DashboardPage() {
             <h3 className="font-semibold text-gray-900 text-sm">
               {canManage ? 'Revenue Trend' : 'My Revenue'}
             </h3>
-            <p className="text-[11px] text-gray-400 mt-0.5">Won deal revenue per day</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">One-time closed-won value plus collected recurring payments</p>
           </div>
           <ResponsiveContainer width="100%" height={160}>
             <AreaChart data={revenueTrend} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
