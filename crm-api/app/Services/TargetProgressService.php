@@ -6,6 +6,7 @@ use App\Models\Deal;
 use App\Models\DealPayment;
 use App\Models\SalesTarget;
 use App\Models\User;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -40,19 +41,24 @@ class TargetProgressService
             : Carbon::parse($target->period_start)->endOfMonth()->startOfDay();
     }
 
-    public function periodStatus(SalesTarget $target, ?Carbon $at = null): string
+    public function periodStatus(SalesTarget $target, ?CarbonInterface $at = null): string
     {
         $at ??= now();
         $date = $at->copy()->startOfDay();
         $start = Carbon::parse($target->period_start)->startOfDay();
         $end = $this->periodEnd($target);
 
-        if ($date->lt($start)) return 'upcoming';
-        if ($date->gt($end)) return 'completed';
+        if ($date->lt($start)) {
+            return 'upcoming';
+        }
+        if ($date->gt($end)) {
+            return 'completed';
+        }
+
         return 'active';
     }
 
-    public function activeTarget(int $organizationId, int $userId, ?Carbon $at = null): ?SalesTarget
+    public function activeTarget(int $organizationId, int $userId, ?CarbonInterface $at = null): ?SalesTarget
     {
         $date = ($at ?? now())->toDateString();
 
@@ -72,7 +78,7 @@ class TargetProgressService
     }
 
     /** @return Collection<int, SalesTarget> */
-    public function targetsForDate(int $organizationId, Carbon $at, ?int $departmentId = null): Collection
+    public function targetsForDate(int $organizationId, CarbonInterface $at, ?int $departmentId = null): Collection
     {
         $date = $at->toDateString();
 
@@ -96,7 +102,7 @@ class TargetProgressService
     }
 
     /** @return array<string, float|int|string|bool|null|array> */
-    public function progressForTarget(SalesTarget $target, ?Carbon $at = null): array
+    public function progressForTarget(SalesTarget $target, ?CarbonInterface $at = null): array
     {
         $start = Carbon::parse($target->period_start)->toDateString();
         $end = $this->periodEnd($target)->toDateString();
@@ -137,7 +143,7 @@ class TargetProgressService
     }
 
     /** @return array<string, float|int|string|bool|null|array> */
-    public function activeTeamProgress(int $organizationId, ?Carbon $at = null): array
+    public function activeTeamProgress(int $organizationId, ?CarbonInterface $at = null): array
     {
         $at ??= now();
         $targets = $this->targetsForDate($organizationId, $at);
@@ -196,7 +202,9 @@ class TargetProgressService
                 ->orderByDesc('period_start')
                 ->first();
 
-            if ($target) return $this->progressForTarget($target);
+            if ($target) {
+                return $this->progressForTarget($target);
+            }
         }
 
         $eligibleIds = $userId ? collect([$userId]) : $this->eligibleUserIds($organizationId);
@@ -233,7 +241,9 @@ class TargetProgressService
     public function achieved(int $organizationId, int|Collection $userIds, string $from, string $to): float
     {
         $ids = $userIds instanceof Collection ? $userIds : collect([$userIds]);
-        if ($ids->isEmpty()) return 0.0;
+        if ($ids->isEmpty()) {
+            return 0.0;
+        }
 
         return (float) Deal::query()
             ->where('organization_id', $organizationId)
@@ -247,7 +257,9 @@ class TargetProgressService
     public function received(int $organizationId, int|Collection $userIds, string $from, string $to): float
     {
         $ids = $userIds instanceof Collection ? $userIds : collect([$userIds]);
-        if ($ids->isEmpty()) return 0.0;
+        if ($ids->isEmpty()) {
+            return 0.0;
+        }
 
         return (float) DealPayment::query()
             ->where('organization_id', $organizationId)
@@ -330,10 +342,13 @@ class TargetProgressService
         $at ??= now();
         $start = Carbon::parse($target->period_start)->startOfDay();
         $end = $this->periodEnd($target);
-        if ($at->lt($start)) return 0.0;
+        if ($at->lt($start)) {
+            return 0.0;
+        }
 
         $total = max(1, $this->workingDays($start, $end));
         $elapsed = $this->workingDays($start, $at->copy()->min($end));
+
         return min(100, round(($elapsed / $total) * 100, 2));
     }
 
@@ -341,8 +356,11 @@ class TargetProgressService
     {
         $days = 0;
         for ($day = $from->copy(); $day->lte($to); $day->addDay()) {
-            if (!$day->isWeekend()) $days++;
+            if (! $day->isWeekend()) {
+                $days++;
+            }
         }
+
         return $days;
     }
 }

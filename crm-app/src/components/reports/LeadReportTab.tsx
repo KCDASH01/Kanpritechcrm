@@ -223,13 +223,13 @@ export function LeadReportTab({ assignedToFilter, canFilterByMember = true }: Pr
         )}
 
         {meta && meta.last_page > 1 && (
-          <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-4 py-4 sm:px-5">
             <span className="text-xs text-gray-400">Page {meta.current_page} of {meta.last_page} · {meta.total} leads</span>
             <div className="flex gap-2">
               <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
-                className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-gray-50">← Prev</button>
+                className="min-h-10 px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-gray-50">← Prev</button>
               <button onClick={() => setPage((p) => Math.min(meta.last_page, p + 1))} disabled={page === meta.last_page}
-                className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-gray-50">Next →</button>
+                className="min-h-10 px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-gray-50">Next →</button>
             </div>
           </div>
         )}

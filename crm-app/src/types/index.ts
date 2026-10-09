@@ -662,6 +662,112 @@ export interface RevenueReportFilters {
   service_type?: string;
 }
 
+// ── Geographic Business Analytics ───────────────────────────────────────────
+export interface GeographicMoney {
+  currency: string;
+  amount: number;
+}
+
+export type GeographicMarket = 'international' | 'domestic';
+export type GeographicDateBasis = 'deal_created' | 'deal_won' | 'payment_collection';
+export type GeographicRankMetric = 'total_business_value' | 'won_business_value' | 'collected_revenue' | 'total_deals' | 'won_deals';
+
+export interface GeographicFilters {
+  market?: GeographicMarket;
+  date_basis?: GeographicDateBasis;
+  date_from?: string;
+  date_to?: string;
+  assigned_to?: number;
+  department_id?: number;
+  status?: 'open' | 'won' | 'lost' | '';
+  service_type?: string;
+  country?: string;
+  state?: string;
+  city?: string;
+  rank_by?: GeographicRankMetric;
+  search?: string;
+  sort_by?: 'date' | 'amount';
+  sort_dir?: 'asc' | 'desc';
+  page?: number;
+  per_page?: number;
+}
+
+export interface GeographicSummary {
+  total_deals: number;
+  won_deals: number;
+  total_business_value: GeographicMoney[];
+  won_business_value: GeographicMoney[];
+  collected_revenue: GeographicMoney[];
+  outstanding_receivables: GeographicMoney[];
+}
+
+export interface GeographicLocationRow {
+  name: string;
+  country: string;
+  state: string;
+  city: string;
+  rank: number;
+  leads: number;
+  total_deals: number;
+  open_deals: number;
+  won_deals: number;
+  lost_deals: number;
+  total_business_value: GeographicMoney[];
+  won_business_value: GeographicMoney[];
+  collected_revenue: GeographicMoney[];
+  outstanding_receivables: GeographicMoney[];
+  contribution_percent: number;
+  employees: { name: string; deals: number }[];
+}
+
+export interface GeographicOverview {
+  summary: GeographicSummary;
+  locations: GeographicLocationRow[];
+  ranking: {
+    requested_metric: GeographicRankMetric;
+    applied_metric: GeographicRankMetric;
+    currency: string | null;
+    warning: string | null;
+  };
+  options: {
+    countries: string[];
+    states: string[];
+    cities: Record<string, string[]>;
+    services: string[];
+  };
+  meta: {
+    market: GeographicMarket;
+    level: 'country' | 'state' | 'city';
+    location_attribution: string;
+    locality_level: 'city';
+    currency_policy: string;
+  };
+}
+
+export interface GeographicDealRow {
+  id: number;
+  title: string;
+  reference: string;
+  client?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  country: string;
+  state: string;
+  city: string;
+  created_at?: string | null;
+  closed_at?: string | null;
+  assigned_employee?: string | null;
+  department?: string | null;
+  service_type?: string | null;
+  value: number;
+  currency: string;
+  stage?: string | null;
+  status: 'open' | 'won' | 'lost';
+  collected: number;
+  outstanding: number;
+  payment_references: { id: number; date?: string | null; method?: string | null; reference?: string | null }[];
+}
+
 export interface RecurringBusiness {
   id: number;
   business_name: string;

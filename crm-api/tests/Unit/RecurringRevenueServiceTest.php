@@ -8,7 +8,7 @@ use App\Services\DealStatusService;
 use App\Services\RecurringRevenueService;
 use Carbon\Carbon;
 use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 class RecurringRevenueServiceTest extends TestCase
 {
@@ -17,7 +17,7 @@ class RecurringRevenueServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new RecurringRevenueService();
+        $this->service = new RecurringRevenueService;
     }
 
     public static function frequencyCases(): array
@@ -70,6 +70,6 @@ class RecurringRevenueServiceTest extends TestCase
     public function test_recurring_deal_never_auto_wins_after_a_cycle_payment(): void
     {
         $deal = new Deal(['status' => 'open', 'business_type' => 'RECURRING', 'value' => 25000]);
-        self::assertFalse((new DealStatusService())->markWonIfFullyPaid($deal));
+        self::assertFalse((new DealStatusService)->markWonIfFullyPaid($deal));
     }
 }

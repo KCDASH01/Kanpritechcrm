@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { dealsApi, type DealPayload } from '@/lib/api/deals';
@@ -743,18 +744,21 @@ function TransactionsModal({ deal, onAddPayment, onViewReceipt }: {
 
 export default function DealsPage() {
   const qc = useQueryClient();
+  const searchParams = useSearchParams();
   const { user, isOwner, isAdmin, isPaidPlan } = useAuthStore();
 
   const isManager = isOwner() || isAdmin();
   const [viewMine, setViewMine]         = useState(!isManager);
   const [page, setPage]                 = useState(1);
-  const [search, setSearch]             = useState('');
+  const linkedDealSearch = searchParams.get('search')?.trim() ?? '';
+  const [search, setSearch]             = useState(linkedDealSearch);
   const [statusFilter, setStatusFilter] = useState('');
   const [modal, setModal]               = useState<Deal | null | undefined>(undefined);
   const [addPaymentModal, setAddPaymentModal] = useState<Deal | null>(null);
   const [txnsModal, setTxnsModal]             = useState<Deal | null>(null);
   const [receiptModal, setReceiptModal]       = useState<{ payment: DealPayment; deal: Deal } | null>(null);
   const [saveError, setSaveError]       = useState('');
+  const [openedDeepLinkId, setOpenedDeepLinkId] = useState<number | null>(null);
 
   // Receipt settings — fetched once, used when opening a receipt
   const { data: receiptSettings } = useQuery({
@@ -775,6 +779,17 @@ export default function DealsPage() {
     }),
     placeholderData: keepPreviousData,
   });
+
+  useEffect(() => {
+    const linkedDeal = linkedDealSearch
+      ? data?.data.find((deal) => deal.title.toLocaleLowerCase() === linkedDealSearch.toLocaleLowerCase())
+      : undefined;
+    if (linkedDeal && openedDeepLinkId !== linkedDeal.id) {
+      setSaveError('');
+      setModal(linkedDeal);
+      setOpenedDeepLinkId(linkedDeal.id);
+    }
+  }, [data?.data, linkedDealSearch, openedDeepLinkId]);
 
   const createMutation = useMutation({
     mutationFn: (p: DealPayload) => dealsApi.create(p),
@@ -864,10 +879,10 @@ export default function DealsPage() {
   const atDealLimit = !isPaidPlan() && totalDeals >= planLimits.deals;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4 sm:space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
+      <div className="flex flex-col items-stretch justify-between gap-4 sm:flex-row sm:items-center">
+        <div className="min-w-0">
           <h1 className="text-xl font-bold text-gray-900">Deals</h1>
           {meta && (
             <p className="text-xs text-gray-400 mt-0.5">
@@ -881,13 +896,13 @@ export default function DealsPage() {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full items-center gap-2 sm:w-auto">
           {/* My Deals / All Deals toggle — managers only */}
           {isManager && (
-            <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+            <div className="flex flex-1 items-center gap-1 rounded-xl bg-gray-100 p-1 sm:flex-none">
               <button
                 onClick={() => { setViewMine(true); setPage(1); }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition-all sm:flex-none sm:py-1.5 ${
                   viewMine ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
@@ -895,7 +910,7 @@ export default function DealsPage() {
               </button>
               <button
                 onClick={() => { setViewMine(false); setPage(1); }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition-all sm:flex-none sm:py-1.5 ${
                   !viewMine ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
@@ -908,7 +923,7 @@ export default function DealsPage() {
               onClick={() => { if (!atDealLimit) { setSaveError(''); setModal(null); } }}
               disabled={atDealLimit}
               title={atDealLimit ? `You've reached the ${planLimits.deals}-deal limit on the Free plan. Upgrade to add more.` : undefined}
-              className={`flex items-center gap-1.5 text-white text-sm font-semibold
+              className={`flex min-h-10 flex-1 items-center justify-center gap-1.5 text-white text-sm font-semibold sm:flex-none
                          px-4 py-2 rounded-xl transition-colors shadow-sm
                          ${atDealLimit
                            ? 'bg-gray-300 cursor-not-allowed shadow-none'
@@ -924,8 +939,8 @@ export default function DealsPage() {
       </div>
 
       {/* Status filters + search */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative">
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="relative w-full sm:w-auto">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
           </svg>
@@ -934,15 +949,15 @@ export default function DealsPage() {
             placeholder="Search deals…"
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            className="border border-gray-200 rounded-xl pl-9 pr-4 py-2.5 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow bg-white"
+            className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-4 text-sm transition-shadow focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:w-64"
           />
         </div>
-        <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+        <div className="flex max-w-full gap-1 overflow-x-auto rounded-xl bg-gray-100 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {STATUS_PILLS.map((s) => (
             <button
               key={s.value}
               onClick={() => { setStatusFilter(s.value); setPage(1); }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 ${
+              className={`min-h-9 shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all duration-150 ${
                 statusFilter === s.value
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'text-gray-500 hover:text-gray-700'
@@ -964,10 +979,32 @@ export default function DealsPage() {
         )}
       </div>
 
-      {/* Table */}
+      {/* Responsive deal list */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         {isLoading ? (
-          <SkeletonTable rows={6} cols={8} />
+          <>
+            <div className="divide-y divide-gray-100 md:hidden">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="space-y-4 p-4 animate-pulse">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-2">
+                      <div className="h-4 w-44 rounded bg-gray-100" />
+                      <div className="h-3 w-28 rounded bg-gray-100" />
+                    </div>
+                    <div className="h-6 w-14 rounded-full bg-gray-100" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="h-12 rounded-xl bg-gray-50" />
+                    <div className="h-12 rounded-xl bg-gray-50" />
+                  </div>
+                  <div className="h-10 rounded-xl bg-gray-100" />
+                </div>
+              ))}
+            </div>
+            <div className="hidden md:block">
+              <SkeletonTable rows={6} cols={8} />
+            </div>
+          </>
         ) : deals.length === 0 ? (
           <div className="px-6 py-16 text-center">
             <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -1004,7 +1041,133 @@ export default function DealsPage() {
             )}
           </div>
         ) : (
-          <table className="min-w-[1100px] w-full divide-y divide-gray-100">
+          <>
+            {/* Mobile cards keep every deal field and action reachable without horizontal scrolling. */}
+            <div className="divide-y divide-gray-100 md:hidden">
+              <AnimatePresence initial={false}>
+                {deals.map((deal, i) => {
+                  const pastDue = Boolean(
+                    deal.expected_close_date
+                    && deal.status === 'open'
+                    && new Date(deal.expected_close_date) < new Date(),
+                  );
+                  const remaining = dealRemaining(deal);
+                  const displayDate = deal.status !== 'open' && deal.closed_at
+                    ? deal.closed_at
+                    : deal.expected_close_date;
+
+                  return (
+                    <motion.article
+                      key={deal.id}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      transition={{ delay: i * 0.03, type: 'spring', damping: 30, stiffness: 400 }}
+                      className="p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h2 className="break-words text-sm font-semibold leading-5 text-gray-900">{deal.title}</h2>
+                          {deal.lead && (
+                            <p className="mt-1 truncate text-xs text-gray-400">{deal.lead.full_name}</p>
+                          )}
+                        </div>
+                        <div className="shrink-0"><Badge value={deal.status} /></div>
+                      </div>
+
+                      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3">
+                        <div className="min-w-0">
+                          <dt className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Value</dt>
+                          <dd className="mt-1 break-words text-sm font-semibold text-gray-800">
+                            {deal.value ? formatDealMoney(deal.value, deal.currency) : '—'}
+                          </dd>
+                          <dd className="mt-0.5 text-[11px] text-gray-400">
+                            {currencyLabel(deal.currency)}
+                            {deal.probability != null ? ` · ${deal.probability}% prob.` : ''}
+                          </dd>
+                        </div>
+                        <div className="min-w-0">
+                          <dt className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Stage</dt>
+                          <dd className="mt-1 break-words text-sm text-gray-700">{deal.stage?.name ?? '—'}</dd>
+                        </div>
+                        <div className="min-w-0">
+                          <dt className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Close date</dt>
+                          <dd className={`mt-1 text-sm ${pastDue ? 'font-medium text-red-500' : displayDate ? 'text-gray-700' : 'text-gray-400'}`}>
+                            {displayDate ? fmtDate(displayDate) : '—'}
+                          </dd>
+                        </div>
+                        <div className="min-w-0">
+                          <dt className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Remaining</dt>
+                          <dd className={`mt-1 break-words text-sm font-semibold ${
+                            remaining === 0 ? 'text-emerald-600' : remaining == null ? 'text-gray-400' : 'text-amber-700'
+                          }`}>
+                            {remaining == null ? '—' : formatDealMoney(remaining, deal.currency)}
+                          </dd>
+                        </div>
+                      </dl>
+
+                      <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-gray-50 px-3 py-2.5">
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Received</p>
+                          <p className={`mt-0.5 break-words text-sm font-semibold ${
+                            deal.total_received != null && deal.total_received > 0 ? 'text-emerald-700' : 'text-gray-400'
+                          }`}>
+                            {deal.total_received != null && deal.total_received > 0
+                              ? formatDealMoney(deal.total_received, deal.currency)
+                              : deal.status === 'open' ? 'Not entered' : '—'}
+                          </p>
+                        </div>
+                        {(deal.payments_count ?? 0) > 0 || deal.status === 'open' ? (
+                          <button
+                            onClick={() => setTxnsModal(deal)}
+                            className="min-h-10 shrink-0 rounded-lg px-2 text-xs font-semibold text-indigo-600 transition-colors hover:bg-indigo-50"
+                          >
+                            Transactions ({deal.payments_count ?? 0})
+                          </button>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-2 gap-2">
+                        {deal.client_id && (
+                          <Link
+                            href={`/leads?new=1&client_id=${deal.client_id}`}
+                            className="flex min-h-10 items-center justify-center rounded-xl border border-gray-200 px-3 text-xs font-semibold text-violet-600 transition-colors hover:bg-violet-50"
+                          >
+                            + Opportunity
+                          </Link>
+                        )}
+                        {deal.status === 'open' && (
+                          <button
+                            onClick={() => setAddPaymentModal(deal)}
+                            className="min-h-10 rounded-xl border border-emerald-200 px-3 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-50"
+                          >
+                            Add payment
+                          </button>
+                        )}
+                        <button
+                          onClick={() => { setSaveError(''); setModal(deal); }}
+                          className="min-h-10 rounded-xl border border-indigo-200 px-3 text-xs font-semibold text-indigo-600 transition-colors hover:bg-indigo-50"
+                        >
+                          Edit deal
+                        </button>
+                        {isManager && (
+                          <button
+                            onClick={() => { if (confirm('Delete this deal?')) deleteMutation.mutate(deal.id); }}
+                            className="min-h-10 rounded-xl border border-red-100 px-3 text-xs font-semibold text-red-500 transition-colors hover:bg-red-50"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    </motion.article>
+                  );
+                })}
+              </AnimatePresence>
+            </div>
+
+            {/* Existing desktop/tablet presentation, now scroll-safe at intermediate widths. */}
+            <div className="hidden overflow-x-auto md:block">
+              <table className="min-w-[1100px] w-full divide-y divide-gray-100">
             <thead className="bg-gray-50/80">
               <tr>
                 {['Deal', 'Value', 'Stage', 'Status', 'Close Date', 'Received', 'Remaining', ''].map((h) => (
@@ -1144,12 +1307,14 @@ export default function DealsPage() {
                 })}
               </AnimatePresence>
             </tbody>
-          </table>
+              </table>
+            </div>
+          </>
         )}
 
         {/* Pagination */}
         {meta && meta.last_page > 1 && (
-          <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between text-sm text-gray-500">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-4 py-4 text-sm text-gray-500 sm:px-5">
             <span className="text-xs">
               Showing {(meta.current_page - 1) * (meta.per_page ?? 15) + 1}–
               {Math.min(meta.current_page * (meta.per_page ?? 15), meta.total)} of {meta.total}
@@ -1158,14 +1323,14 @@ export default function DealsPage() {
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="px-3 py-1.5 border border-gray-200 rounded-xl text-xs disabled:opacity-40 hover:bg-gray-50 transition-colors"
+                className="min-h-10 px-3 py-1.5 border border-gray-200 rounded-xl text-xs disabled:opacity-40 hover:bg-gray-50 transition-colors"
               >
                 ← Prev
               </button>
               <button
                 onClick={() => setPage((p) => Math.min(meta.last_page, p + 1))}
                 disabled={page === meta.last_page}
-                className="px-3 py-1.5 border border-gray-200 rounded-xl text-xs disabled:opacity-40 hover:bg-gray-50 transition-colors"
+                className="min-h-10 px-3 py-1.5 border border-gray-200 rounded-xl text-xs disabled:opacity-40 hover:bg-gray-50 transition-colors"
               >
                 Next →
               </button>

@@ -160,8 +160,8 @@ export default function MeetingsPage() {
         </p>
       </div>
 
-      <div className="flex gap-3 flex-wrap items-center">
-        <div className="relative">
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="relative w-full sm:w-auto">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
           </svg>
@@ -170,7 +170,7 @@ export default function MeetingsPage() {
             placeholder="Search name, company, phone, email…"
             value={search}
             onChange={(e) => updateParams({ search: e.target.value || null, page: null })}
-            className="border border-gray-200 rounded-xl pl-9 pr-4 py-2.5 text-sm w-72 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-shadow bg-white"
+            className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-4 text-sm transition-shadow focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:w-72"
           />
         </div>
 

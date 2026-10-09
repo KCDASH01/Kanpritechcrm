@@ -13,6 +13,7 @@ use App\Http\Controllers\Employee\EmployeeController;
 use App\Http\Controllers\Calendar\CalendarController;
 use App\Http\Controllers\Client\ClientController;
 use App\Http\Controllers\FollowUp\FollowUpController;
+use App\Http\Controllers\GeographicAnalytics\GeographicAnalyticsController;
 use App\Http\Controllers\Important\ImportantController;
 use App\Http\Controllers\Meeting\MeetingController;
 use App\Http\Controllers\Lead\LeadController;
@@ -171,6 +172,11 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('reports/leads/export', [ReportsController::class, 'exportLeadReport']);
             Route::get('reports/revenue', [ReportsController::class, 'revenueReport']);
             Route::get('reports/revenue/export', [ReportsController::class, 'exportRevenueReport']);
+
+            // Standalone geographic business analytics (read-only)
+            Route::get('geographic-analytics', [GeographicAnalyticsController::class, 'overview']);
+            Route::get('geographic-analytics/deals', [GeographicAnalyticsController::class, 'deals']);
+            Route::get('geographic-analytics/export', [GeographicAnalyticsController::class, 'export']);
 
             // Bulk lead import (Business plan feature)
             Route::post('leads/bulk-import', [LeadController::class, 'bulkImport']);

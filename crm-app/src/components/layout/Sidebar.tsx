@@ -30,6 +30,7 @@ const SECTIONS: { label: string; items: NavItem[] }[] = [
       { href: '/recurring-business', label: 'Recurring Business', icon: 'M4 4v6h6M20 20v-6h-6M5.64 18.36A9 9 0 0018.36 5.64L20 7M4 17l1.64 1.36' },
       { href: '/activities', label: 'Activities', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4' },
       { href: '/calendar',   label: 'Calendar',   icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
+      { href: '/geographic-analytics', label: 'Geographic Analytics', icon: 'M12 21a9 9 0 100-18 9 9 0 000 18zm0 0c2.21 0 4-4.03 4-9s-1.79-9-4-9-4 4.03-4 9 1.79 9 4 9zm-8.5-9h17M5 7h14M5 17h14' },
       { href: '/reports',    label: 'Reports',    icon: 'M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z' },
       { href: '/targets',    label: 'Targets',    icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
     ],
@@ -84,7 +85,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
     if (href === '/team' || href === '/departments') return canManageTeam();
     if (href === '/billing') return canManageBilling() || isSsoUser();
     // Reports & Targets are Business/Enterprise-only features — hide when not on a paid plan
-    if (href === '/reports') return isPaidPlan();
+    if (href === '/reports' || href === '/geographic-analytics') return isPaidPlan();
     if (href === '/calendar' || href === '/targets') return isPaidPlan();
     return true;
   };

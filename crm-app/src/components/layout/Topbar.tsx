@@ -20,6 +20,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/deals':       'Deals',
   '/activities':  'Activities',
   '/calendar':    'Calendar',
+  '/geographic-analytics': 'Geographic Business Analytics',
   '/reports':     'Reports',
   '/targets':     'Targets',
   '/team':        'Team',
