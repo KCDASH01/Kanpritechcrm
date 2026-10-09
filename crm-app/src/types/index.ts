@@ -267,6 +267,19 @@ export interface Department {
 }
 
 // ── Sales Targets ─────────────────────────────────────────────────────────────
+export type SalesTargetType = 'monthly' | 'custom';
+
+export interface SalesTargetUpsertPayload {
+  target_id?: number;
+  user_id: number;
+  target_type: SalesTargetType;
+  target_amount: number;
+  receivable_amount: number;
+  period_start: string;
+  period_end: string;
+  notes?: string;
+}
+
 export interface SalesTarget {
   id: number;
   user_id: number;
@@ -276,7 +289,7 @@ export interface SalesTarget {
   notes?: string;
   period_start: string;
   period_end: string;
-  target_type: 'monthly' | 'custom';
+  target_type: SalesTargetType;
   user?: { id: number; name: string };
 }
 
@@ -292,7 +305,7 @@ export interface SalesTargetRow {
   period_start: string;
   period_end: string;
   period_label: string;
-  target_type: 'monthly' | 'custom';
+  target_type: SalesTargetType;
   period_status: 'upcoming' | 'active' | 'completed';
   department?: string | null;
   sales_percentage: number | null;
@@ -315,7 +328,7 @@ export interface MyTargetProgress {
   id?: number;
   period_end: string;
   period_label: string;
-  target_type: 'monthly' | 'custom';
+  target_type: SalesTargetType;
   period_status: 'upcoming' | 'active' | 'completed';
   sales_percentage: number | null;
   collection_percentage: number | null;
@@ -332,7 +345,7 @@ export interface TargetProgress {
   period_end?: string;
   period_label?: string;
   period_status?: 'upcoming' | 'active' | 'completed';
-  target_type?: 'monthly' | 'custom';
+  target_type?: SalesTargetType;
   has_target: boolean;
   target_count: number;
   target_amount: number;

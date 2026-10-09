@@ -1,5 +1,5 @@
 import client from './client';
-import type { SalesTargetRow, MyTargetProgress, LeaderboardData, LeaderboardSettings } from '@/types';
+import type { SalesTargetRow, MyTargetProgress, LeaderboardData, LeaderboardSettings, SalesTargetUpsertPayload } from '@/types';
 
 export const salesTargetsApi = {
   // GET /sales-targets?month=YYYY-MM
@@ -8,16 +8,8 @@ export const salesTargetsApi = {
     client.get<{ data: SalesTargetRow[] }>('/sales-targets', { params }).then((r) => r.data.data),
 
   // POST /sales-targets — admin/owner only
-  upsert: (payload: {
-    target_id?: number;
-    user_id: number;
-    target_type: 'monthly' | 'custom';
-    target_amount: number;
-    receivable_amount: number;
-    period_start: string;
-    period_end?: string;
-    notes?: string;
-  }) => client.post('/sales-targets', payload).then((r) => r.data),
+  upsert: (payload: SalesTargetUpsertPayload) =>
+    client.post('/sales-targets', payload).then((r) => r.data),
 
   // PATCH /sales-targets/{id}/received — admin OR own row
   updateReceived: (id: number, received_amount: number, notes?: string) =>

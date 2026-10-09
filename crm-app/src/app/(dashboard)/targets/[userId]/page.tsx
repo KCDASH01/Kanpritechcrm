@@ -11,7 +11,7 @@ import {
 import { salesTargetsApi } from '@/lib/api/salesTargets';
 import { useAuthStore } from '@/store/authStore';
 import { SkeletonCard } from '@/components/ui/Skeleton';
-import type { MyTargetProgress } from '@/types';
+import type { MyTargetProgress, SalesTargetUpsertPayload } from '@/types';
 
 // ── Helpers (mirrors targets/page.tsx) ───────────────────────────────────────
 
@@ -96,11 +96,11 @@ export default function UserTargetDetailPage() {
   const employeeName = data?.user?.name ?? '—';
   const employeeEmail = data?.user?.email ?? '';
 
-  // Current month = last entry
-  const current = history[history.length - 1] ?? null;
+  // History is returned newest-first, so the first row is the current/latest target.
+  const current = history[0] ?? null;
 
   const upsertMutation = useMutation({
-    mutationFn: (payload: { user_id: number; target_type: 'monthly' | 'custom'; target_amount: number; receivable_amount: number; period_start: string; period_end?: string }) =>
+    mutationFn: (payload: SalesTargetUpsertPayload) =>
       salesTargetsApi.upsert(payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['user-target-progress', userId] });
@@ -111,13 +111,13 @@ export default function UserTargetDetailPage() {
 
   // Chart data
   const salesChartData = history.map((h) => ({
-    month:    fmtMonthLabel(h.period_start),
+    month:    h.period_label || fmtMonthLabel(h.period_start),
     Target:   h.target_amount,
     Achieved: h.achieved_amount,
   }));
 
   const collChartData = history.map((h) => ({
-    month:    fmtMonthLabel(h.period_start),
+    month:    h.period_label || fmtMonthLabel(h.period_start),
     'Collection Target': h.receivable_amount,
     Received: h.received_amount ?? 0,
   }));
@@ -347,8 +347,9 @@ export default function UserTargetDetailPage() {
                                 <button
                                   onClick={() => {
                                     upsertMutation.mutate({
+                                      target_id:         h.target_id ?? h.id,
                                       user_id:           userId,
-                                      target_type:       h.target_type ?? 'monthly',
+                                      target_type:       h.target_type,
                                       target_amount:     parseFloat(editTarget) || 0,
                                       receivable_amount: parseFloat(editReceivable) || 0,
                                       period_start:      h.period_start,

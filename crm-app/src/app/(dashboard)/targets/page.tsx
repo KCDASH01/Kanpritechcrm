@@ -10,7 +10,7 @@ import { departmentsApi } from '@/lib/api/departments';
 import { useAuthStore } from '@/store/authStore';
 import { AccessDenied } from '@/components/ui/AccessDenied';
 import { Modal } from '@/components/ui/Modal';
-import type { MyTargetProgress, SalesTargetRow } from '@/types';
+import type { MyTargetProgress, SalesTargetRow, SalesTargetType, SalesTargetUpsertPayload } from '@/types';
 
 function fmtAmount(value: number) {
   if (value >= 1_00_00_000) return `₹${(value / 1_00_00_000).toFixed(2)}Cr`;
@@ -155,7 +155,7 @@ function TargetDetailsModal({ targetId, onClose }: { targetId: number | null; on
 type TargetForm = {
   targetId?: number;
   userId: number | '';
-  targetType: 'monthly' | 'custom';
+  targetType: SalesTargetType;
   month: string;
   startDate: string;
   endDate: string;
@@ -254,10 +254,13 @@ function ManagerView() {
 
   const submit = () => {
     if (!form || !form.userId) return;
+    if (form.targetType === 'monthly' && !form.month) return;
+    if (form.targetType === 'custom' && (!form.startDate || !form.endDate || form.endDate < form.startDate)) return;
     const [year, monthNumber] = form.month.split('-').map(Number);
     const periodStart = form.targetType === 'monthly' ? `${form.month}-01` : form.startDate;
     const periodEnd = form.targetType === 'monthly' ? `${form.month}-${String(new Date(year, monthNumber, 0).getDate()).padStart(2, '0')}` : form.endDate;
-    save.mutate({ target_id: form.targetId, user_id: Number(form.userId), target_type: form.targetType, period_start: periodStart, period_end: periodEnd, target_amount: Number(form.targetAmount), receivable_amount: Number(form.collectionAmount) });
+    const payload: SalesTargetUpsertPayload = { target_id: form.targetId, user_id: Number(form.userId), target_type: form.targetType, period_start: periodStart, period_end: periodEnd, target_amount: Number(form.targetAmount), receivable_amount: Number(form.collectionAmount) };
+    save.mutate(payload);
   };
 
   return <div className="space-y-5">
