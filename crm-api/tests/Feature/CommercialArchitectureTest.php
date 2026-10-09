@@ -30,7 +30,7 @@ class CommercialArchitectureTest extends TestCase
         Schema::create('deals', function (Blueprint $t) { $t->id(); $t->unsignedBigInteger('organization_id'); $t->unsignedBigInteger('client_id')->nullable(); $t->unsignedBigInteger('lead_id')->nullable(); $t->unsignedBigInteger('assigned_to')->nullable(); $t->unsignedBigInteger('created_by'); $t->unsignedBigInteger('pipeline_id')->nullable(); $t->unsignedBigInteger('stage_id')->nullable(); $t->string('title'); $t->decimal('value', 15, 2)->default(0); $t->string('currency')->default('INR'); $t->string('status')->default('open'); $t->string('business_type')->nullable(); $t->date('closed_at')->nullable(); $t->timestamps(); $t->softDeletes(); });
         Schema::create('deal_payments', function (Blueprint $t) { $t->id(); $t->unsignedBigInteger('deal_id'); $t->unsignedBigInteger('organization_id'); $t->unsignedBigInteger('created_by'); $t->decimal('amount', 15, 2); $t->date('payment_date'); $t->string('payment_mode')->default('other'); $t->timestamps(); });
         Schema::create('recurring_businesses', function (Blueprint $t) { $t->id(); $t->unsignedBigInteger('organization_id'); $t->unsignedBigInteger('client_id')->nullable(); $t->unsignedBigInteger('lead_id')->nullable(); $t->unsignedBigInteger('deal_id'); $t->unsignedBigInteger('assigned_to')->nullable(); $t->unsignedBigInteger('department_id')->nullable(); $t->unsignedBigInteger('created_by')->nullable(); $t->string('business_name'); $t->decimal('amount', 15, 2); $t->string('currency')->default('INR'); $t->string('frequency'); $t->date('start_date'); $t->date('end_date')->nullable(); $t->date('next_billing_date')->nullable(); $t->unsignedInteger('billing_cycles')->nullable(); $t->decimal('contract_value', 15, 2)->nullable(); $t->string('status')->default('ACTIVE'); $t->timestamps(); });
-        Schema::create('sales_targets', function (Blueprint $t) { $t->id(); $t->unsignedBigInteger('organization_id'); $t->unsignedBigInteger('user_id'); $t->decimal('target_amount', 15, 2)->default(0); $t->decimal('receivable_amount', 15, 2)->default(0); $t->decimal('received_amount', 15, 2)->nullable(); $t->string('notes')->nullable(); $t->date('period_start'); $t->timestamps(); });
+        Schema::create('sales_targets', function (Blueprint $t) { $t->id(); $t->unsignedBigInteger('organization_id'); $t->unsignedBigInteger('user_id'); $t->string('target_type')->default('monthly'); $t->decimal('target_amount', 15, 2)->default(0); $t->decimal('receivable_amount', 15, 2)->default(0); $t->decimal('received_amount', 15, 2)->nullable(); $t->string('notes')->nullable(); $t->date('period_start'); $t->date('period_end')->nullable(); $t->unsignedBigInteger('created_by')->nullable(); $t->unsignedBigInteger('updated_by')->nullable(); $t->timestamps(); });
     }
 
     public function test_same_client_can_have_multiple_independent_leads_and_deals(): void
@@ -127,6 +127,38 @@ class CommercialArchitectureTest extends TestCase
         $employee = $service->progress(1, $employeeA->id, '2027-01-01', '2027-01-31');
         self::assertSame(240000.0, $employee['achieved_amount']);
         self::assertSame(150000.0, $employee['received_amount']);
+    }
+
+    public function test_custom_target_counts_only_records_inside_its_inclusive_date_range(): void
+    {
+        $employee = User::forceCreate(['organization_id' => 1, 'name' => 'Custom Period', 'email' => 'custom@example.com', 'password' => 'password', 'role' => 'employee']);
+        $target = SalesTarget::create(['organization_id' => 1, 'user_id' => $employee->id, 'target_type' => 'custom', 'target_amount' => 200000, 'receivable_amount' => 100000, 'period_start' => '2027-01-10', 'period_end' => '2027-02-09']);
+        $inside = Deal::create(['organization_id' => 1, 'assigned_to' => $employee->id, 'created_by' => $employee->id, 'title' => 'Inside', 'value' => 120000, 'status' => 'won', 'closed_at' => '2027-01-10']);
+        Deal::create(['organization_id' => 1, 'assigned_to' => $employee->id, 'created_by' => $employee->id, 'title' => 'Outside', 'value' => 500000, 'status' => 'won', 'closed_at' => '2027-02-10']);
+        DealPayment::create(['organization_id' => 1, 'deal_id' => $inside->id, 'created_by' => $employee->id, 'amount' => 75000, 'payment_date' => '2027-02-09']);
+        DealPayment::create(['organization_id' => 1, 'deal_id' => $inside->id, 'created_by' => $employee->id, 'amount' => 25000, 'payment_date' => '2027-02-10']);
+
+        $progress = (new TargetProgressService())->progressForTarget($target);
+        self::assertSame(120000.0, $progress['achieved_amount']);
+        self::assertSame(60.0, $progress['sales_percentage']);
+        self::assertSame(75000.0, $progress['received_amount']);
+        self::assertSame(75.0, $progress['collection_percentage']);
+        self::assertSame('10 Jan 2027 – 09 Feb 2027', $progress['period_label']);
+    }
+
+    public function test_team_progress_respects_each_employee_target_dates_instead_of_one_shared_window(): void
+    {
+        $employeeA = User::forceCreate(['organization_id' => 1, 'name' => 'Early', 'email' => 'early@example.com', 'password' => 'password', 'role' => 'employee']);
+        $employeeB = User::forceCreate(['organization_id' => 1, 'name' => 'Late', 'email' => 'late@example.com', 'password' => 'password', 'role' => 'employee']);
+        SalesTarget::create(['organization_id' => 1, 'user_id' => $employeeA->id, 'target_type' => 'custom', 'target_amount' => 100000, 'receivable_amount' => 50000, 'period_start' => '2027-01-01', 'period_end' => '2027-01-31']);
+        SalesTarget::create(['organization_id' => 1, 'user_id' => $employeeB->id, 'target_type' => 'custom', 'target_amount' => 100000, 'receivable_amount' => 50000, 'period_start' => '2027-01-16', 'period_end' => '2027-02-15']);
+        Deal::create(['organization_id' => 1, 'assigned_to' => $employeeA->id, 'created_by' => $employeeA->id, 'title' => 'Early Win', 'value' => 50000, 'status' => 'won', 'closed_at' => '2027-01-10']);
+        Deal::create(['organization_id' => 1, 'assigned_to' => $employeeB->id, 'created_by' => $employeeB->id, 'title' => 'Late Win', 'value' => 75000, 'status' => 'won', 'closed_at' => '2027-01-20']);
+        $team = (new TargetProgressService())->activeTeamProgress(1, Carbon::parse('2027-01-20'));
+        self::assertSame(200000.0, $team['target_amount']);
+        self::assertSame(125000.0, $team['achieved_amount']);
+        self::assertSame(62.5, $team['sales_percentage']);
+        self::assertCount(2, $team['periods']);
     }
 
     /** @return array<string, mixed> */

@@ -14,6 +14,7 @@ import { useAuthStore } from '@/store/authStore';
 import { SkeletonCard, SkeletonTable } from '@/components/ui/Skeleton';
 import { Badge } from '@/components/ui/Badge';
 import { RemindersCard } from '@/components/dashboard/RemindersCard';
+import { PerformanceLeaderboard } from '@/components/dashboard/PerformanceLeaderboard';
 
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
 const cardItem  = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { type: 'spring' as const, damping: 24, stiffness: 300 } } };
@@ -335,6 +336,8 @@ export default function DashboardPage() {
         onSelectMember={setSelectedMember}
         onOpen={(type) => { setDetailPage(1); setDetailType(type); }}
       />}
+
+      <PerformanceLeaderboard canManage={canManage} currentUserId={user?.id} />
 
       {/* Quick actions */}
       <motion.div className="flex gap-2.5 flex-wrap" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.35 }}>

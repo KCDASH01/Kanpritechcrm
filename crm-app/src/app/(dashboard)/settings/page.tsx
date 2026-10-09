@@ -7,6 +7,7 @@ import { authApi } from '@/lib/api/auth';
 import { emailTemplatesApi, type EmailTemplatePayload } from '@/lib/api/emailTemplates';
 import { organizationApi, type ReceiptSettings } from '@/lib/api/organization';
 import type { EmailTemplate } from '@/types';
+import { LeaderboardSettingsCard } from '@/components/settings/LeaderboardSettingsCard';
 
 const inputCls = 'w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
 
@@ -184,6 +185,8 @@ export default function SettingsPage() {
           </form>
         </div>
       )}
+
+      {canManage && <LeaderboardSettingsCard />}
 
       {/* ── Email Templates (managers only) ─────────────────────────────────── */}
       {canManage && (

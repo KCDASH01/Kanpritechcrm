@@ -100,7 +100,7 @@ export default function UserTargetDetailPage() {
   const current = history[history.length - 1] ?? null;
 
   const upsertMutation = useMutation({
-    mutationFn: (payload: { user_id: number; target_amount: number; receivable_amount: number; period_start: string }) =>
+    mutationFn: (payload: { user_id: number; target_type: 'monthly' | 'custom'; target_amount: number; receivable_amount: number; period_start: string; period_end?: string }) =>
       salesTargetsApi.upsert(payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['user-target-progress', userId] });
@@ -348,9 +348,11 @@ export default function UserTargetDetailPage() {
                                   onClick={() => {
                                     upsertMutation.mutate({
                                       user_id:           userId,
+                                      target_type:       h.target_type ?? 'monthly',
                                       target_amount:     parseFloat(editTarget) || 0,
                                       receivable_amount: parseFloat(editReceivable) || 0,
                                       period_start:      h.period_start,
+                                      period_end:        h.period_end,
                                     });
                                   }}
                                   disabled={upsertMutation.isPending}

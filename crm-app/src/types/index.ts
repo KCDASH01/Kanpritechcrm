@@ -275,6 +275,8 @@ export interface SalesTarget {
   received_amount: number | null;
   notes?: string;
   period_start: string;
+  period_end: string;
+  target_type: 'monthly' | 'custom';
   user?: { id: number; name: string };
 }
 
@@ -288,6 +290,18 @@ export interface SalesTargetRow {
   achieved_amount: number;
   notes?: string;
   period_start: string;
+  period_end: string;
+  period_label: string;
+  target_type: 'monthly' | 'custom';
+  period_status: 'upcoming' | 'active' | 'completed';
+  department?: string | null;
+  sales_percentage: number | null;
+  collection_percentage: number | null;
+  remaining_sales_amount: number;
+  remaining_collection_amount: number;
+  duration_days: number;
+  days_elapsed: number;
+  days_remaining: number;
 }
 
 // 6-month history row returned by /sales-targets/my-progress
@@ -298,11 +312,27 @@ export interface MyTargetProgress {
   received_amount: number | null;
   achieved_amount: number;
   target_id: number | null;
+  id?: number;
+  period_end: string;
+  period_label: string;
+  target_type: 'monthly' | 'custom';
+  period_status: 'upcoming' | 'active' | 'completed';
+  sales_percentage: number | null;
+  collection_percentage: number | null;
+  remaining_sales_amount: number;
+  remaining_collection_amount: number;
+  duration_days: number;
+  days_elapsed: number;
+  days_remaining: number;
 }
 
 // Embedded in DashboardData for team-member view
 export interface TargetProgress {
   period_start: string;
+  period_end?: string;
+  period_label?: string;
+  period_status?: 'upcoming' | 'active' | 'completed';
+  target_type?: 'monthly' | 'custom';
   has_target: boolean;
   target_count: number;
   target_amount: number;
@@ -313,6 +343,47 @@ export interface TargetProgress {
   collection_percentage: number | null;
   scope: 'team' | 'member';
   user_id: number | null;
+  remaining_sales_amount?: number;
+  remaining_collection_amount?: number;
+  days_elapsed?: number | null;
+  days_remaining?: number | null;
+  periods?: { user_id: number; period_start: string; period_end: string }[];
+}
+
+export interface LeaderboardSettings {
+  visibility: 'everyone' | 'management' | 'disabled';
+  data_visibility: 'names_percentages' | 'amounts' | 'anonymous';
+  sales_weight: number;
+  collection_weight: number;
+}
+
+export interface LeaderboardRow {
+  target_id: number;
+  user_id: number;
+  rank: number | null;
+  employee_name: string | null;
+  department: string | null;
+  sales_percentage: number | null;
+  collection_percentage: number | null;
+  overall_score: number | null;
+  ranking_score: number | null;
+  expected_progress: number;
+  target_amount: number | null;
+  receivable_amount: number | null;
+  period_start: string;
+  period_end: string;
+  period_label: string;
+  period_status: 'active' | 'completed' | 'upcoming';
+  badges: string[];
+}
+
+export interface LeaderboardData {
+  rows: LeaderboardRow[];
+  category: 'sales' | 'collection' | 'overall';
+  mode: 'actual' | 'pace';
+  period_scope: 'active' | 'completed';
+  settings: LeaderboardSettings;
+  own_rank: LeaderboardRow | null;
 }
 
 export interface DashboardPerformance {

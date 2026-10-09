@@ -12,11 +12,15 @@ class SalesTarget extends Model
     protected $fillable = [
         'organization_id',
         'user_id',
+        'target_type',
         'target_amount',
         'receivable_amount',
         'received_amount',
         'notes',
         'period_start',
+        'period_end',
+        'created_by',
+        'updated_by',
     ];
 
     protected function casts(): array
@@ -26,6 +30,7 @@ class SalesTarget extends Model
             'receivable_amount' => 'decimal:2',
             'received_amount'   => 'decimal:2',
             'period_start'      => 'date',
+            'period_end'        => 'date',
         ];
     }
 

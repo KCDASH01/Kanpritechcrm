@@ -15,6 +15,7 @@ use App\Services\RevenueRecognitionService;
 use App\Services\TargetProgressService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 
 class DashboardController extends Controller
 {
@@ -154,8 +155,20 @@ class DashboardController extends Controller
         $revenueTrend = $this->revenue->dailyTrend($orgId, $assignedTo ? (int) $assignedTo : null, $trendStart, $trendEnd);
         $revenueBreakdown = $this->revenue->breakdown($orgId, $assignedTo ? (int) $assignedTo : null);
 
+        $timezone = $request->user()->organization?->timezone ?: config('app.timezone');
+        $targetDate = Carbon::now($timezone)->startOfDay();
         [$periodStart, $periodEnd, $periodLabel] = $this->targets->period($request->input('month'));
-        $targetProgress = $this->targets->progress($orgId, $assignedTo, $periodStart, $periodEnd);
+        if ($assignedTo) {
+            $activeTarget = $this->targets->activeTarget($orgId, (int) $assignedTo, $targetDate);
+            $targetProgress = $activeTarget
+                ? $this->targets->progressForTarget($activeTarget)
+                : $this->targets->progress($orgId, (int) $assignedTo, $periodStart, $periodEnd);
+        } else {
+            $targetProgress = $this->targets->activeTeamProgress($orgId, $targetDate);
+        }
+        $periodStart = (string) $targetProgress['period_start'];
+        $periodEnd = (string) ($targetProgress['period_end'] ?? $periodEnd);
+        $periodLabel = (string) ($targetProgress['period_label'] ?? $periodLabel);
         $collectionSummary = $this->revenue->collectionSummary($orgId, $assignedTo, now());
         $teamMembers = $request->user()->isAdmin()
             ? User::query()->where('organization_id', $orgId)->where('is_active', true)->where('role', '!=', 'owner')
@@ -204,12 +217,22 @@ class DashboardController extends Controller
         ]);
         $orgId = (int) $request->user()->organization_id;
         $assignedTo = $this->resolveAssignedTo($request);
+        $timezone = $request->user()->organization?->timezone ?: config('app.timezone');
+        $targetDate = Carbon::now($timezone)->startOfDay();
+        $targetProgress = $assignedTo
+            ? (($target = $this->targets->activeTarget($orgId, (int) $assignedTo, $targetDate)) ? $this->targets->progressForTarget($target) : null)
+            : $this->targets->activeTeamProgress($orgId, $targetDate);
         [$periodStart, $periodEnd, $periodLabel] = $this->targets->period($data['month'] ?? null);
+        if ($targetProgress && $targetProgress['has_target']) {
+            $periodStart = (string) $targetProgress['period_start'];
+            $periodEnd = (string) ($targetProgress['period_end'] ?? $periodEnd);
+            $periodLabel = (string) ($targetProgress['period_label'] ?? $periodLabel);
+        }
         $page = max(1, $request->integer('page', 1));
         $perPage = 50;
 
         if ($data['type'] === 'sales') {
-            $paginator = $this->targets->salesDetailsQuery($orgId, $assignedTo, $periodStart, $periodEnd)
+            $paginator = $this->targets->activeSalesDetailsQuery($orgId, $assignedTo, $targetDate)
                 ->with(['client', 'lead', 'assignedTo', 'recurringBusiness'])
                 ->withSum('payments', 'amount')
                 ->latest('closed_at')
@@ -234,7 +257,7 @@ class DashboardController extends Controller
             $meta = ['current_page' => $paginator->currentPage(), 'last_page' => $paginator->lastPage(), 'total' => $paginator->total()];
         } elseif (in_array($data['type'], ['target_collections', 'collections_month', 'collections_all'], true)) {
             $rowsQuery = $data['type'] === 'target_collections'
-                ? $this->targets->collectionDetailsQuery($orgId, $assignedTo, $periodStart, $periodEnd)
+                ? $this->targets->activeCollectionDetailsQuery($orgId, $assignedTo, $targetDate)
                 : $this->revenue->collectionDetailsQuery(
                     $orgId,
                     $assignedTo,

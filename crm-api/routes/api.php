@@ -143,8 +143,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::prefix('sales-targets')->group(function () {
             Route::get('/',                          [SalesTargetController::class, 'index']);
             Route::get('/my-progress',               [SalesTargetController::class, 'myProgress']);
+            Route::get('/leaderboard',               [SalesTargetController::class, 'leaderboard']);
+            Route::get('/leaderboard-settings',      [SalesTargetController::class, 'getLeaderboardSettings']);
+            Route::put('/leaderboard-settings',      [SalesTargetController::class, 'updateLeaderboardSettings']);
             Route::post('/',                         [SalesTargetController::class, 'upsert']);
             Route::get('/{user}/progress',           [SalesTargetController::class, 'userProgress']);
+            Route::get('/{salesTarget}/details',     [SalesTargetController::class, 'details']);
             Route::patch('/{salesTarget}/received',  [SalesTargetController::class, 'updateReceived']);
         });
 
@@ -181,8 +185,12 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::prefix('sales-targets')->group(function () {
                 Route::get('/',                          [SalesTargetController::class, 'index']);
                 Route::get('/my-progress',               [SalesTargetController::class, 'myProgress']);
+                Route::get('/leaderboard',               [SalesTargetController::class, 'leaderboard']);
+                Route::get('/leaderboard-settings',      [SalesTargetController::class, 'getLeaderboardSettings']);
+                Route::put('/leaderboard-settings',      [SalesTargetController::class, 'updateLeaderboardSettings']);
                 Route::post('/',                         [SalesTargetController::class, 'upsert']);
                 Route::get('/{user}/progress',           [SalesTargetController::class, 'userProgress']);
+                Route::get('/{salesTarget}/details',     [SalesTargetController::class, 'details']);
                 Route::patch('/{salesTarget}/received',  [SalesTargetController::class, 'updateReceived']);
             });
 
