@@ -1107,10 +1107,10 @@ export default function ProposalNewPage() {
       </div>
 
       {/* ══════════════════ MAIN CONTENT ══════════════════ */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 flex-col overflow-auto lg:flex-row lg:overflow-hidden">
 
         {/* ════════════ LEFT PANEL — fixed height, no scroll ════════════ */}
-        <div className="w-[380px] flex-shrink-0 flex flex-col h-full overflow-hidden"
+        <div className="flex max-h-[55dvh] w-full flex-shrink-0 flex-col overflow-hidden lg:h-full lg:max-h-none lg:w-[380px]"
           style={{ background: '#13151c', borderRight: '1px solid rgba(255,255,255,0.07)' }}>
 
           {/* scrollable content area — only this part scrolls if needed, hidden scrollbar */}
@@ -1319,7 +1319,7 @@ export default function ProposalNewPage() {
         </div>
 
         {/* ════════════ RIGHT PANEL ════════════ */}
-        <div ref={rightRef} className="flex-1 overflow-y-auto no-scrollbar relative" style={{ background: '#f9fafb' }}>
+        <div ref={rightRef} className="no-scrollbar relative min-h-[50dvh] flex-1 overflow-y-auto" style={{ background: '#f9fafb' }}>
           <AnimatePresence mode="wait">
 
             {/* ── IDLE (create mode, no generation yet) ── */}

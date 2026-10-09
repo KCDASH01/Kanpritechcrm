@@ -137,7 +137,7 @@
             <p class="text-xs text-gray-400 mt-1">Enter <code class="bg-gray-100 px-1 rounded">-1</code> for unlimited.</p>
         </div>
 
-        <div class="grid grid-cols-2 md:grid-cols-3 gap-5">
+        <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3">
             @php
                 $limitFields = [
                     'leads_limit'        => ['label' => 'Leads',        'default' => 500],
@@ -164,7 +164,7 @@
     <div class="bg-white rounded-2xl border border-gray-200 p-6 space-y-5">
         <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Feature Flags</h2>
 
-        <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
             @php
                 $featureFlags = [
                     'bulk_import'      => 'Bulk Import',

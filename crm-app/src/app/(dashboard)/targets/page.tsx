@@ -195,7 +195,7 @@ function TeamMemberView() {
           <p className="text-[11px] text-gray-400 mt-0.5">Your targets and performance over the last 6 months</p>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="min-w-[760px] w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
                 <th className="text-left px-6 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Month</th>
@@ -413,7 +413,7 @@ function ManagerView() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <table className="min-w-[860px] w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
                   <th className="text-left px-6 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Rep</th>

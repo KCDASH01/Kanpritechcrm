@@ -69,7 +69,11 @@ function ProgressBar({ label, achieved, target, color }: {
   );
 }
 
-export default function Topbar() {
+interface TopbarProps {
+  onOpenSidebar: () => void;
+}
+
+export default function Topbar({ onOpenSidebar }: TopbarProps) {
   const router   = useRouter();
   const pathname = usePathname();
   const qc       = useQueryClient();
@@ -150,20 +154,32 @@ export default function Topbar() {
   };
 
   return (
-    <header className="h-14 bg-white border-b border-gray-100 shadow-sm flex items-center justify-between px-6 shrink-0 z-10">
+    <header className="z-30 flex h-14 shrink-0 items-center justify-between gap-2 border-b border-gray-100 bg-white px-2 shadow-sm sm:px-4 lg:px-6">
 
       {/* Left — page title + org */}
-      <div>
-        <h1 className="text-base font-bold text-gray-900 leading-tight">{pageTitle}</h1>
-        {user?.organization?.name && (
-          <p className="text-[11px] text-gray-400 leading-tight truncate max-w-[200px]">
-            {user.organization.name}
-          </p>
-        )}
+      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+        <button
+          type="button"
+          aria-label="Open navigation"
+          onClick={onOpenSidebar}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-gray-600 transition-colors hover:bg-gray-100 lg:hidden"
+        >
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <div className="min-w-0">
+          <h1 className="truncate text-sm font-bold leading-tight text-gray-900 sm:text-base">{pageTitle}</h1>
+          {user?.organization?.name && (
+            <p className="hidden max-w-[160px] truncate text-[11px] leading-tight text-gray-400 sm:block lg:max-w-[200px]">
+              {user.organization.name}
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Right — refresh + bell + user */}
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
 
         {/* Refresh button */}
         <button
@@ -203,8 +219,7 @@ export default function Topbar() {
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setTargetOpen(false)} />
                   <motion.div
-                    className="absolute right-0 top-full mt-2 w-72 bg-white border border-gray-100
-                               rounded-2xl shadow-xl shadow-black/10 z-20 overflow-hidden"
+                    className="fixed left-2 right-2 top-16 z-20 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-xl shadow-black/10 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-72"
                     initial={{ opacity: 0, y: -8, scale: 0.96 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -8, scale: 0.96 }}
@@ -279,8 +294,7 @@ export default function Topbar() {
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setNotifOpen(false)} />
                 <motion.div
-                  className="absolute right-0 top-full mt-2 w-80 bg-white border border-gray-100
-                             rounded-2xl shadow-xl shadow-black/10 z-20 overflow-hidden"
+                  className="fixed left-2 right-2 top-16 z-20 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-xl shadow-black/10 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80"
                   initial={{ opacity: 0, y: -8, scale: 0.96 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -8, scale: 0.96 }}
@@ -386,8 +400,7 @@ export default function Topbar() {
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setUserOpen(false)} />
                 <motion.div
-                  className="absolute right-0 top-full mt-2 w-52 bg-white border border-gray-100
-                             rounded-2xl shadow-xl shadow-black/10 z-20 overflow-hidden"
+                  className="fixed left-2 right-2 top-16 z-20 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-xl shadow-black/10 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-52"
                   initial={{ opacity: 0, y: -8, scale: 0.96 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -8, scale: 0.96 }}

@@ -257,7 +257,7 @@ export default function ImportantPage() {
           <EmptyImportant hasFilters={hasActiveFilters} onClear={clearAllFilters} />
         ) : (
           <div className="overflow-x-auto rounded-2xl">
-            <table className="min-w-full">
+          <table className="min-w-[900px] w-full">
               <thead>
                 <tr className="bg-gray-50/80 border-b border-gray-100">
                   {['Lead Name', 'Requirement', 'Company', 'Contact', 'Assigned Member', 'Remark', 'Marked On', 'Status', 'Actions'].map((h, hi, arr) => (

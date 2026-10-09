@@ -232,7 +232,7 @@ export default function BillingPage() {
             Purchase extra seats to invite more team members. Each seat costs ₹{seatUnitPrice}/month.
           </p>
 
-          <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
             <div className="bg-gray-50 rounded-xl px-4 py-3 text-center">
               <p className="text-xs text-gray-400 mb-1">Plan seats</p>
               <p className="text-xl font-bold text-gray-900">{basePlanSeats}</p>

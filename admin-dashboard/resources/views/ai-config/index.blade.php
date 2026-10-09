@@ -157,7 +157,7 @@
                        class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"/>
                 <p class="text-[11px] text-gray-400 mt-1">Stored in the database. Keep this secret.</p>
             </div>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                     <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Max Tokens</label>
                     <input name="max_tokens" type="number" value="4096" min="256" max="16000"
@@ -233,7 +233,7 @@
                 <input id="edit-api-key" name="api_key" type="password" required maxlength="500"
                        class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"/>
             </div>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                     <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Max Tokens</label>
                     <input id="edit-max-tokens" name="max_tokens" type="number" min="256" max="16000"

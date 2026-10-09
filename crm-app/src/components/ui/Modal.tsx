@@ -27,9 +27,9 @@ export function Modal({ open, onClose, title, children, maxWidth = 'max-w-lg' }:
           />
 
           {/* Panel */}
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 overflow-y-auto">
+          <div className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden p-2 sm:items-center sm:p-4">
             <motion.div
-              className={`relative bg-white rounded-2xl shadow-2xl w-full ${maxWidth} my-auto`}
+              className={`relative flex max-h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl ${maxWidth}`}
               initial={{ opacity: 0, y: 40, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 20, scale: 0.97 }}
@@ -38,8 +38,8 @@ export function Modal({ open, onClose, title, children, maxWidth = 'max-w-lg' }:
             >
               {/* Header */}
               {title && (
-                <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100">
-                  <h2 className="text-lg font-bold text-gray-900">{title}</h2>
+                <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-4 pb-3 pt-4 sm:px-6 sm:pb-4 sm:pt-6">
+                  <h2 className="min-w-0 truncate pr-3 text-base font-bold text-gray-900 sm:text-lg">{title}</h2>
                   <button
                     onClick={onClose}
                     className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400
@@ -54,7 +54,7 @@ export function Modal({ open, onClose, title, children, maxWidth = 'max-w-lg' }:
               )}
 
               {/* Body */}
-              <div className="p-6">{children}</div>
+              <div className="overflow-y-auto p-4 sm:p-6">{children}</div>
             </motion.div>
           </div>
         </>

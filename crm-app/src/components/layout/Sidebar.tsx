@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
@@ -51,11 +51,34 @@ const SECTIONS: { label: string; items: NavItem[] }[] = [
   },
 ];
 
-export default function Sidebar() {
+interface SidebarProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+export default function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { user, isBusinessPlan, isEnterprisePlan, isPaidPlan, canManageBilling, canManageTeam, isSsoUser, clearAuth } = useAuthStore();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+
+  useEffect(() => {
+    onClose();
+  }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open, onClose]);
 
   const isVisible = (href: string) => {
     if (href === '/team' || href === '/departments') return canManageTeam();
@@ -81,7 +104,21 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="w-64 bg-gray-950 flex flex-col h-full shrink-0 border-r border-white/5">
+    <>
+      <button
+        type="button"
+        aria-label="Close navigation"
+        className={`fixed inset-0 z-40 bg-gray-950/55 backdrop-blur-[1px] transition-opacity lg:hidden ${
+          open ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
+        }`}
+        onClick={onClose}
+      />
+      <aside
+        aria-label="Main navigation"
+        className={`fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(18rem,86vw)] shrink-0 flex-col border-r border-white/5 bg-gray-950 transition-transform duration-200 ease-out lg:static lg:z-auto lg:h-full lg:w-64 lg:translate-x-0 ${
+          open ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
+        }`}
+      >
 
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-5 border-b border-white/5">
@@ -115,6 +152,16 @@ export default function Sidebar() {
             Free
           </span>
         )}
+        <button
+          type="button"
+          aria-label="Close navigation"
+          onClick={onClose}
+          className="ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-white/10 hover:text-white lg:hidden"
+        >
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
       </div>
 
       {/* Nav */}
@@ -134,6 +181,7 @@ export default function Sidebar() {
                     <Link
                       key={item.href}
                       href={item.href}
+                      onClick={onClose}
                       className={[
                         'flex items-center gap-3 pl-[10px] pr-3 py-2.5 rounded-xl text-sm font-medium',
                         'transition-all duration-150 group relative border-l-2',
@@ -252,6 +300,7 @@ export default function Sidebar() {
           </div>
         </div>
       )}
-    </aside>
+      </aside>
+    </>
   );
 }

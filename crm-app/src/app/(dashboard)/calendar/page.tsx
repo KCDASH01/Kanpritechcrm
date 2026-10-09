@@ -183,21 +183,21 @@ export default function CalendarPage() {
       })();
 
   return (
-    <div className="flex gap-4 h-[calc(100vh-3.5rem-2rem)]">
+    <div className="flex h-[calc(100dvh-5rem)] min-h-[560px] gap-4 lg:h-[calc(100dvh-5.5rem)]">
 
       {/* ── Main calendar ─────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden min-w-0">
 
         {/* Toolbar */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 shrink-0">
-          <div className="flex items-center gap-3">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-2 py-3 sm:px-5 sm:py-3.5">
+          <div className="flex min-w-0 items-center gap-1 sm:gap-3">
             <button onClick={() => navigate(-1)}
               className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/>
               </svg>
             </button>
-            <h2 className="text-sm font-bold text-gray-900 min-w-[180px] text-center">{headerTitle}</h2>
+            <h2 className="min-w-0 text-center text-xs font-bold text-gray-900 sm:min-w-[180px] sm:text-sm">{headerTitle}</h2>
             <button onClick={() => navigate(1)}
               className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -214,7 +214,7 @@ export default function CalendarPage() {
           <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
             {(['month', 'week'] as const).map((v) => (
               <button key={v} onClick={() => setView(v)}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all capitalize ${
+                className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all capitalize sm:px-3 ${
                   view === v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                 }`}>
                 {v}
@@ -370,7 +370,7 @@ export default function CalendarPage() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 24 }}
             transition={{ type: 'spring', damping: 28, stiffness: 350 }}
-            className="w-72 shrink-0 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col"
+            className="fixed inset-x-3 bottom-3 z-40 flex max-h-[65dvh] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-2xl lg:static lg:z-auto lg:max-h-none lg:w-72 lg:shrink-0 lg:shadow-sm"
           >
             <div className="px-4 py-3.5 border-b border-gray-100 flex items-center justify-between">
               <div>

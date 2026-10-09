@@ -124,7 +124,7 @@
                           class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"></textarea>
                 <p class="text-[11px] text-gray-400 mt-1">Use <code class="bg-gray-100 px-1 rounded">@{{ name }}</code> and <code class="bg-gray-100 px-1 rounded">@{{ company }}</code> as placeholders.</p>
             </div>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                     <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Sort Order</label>
                     <input name="sort_order" type="number" min="0" placeholder="0"
@@ -178,7 +178,7 @@
                           class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"></textarea>
                 <p class="text-[11px] text-gray-400 mt-1">Use <code class="bg-gray-100 px-1 rounded">@{{ name }}</code> and <code class="bg-gray-100 px-1 rounded">@{{ company }}</code> as placeholders.</p>
             </div>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                     <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Sort Order</label>
                     <input id="edit-sort" name="sort_order" type="number" min="0"

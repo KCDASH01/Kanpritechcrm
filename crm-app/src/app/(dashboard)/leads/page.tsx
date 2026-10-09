@@ -381,7 +381,7 @@ function LeadPanel({ lead, onClose, onEdit }: { lead: Lead; onClose: () => void;
       animate={{ x: 0 }}
       exit={{ x: '100%' }}
       transition={{ type: 'spring', damping: 30, stiffness: 350 }}
-      className="fixed top-0 right-0 h-full w-[420px] bg-white shadow-2xl shadow-black/20 z-50 flex flex-col border-l border-gray-100"
+      className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[420px] flex-col border-l border-gray-100 bg-white shadow-2xl shadow-black/20"
     >
       {/* Header */}
       <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3 bg-gray-50/80">
@@ -1377,7 +1377,7 @@ export default function LeadsPage() {
             <EmptyLeads onAdd={() => setModalLead(null)} canAdd={canCreateLead} />
           ) : (
             <div className="overflow-x-auto rounded-2xl">
-              <table className="min-w-full">
+          <table className="min-w-[1100px] w-full">
                 <thead>
                   <tr className="bg-gray-50/80 border-b border-gray-100">
                     {['Name', 'Requirement', 'Company', 'Contact', 'Status', 'Date', 'Actions'].map((h, hi, arr) => (

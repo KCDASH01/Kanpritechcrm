@@ -32,9 +32,9 @@ export default function RecurringBusinessPage() {
 
   return <div className="space-y-6 animate-fade-in">
     <div><h1 className="text-2xl font-bold text-gray-900">Recurring Business</h1><p className="text-sm text-gray-500 mt-1">Active contracts, billing expectations, and collected recurring revenue.</p></div>
-    <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">{cards.map(([label, value]) => <div key={label} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm"><p className="text-xs text-gray-500">{label}</p><p className="text-xl font-bold text-gray-900 mt-1">{value}</p></div>)}</div>
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">{cards.map(([label, value]) => <div key={label} className="min-w-0 bg-white border border-gray-100 rounded-2xl p-4 shadow-sm"><p className="text-xs text-gray-500">{label}</p><p className="mt-1 break-words text-xl font-bold text-gray-900">{value}</p></div>)}</div>
     <div className="flex flex-wrap gap-3">
-      <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search client, company or service…" className="w-72 border border-gray-200 rounded-xl px-3 py-2.5 text-sm" />
+      <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search client, company or service…" className="w-full sm:w-72 border border-gray-200 rounded-xl px-3 py-2.5 text-sm" />
       <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white"><option value="">All statuses</option>{['ACTIVE','PAUSED','EXPIRED','CANCELLED','COMPLETED'].map((s) => <option key={s}>{s}</option>)}</select>
       <select value={frequency} onChange={(e) => { setFrequency(e.target.value); setPage(1); }} className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white"><option value="">All frequencies</option>{['MONTHLY','QUARTERLY','HALF_YEARLY','YEARLY'].map((s) => <option key={s}>{s}</option>)}</select>
       {isFetching && <span className="text-xs text-gray-400 self-center">Updating…</span>}

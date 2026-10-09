@@ -7,7 +7,22 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     scroll-behavior: smooth;
+    text-size-adjust: 100%;
   }
+
+  body { overflow-x: hidden; }
+
+  img,
+  video,
+  canvas {
+    max-width: 100%;
+    height: auto;
+  }
+
+  input,
+  select,
+  textarea,
+  button { max-width: 100%; }
 
   /* Thin indigo scrollbar */
   ::-webkit-scrollbar { width: 5px; height: 5px; }
@@ -116,6 +131,11 @@
 }
 
 @layer utilities {
+  .touch-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-inline: contain;
+  }
+
   /* Shimmer skeleton — applied via .skeleton class */
   .skeleton {
     background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);

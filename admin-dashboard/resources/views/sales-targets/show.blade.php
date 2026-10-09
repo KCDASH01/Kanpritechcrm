@@ -136,8 +136,8 @@
                 <p class="text-[11px] text-gray-400 mt-0.5">Click Edit to update targets for any month</p>
             </div>
         </div>
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm">
+        <div class="touch-scroll overflow-x-auto">
+            <table class="min-w-[760px] w-full text-sm">
                 <thead>
                     <tr class="bg-gray-50 border-b border-gray-100">
                         <th class="text-left px-6 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Month</th>

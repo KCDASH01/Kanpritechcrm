@@ -354,9 +354,9 @@ export default function LeadDetailPage() {
         </div>
 
         {/* ── Two-column layout ────────────────────────────────────────────── */}
-        <div className="flex gap-5 items-start">
+        <div className="flex flex-col items-stretch gap-5 xl:flex-row xl:items-start">
           {/* Left column */}
-          <div className="w-[340px] shrink-0 space-y-4">
+          <div className="w-full space-y-4 xl:w-[340px] xl:shrink-0">
             <LeadInfoCard
               lead={lead}
               onUpdate={(payload) => {

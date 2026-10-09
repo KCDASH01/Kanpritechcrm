@@ -862,7 +862,8 @@ export default function PlansPage() {
           <h2 className="text-sm font-bold text-gray-900">Feature comparison</h2>
         </div>
 
-        <table className="w-full text-sm">
+        <div className="touch-scroll overflow-x-auto">
+        <table className="min-w-[640px] w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100">
               <th className="text-left px-6 py-3 text-xs font-semibold uppercase tracking-wider text-gray-400 w-2/5">
@@ -895,6 +896,7 @@ export default function PlansPage() {
             ))}
           </tbody>
         </table>
+        </div>
       </motion.div>
 
       {/* ── Contextual notices ── */}

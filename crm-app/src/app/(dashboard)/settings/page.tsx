@@ -188,7 +188,7 @@ export default function SettingsPage() {
       {/* ── Email Templates (managers only) ─────────────────────────────────── */}
       {canManage && (
         <div className="bg-white rounded-2xl border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-5">
+          <div className="mb-5 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="font-semibold text-gray-900">Email Templates</h2>
               <p className="text-xs text-gray-400 mt-0.5">Reusable templates for the Email log form on lead pages</p>
@@ -205,7 +205,7 @@ export default function SettingsPage() {
           {(showTplForm || editTpl) && (
             <div className="mb-5 border border-indigo-100 bg-indigo-50/50 rounded-2xl p-4 space-y-3">
               <h3 className="text-xs font-semibold text-gray-700">{editTpl ? 'Edit Template' : 'New Template'}</h3>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Template Name *</label>
                   <input
@@ -366,7 +366,7 @@ export default function SettingsPage() {
             </div>
 
             {/* Company name + tagline */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Company Name</label>
                 <input value={receipt.company_name ?? ''} onChange={(e) => setR('company_name', e.target.value)} placeholder="Acme Pvt Ltd" className={inputCls} />
@@ -382,7 +382,7 @@ export default function SettingsPage() {
               <label className="block text-sm font-medium text-gray-700">Address</label>
               <input value={receipt.address_line1 ?? ''} onChange={(e) => setR('address_line1', e.target.value)} placeholder="Address Line 1" className={inputCls} />
               <input value={receipt.address_line2 ?? ''} onChange={(e) => setR('address_line2', e.target.value)} placeholder="Address Line 2 (optional)" className={inputCls} />
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <input value={receipt.city ?? ''} onChange={(e) => setR('city', e.target.value)} placeholder="City" className={inputCls} />
                 <input value={receipt.state ?? ''} onChange={(e) => setR('state', e.target.value)} placeholder="State" className={inputCls} />
                 <input value={receipt.pincode ?? ''} onChange={(e) => setR('pincode', e.target.value)} placeholder="Pincode" className={inputCls} />
@@ -390,7 +390,7 @@ export default function SettingsPage() {
             </div>
 
             {/* Contact */}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Phone</label>
                 <input value={receipt.phone ?? ''} onChange={(e) => setR('phone', e.target.value)} placeholder="+91 98765 43210" className={inputCls} />
@@ -406,7 +406,7 @@ export default function SettingsPage() {
             </div>
 
             {/* Tax */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">GSTIN <span className="font-normal text-gray-400">(optional)</span></label>
                 <input value={receipt.gstin ?? ''} onChange={(e) => setR('gstin', e.target.value)} placeholder="22AAAAA0000A1Z5" className={inputCls} />

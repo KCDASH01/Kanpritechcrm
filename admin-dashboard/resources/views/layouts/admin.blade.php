@@ -9,13 +9,20 @@
     <script>tailwind.config = { theme: { extend: { colors: { brand: '#6366f1' } } } }</script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>body { font-family: 'Inter', sans-serif; }</style>
+    <style>
+        body { font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        .touch-scroll { -webkit-overflow-scrolling: touch; overscroll-behavior-inline: contain; }
+    </style>
 </head>
 <body class="h-full">
-<div class="flex h-full">
+<div class="flex h-full min-h-[100dvh]">
+
+    <button id="adminSidebarBackdrop" type="button" aria-label="Close navigation"
+            onclick="toggleAdminSidebar(false)"
+            class="fixed inset-0 z-40 hidden bg-gray-950/60 backdrop-blur-[1px] lg:hidden"></button>
 
     {{-- Sidebar --}}
-    <aside class="w-64 bg-gray-900 flex flex-col shrink-0">
+    <aside id="adminSidebar" class="fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(18rem,86vw)] -translate-x-full flex-col bg-gray-900 shadow-2xl transition-transform duration-200 ease-out lg:static lg:z-auto lg:h-full lg:w-64 lg:translate-x-0 lg:shadow-none">
         {{-- Logo --}}
         <div class="flex items-center gap-2 px-6 py-5 border-b border-gray-700">
             <div class="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center">
@@ -24,6 +31,12 @@
                 </svg>
             </div>
             <span class="text-white font-semibold text-lg">CRM Admin</span>
+            <button type="button" onclick="toggleAdminSidebar(false)" aria-label="Close navigation"
+                    class="ml-auto flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white lg:hidden">
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
         </div>
 
         {{-- Nav --}}
@@ -42,7 +55,7 @@
 
             @foreach ($navItems as $item)
                 @php $active = request()->routeIs($item['route']) || request()->routeIs($item['route'] . '.*'); @endphp
-                <a href="{{ route($item['route']) }}"
+                <a href="{{ route($item['route']) }}" onclick="toggleAdminSidebar(false)"
                    class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
                           {{ $active ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white' }}">
                     <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -76,36 +89,58 @@
     </aside>
 
     {{-- Main content --}}
-    <div class="flex flex-col flex-1 overflow-hidden relative">
+    <div class="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         {{-- Top bar --}}
-        <header class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shrink-0">
-            <h1 class="text-xl font-semibold text-gray-900">@yield('page-title', 'Dashboard')</h1>
-            <div class="flex items-center gap-3">
+        <header class="flex shrink-0 items-center justify-between gap-2 border-b border-gray-200 bg-white px-3 py-3 sm:px-6 sm:py-4">
+            <div class="flex min-w-0 items-center gap-2 sm:gap-3">
+                <button type="button" onclick="toggleAdminSidebar(true)" aria-label="Open navigation"
+                        class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-gray-600 hover:bg-gray-100 lg:hidden">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                    </svg>
+                </button>
+                <h1 class="truncate text-base font-semibold text-gray-900 sm:text-xl">@yield('page-title', 'Dashboard')</h1>
+            </div>
+            <div class="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
                 @yield('header-actions')
             </div>
         </header>
 
         {{-- Alerts --}}
         @if (session('success'))
-            <div class="mx-6 mt-4 px-4 py-3 rounded-lg bg-green-50 border border-green-200 text-green-800 text-sm flex items-center gap-2">
+            <div class="mx-3 mt-4 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 sm:mx-6">
                 <svg class="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
                 {{ session('success') }}
             </div>
         @endif
         @if (session('error'))
-            <div class="mx-6 mt-4 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm flex items-center gap-2">
+            <div class="mx-3 mt-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 sm:mx-6">
                 <svg class="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
                 {{ session('error') }}
             </div>
         @endif
 
         {{-- Page content --}}
-        <main class="flex-1 overflow-y-auto p-6">
+        <main class="flex-1 overflow-x-hidden overflow-y-auto p-3 sm:p-4 lg:p-6">
             @yield('content')
         </main>
     </div>
 </div>
 
 @stack('scripts')
+<script>
+    function toggleAdminSidebar(open) {
+        const sidebar = document.getElementById('adminSidebar');
+        const backdrop = document.getElementById('adminSidebarBackdrop');
+        if (!sidebar || !backdrop) return;
+        sidebar.classList.toggle('-translate-x-full', !open);
+        backdrop.classList.toggle('hidden', !open);
+        document.body.classList.toggle('overflow-hidden', open && window.innerWidth < 1024);
+    }
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') toggleAdminSidebar(false);
+    });
+</script>
 </body>
 </html>

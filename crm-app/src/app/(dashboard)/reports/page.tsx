@@ -444,7 +444,7 @@ export default function ReportsPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <table className="min-w-[760px] w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100">
                     <th className="text-left px-6 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Rep</th>

@@ -31,7 +31,7 @@
             @endif
 
             {{-- Plan + Source row --}}
-            <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1.5">Plan *</label>
                     <select name="plan" required
@@ -52,7 +52,7 @@
             </div>
 
             {{-- Dates --}}
-            <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1.5">Start Date *</label>
                     <input type="date" name="start_date" required value="{{ old('start_date', now()->toDateString()) }}"
@@ -66,7 +66,7 @@
             </div>
 
             {{-- Amount --}}
-            <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1.5">Amount</label>
                     <input type="number" name="amount" step="0.01" min="0" value="{{ old('amount') }}"

@@ -62,7 +62,7 @@ function ActivityForm({ activity, onClose, onSave, saving }: {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label className="block text-xs font-semibold text-gray-600 mb-1.5">Type</label>
           <select value={form.type} onChange={(e) => set('type', e.target.value)} className={inputCls}>
@@ -91,7 +91,7 @@ function ActivityForm({ activity, onClose, onSave, saving }: {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label className="block text-xs font-semibold text-gray-600 mb-1.5">Subject Type</label>
           <select value={form.subject_type} onChange={(e) => set('subject_type', e.target.value)} className={inputCls}>

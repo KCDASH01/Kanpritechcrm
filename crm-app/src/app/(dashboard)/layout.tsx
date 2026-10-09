@@ -19,7 +19,7 @@ function SubscriptionExpiredBanner({ sub }: { sub: Subscription }) {
     : null;
 
   return (
-    <div className="mb-4 flex items-center gap-3 rounded-xl bg-red-50 border border-red-200 px-4 py-3">
+    <div className="mb-4 flex flex-col items-stretch gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 sm:flex-row sm:items-center">
       <div className="shrink-0 w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
         <svg className="w-4 h-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -37,7 +37,7 @@ function SubscriptionExpiredBanner({ sub }: { sub: Subscription }) {
       </div>
       <Link
         href="/plans"
-        className="shrink-0 text-xs font-bold text-white bg-red-600 hover:bg-red-700 transition-colors px-3 py-1.5 rounded-lg"
+        className="shrink-0 rounded-lg bg-red-600 px-3 py-2 text-center text-xs font-bold text-white transition-colors hover:bg-red-700 sm:py-1.5"
       >
         View Plans
       </Link>
@@ -53,7 +53,7 @@ function SubscriptionExpiringSoonBanner({ sub }: { sub: Subscription }) {
   const daysLeft = Math.ceil((endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
 
   return (
-    <div className="mb-4 flex items-center gap-3 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
+    <div className="mb-4 flex flex-col items-stretch gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center">
       <div className="shrink-0 w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
         <svg className="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -72,7 +72,7 @@ function SubscriptionExpiringSoonBanner({ sub }: { sub: Subscription }) {
       </div>
       <Link
         href="/plans"
-        className="shrink-0 text-xs font-bold text-amber-900 bg-amber-200 hover:bg-amber-300 transition-colors px-3 py-1.5 rounded-lg"
+        className="shrink-0 rounded-lg bg-amber-200 px-3 py-2 text-center text-xs font-bold text-amber-900 transition-colors hover:bg-amber-300 sm:py-1.5"
       >
         Renew Now
       </Link>
@@ -82,7 +82,7 @@ function SubscriptionExpiringSoonBanner({ sub }: { sub: Subscription }) {
 
 function NoSubscriptionWall() {
   return (
-    <div className="mb-4 flex items-center gap-3 rounded-xl bg-red-50 border border-red-200 px-4 py-3">
+    <div className="mb-4 flex flex-col items-stretch gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 sm:flex-row sm:items-center">
       <div className="shrink-0 w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
         <svg className="w-4 h-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -97,7 +97,7 @@ function NoSubscriptionWall() {
       </div>
       <Link
         href="/plans"
-        className="shrink-0 text-xs font-bold text-white bg-red-600 hover:bg-red-700 transition-colors px-3 py-1.5 rounded-lg"
+        className="shrink-0 rounded-lg bg-red-600 px-3 py-2 text-center text-xs font-bold text-white transition-colors hover:bg-red-700 sm:py-1.5"
       >
         Choose Plan
       </Link>

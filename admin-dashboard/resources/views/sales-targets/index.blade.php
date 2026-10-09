@@ -87,8 +87,8 @@
                     return '₹' . number_format($n, 0);
                 }
             @endphp
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm">
+            <div class="touch-scroll overflow-x-auto">
+                <table class="min-w-[820px] w-full text-sm">
                     <thead>
                         <tr class="bg-gray-50 border-b border-gray-100">
                             <th class="text-left px-6 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Rep</th>
@@ -155,8 +155,8 @@
 {{-- ════════════════════════════════════════════════════════════════
      Set Target Modal
 ════════════════════════════════════════════════════════════════ --}}
-<div id="setTargetModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+<div id="setTargetModal" class="hidden fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-2 backdrop-blur-sm sm:items-center sm:p-4">
+    <div class="max-h-[calc(100dvh-1rem)] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl">
 
         <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
             <h2 class="text-base font-semibold text-gray-900" id="modalTitle">Set Sales Target</h2>
@@ -204,7 +204,7 @@
             </div>
 
             {{-- Amounts --}}
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                     <label class="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Sales Target (₹) *</label>
                     <input type="number" name="target_amount" id="modalTargetAmount"

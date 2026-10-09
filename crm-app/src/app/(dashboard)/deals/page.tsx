@@ -83,7 +83,7 @@ function DealForm({ deal, onClose, onSave, saving }: {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label className="block text-xs font-semibold text-gray-600 mb-1.5">Pipeline</label>
           <select
@@ -108,7 +108,7 @@ function DealForm({ deal, onClose, onSave, saving }: {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label className="block text-xs font-semibold text-gray-600 mb-1.5">Type</label>
           <select
@@ -146,7 +146,7 @@ function DealForm({ deal, onClose, onSave, saving }: {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label className="block text-xs font-semibold text-gray-600 mb-1.5">Status</label>
           <select value={form.status} onChange={(e) => set('status', e.target.value)} className={inputCls}>
@@ -203,7 +203,7 @@ function DealForm({ deal, onClose, onSave, saving }: {
 
         <div className="p-4 space-y-4">
           {/* Counter-offer tracker */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1.5">
                 Original Value ({symbol})
@@ -349,7 +349,7 @@ function AddPaymentModal({ deal, onClose, onSave, saving }: {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label className="block text-xs font-semibold text-gray-600 mb-1.5">Amount ({currencySymbol(deal.currency)}) *</label>
           <input
@@ -572,7 +572,7 @@ function TransactionsModal({ deal, onAddPayment, onViewReceipt }: {
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
+              <table className="min-w-[760px] w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100">
                 <th className="pb-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
@@ -1004,7 +1004,7 @@ export default function DealsPage() {
             )}
           </div>
         ) : (
-          <table className="min-w-full divide-y divide-gray-100">
+          <table className="min-w-[1100px] w-full divide-y divide-gray-100">
             <thead className="bg-gray-50/80">
               <tr>
                 {['Deal', 'Value', 'Stage', 'Status', 'Close Date', 'Received', 'Remaining', ''].map((h) => (
