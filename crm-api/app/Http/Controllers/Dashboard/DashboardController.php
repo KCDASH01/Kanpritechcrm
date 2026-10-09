@@ -161,7 +161,7 @@ class DashboardController extends Controller
         if ($assignedTo) {
             $activeTarget = $this->targets->activeTarget($orgId, (int) $assignedTo, $targetDate);
             $targetProgress = $activeTarget
-                ? $this->targets->progressForTarget($activeTarget)
+                ? $this->targets->progressForTarget($activeTarget, $targetDate)
                 : $this->targets->progress($orgId, (int) $assignedTo, $periodStart, $periodEnd);
         } else {
             $targetProgress = $this->targets->activeTeamProgress($orgId, $targetDate);
@@ -169,7 +169,7 @@ class DashboardController extends Controller
         $periodStart = (string) $targetProgress['period_start'];
         $periodEnd = (string) ($targetProgress['period_end'] ?? $periodEnd);
         $periodLabel = (string) ($targetProgress['period_label'] ?? $periodLabel);
-        $collectionSummary = $this->revenue->collectionSummary($orgId, $assignedTo, now());
+        $collectionSummary = $this->revenue->collectionSummary($orgId, $assignedTo, $targetDate);
         $teamMembers = $request->user()->isAdmin()
             ? User::query()->where('organization_id', $orgId)->where('is_active', true)->where('role', '!=', 'owner')
                 ->orderBy('name')->get(['id', 'name'])->map(fn (User $member) => ['id' => $member->id, 'name' => $member->name])->values()
@@ -220,7 +220,7 @@ class DashboardController extends Controller
         $timezone = $request->user()->organization?->timezone ?: config('app.timezone');
         $targetDate = Carbon::now($timezone)->startOfDay();
         $targetProgress = $assignedTo
-            ? (($target = $this->targets->activeTarget($orgId, (int) $assignedTo, $targetDate)) ? $this->targets->progressForTarget($target) : null)
+            ? (($target = $this->targets->activeTarget($orgId, (int) $assignedTo, $targetDate)) ? $this->targets->progressForTarget($target, $targetDate) : null)
             : $this->targets->activeTeamProgress($orgId, $targetDate);
         [$periodStart, $periodEnd, $periodLabel] = $this->targets->period($data['month'] ?? null);
         if ($targetProgress && $targetProgress['has_target']) {

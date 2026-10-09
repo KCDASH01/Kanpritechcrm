@@ -7,10 +7,18 @@ import { departmentsApi } from '@/lib/api/departments';
 import type { LeaderboardRow } from '@/types';
 
 const rankStyle: Record<number, string> = {
-  1: 'bg-amber-100 text-amber-700 ring-amber-200',
-  2: 'bg-slate-100 text-slate-600 ring-slate-200',
-  3: 'bg-orange-100 text-orange-700 ring-orange-200',
+  1: 'bg-[#FFF7DF] text-[#D4A017] ring-[#E9CA68]',
+  2: 'bg-[#F1F5F9] text-[#64748B] ring-[#94A3B8]',
+  3: 'bg-[#FFF0E5] text-[#C47A44] ring-[#DDA57C]',
 };
+
+const rowStyle: Record<number, string> = {
+  1: 'bg-[#FFF7DF] border-l-4 border-l-[#D4A017]',
+  2: 'bg-[#F1F5F9] border-l-4 border-l-[#94A3B8]',
+  3: 'bg-[#FFF0E5] border-l-4 border-l-[#C47A44]',
+};
+
+const rankMedal: Record<number, string> = { 1: '🏆', 2: '🥈', 3: '🥉' };
 
 function score(row: LeaderboardRow) {
   return row.ranking_score === null ? '—' : `${Math.round(row.ranking_score)}%`;
@@ -46,8 +54,9 @@ export function PerformanceLeaderboard({ canManage, currentUserId }: { canManage
     {!leaderboard.data && leaderboard.isLoading ? <div className="space-y-2 p-5">{[1, 2, 3].map((i) => <div key={i} className="skeleton h-16 rounded-xl" />)}</div> : rows.length === 0 ? <div className="px-5 py-10 text-center text-sm text-gray-400">No targets are available for this period.</div> : <>
       <div className="divide-y divide-gray-100">{visibleRows.map((row) => {
         const isMe = row.user_id === currentUserId;
-        return <div key={`${row.target_id}-${row.user_id}`} className={`grid grid-cols-[auto_1fr_auto] items-center gap-3 px-5 py-3.5 sm:grid-cols-[auto_1fr_repeat(3,minmax(72px,auto))] ${isMe ? 'bg-indigo-50/50' : 'hover:bg-gray-50'}`}>
-          <div className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-extrabold ring-1 ${row.rank && rankStyle[row.rank] ? rankStyle[row.rank] : 'bg-gray-50 text-gray-500 ring-gray-200'}`}>{row.rank ?? '—'}</div>
+        const highlighted = row.rank ? rowStyle[row.rank] : undefined;
+        return <div key={`${row.target_id}-${row.user_id}`} className={`grid grid-cols-[auto_1fr_auto] items-center gap-3 px-5 py-3.5 sm:grid-cols-[auto_1fr_repeat(3,minmax(72px,auto))] ${highlighted ?? (isMe ? 'bg-indigo-50/50' : 'hover:bg-gray-50')}`}>
+          <div className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-extrabold ring-1 ${row.rank && rankStyle[row.rank] ? rankStyle[row.rank] : 'bg-gray-50 text-gray-500 ring-gray-200'}`}><span aria-label={row.rank ? `Rank ${row.rank}` : 'Unranked'}>{row.rank && rankMedal[row.rank] ? rankMedal[row.rank] : row.rank ?? '—'}</span></div>
           <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-semibold text-gray-900">{row.employee_name ?? `Employee #${row.rank ?? row.user_id}`}{isMe ? ' (You)' : ''}</p>{row.badges.map((badge) => <span key={badge} className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-bold text-emerald-700">{badge}</span>)}</div><p className="mt-0.5 truncate text-[11px] text-gray-400">{row.department ?? 'No department'} · {row.period_label}</p></div>
           <div className="text-right sm:hidden"><p className="text-lg font-extrabold text-indigo-600">{score(row)}</p><p className="text-[9px] uppercase text-gray-400">score</p></div>
           <div className="hidden text-right sm:block"><p className="text-sm font-bold text-gray-800">{row.sales_percentage === null ? '—' : `${Math.round(row.sales_percentage)}%`}</p><p className="text-[9px] uppercase text-gray-400">sales</p></div>

@@ -83,18 +83,54 @@ class RevenueRecognitionService
         });
     }
 
-    /** @return array{total_collected:float,collected_this_month:float,receivable:float} */
+    /** @return array<string, mixed> */
     public function collectionSummary(int $organizationId, ?int $assignedTo, CarbonInterface $asOf): array
     {
         $payments = $this->collectionDetailsQuery($organizationId, $assignedTo);
 
-        $monthStart = Carbon::instance($asOf)->copy()->startOfMonth()->toDateString();
-        $monthEnd = Carbon::instance($asOf)->copy()->endOfMonth()->toDateString();
+        $date = Carbon::instance($asOf)->copy()->startOfDay();
+        $monthStart = $date->copy()->startOfMonth();
+        $monthEnd = $date->copy()->endOfMonth();
+        $previousStart = $date->copy()->subMonthNoOverflow()->startOfMonth();
+        $previousEnd = $previousStart->copy()->addDays($date->day - 1)->min($previousStart->copy()->endOfMonth());
+        $currentComparable = round((float) (clone $payments)
+            ->whereBetween('payment_date', [$monthStart->toDateString(), $date->toDateString()])
+            ->sum('amount'), 2);
+        $previousComparable = round((float) (clone $payments)
+            ->whereBetween('payment_date', [$previousStart->toDateString(), $previousEnd->toDateString()])
+            ->sum('amount'), 2);
+        $collectionComparison = $this->comparison($currentComparable, $previousComparable, 'vs previous equivalent period');
 
         return [
             'total_collected' => round((float) (clone $payments)->sum('amount'), 2),
-            'collected_this_month' => round((float) (clone $payments)->whereBetween('payment_date', [$monthStart, $monthEnd])->sum('amount'), 2),
+            'collected_this_month' => round((float) (clone $payments)->whereBetween('payment_date', [$monthStart->toDateString(), $monthEnd->toDateString()])->sum('amount'), 2),
             'receivable' => $this->receivable($organizationId, $assignedTo, $asOf),
+            // Lifetime revenue is not compared with a monthly total. Its indicator
+            // intentionally describes current-period collection activity instead.
+            'comparisons' => [
+                'total_collected' => array_merge($collectionComparison, ['context' => 'Current-period collections']),
+                'collected_this_month' => $collectionComparison,
+                // Accurate historical receivable snapshots are not stored today.
+                'receivable' => ['available' => false, 'change_percent' => null, 'direction' => 'neutral', 'label' => 'No comparison available'],
+            ],
+        ];
+    }
+
+    /** @return array{available:bool,change_percent:?float,direction:string,label:string} */
+    private function comparison(float $current, float $previous, string $label): array
+    {
+        if ($previous == 0.0) {
+            return $current == 0.0
+                ? ['available' => true, 'change_percent' => 0.0, 'direction' => 'neutral', 'label' => $label]
+                : ['available' => false, 'change_percent' => null, 'direction' => 'increase', 'label' => 'Previous comparable period was ₹0'];
+        }
+
+        $change = round((($current - $previous) / $previous) * 100, 2);
+        return [
+            'available' => true,
+            'change_percent' => $change,
+            'direction' => $change > 0 ? 'increase' : ($change < 0 ? 'decrease' : 'neutral'),
+            'label' => $label,
         ];
     }
 

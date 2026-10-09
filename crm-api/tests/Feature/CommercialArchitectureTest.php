@@ -25,6 +25,8 @@ class CommercialArchitectureTest extends TestCase
     {
         parent::setUp();
         Schema::create('users', function (Blueprint $t) { $t->id(); $t->unsignedBigInteger('organization_id'); $t->string('name'); $t->string('email')->unique(); $t->string('password')->nullable(); $t->string('role')->default('employee'); $t->boolean('is_active')->default(true); $t->timestamps(); $t->softDeletes(); });
+        Schema::create('departments', function (Blueprint $t) { $t->id(); $t->unsignedBigInteger('organization_id'); $t->string('name'); $t->string('description')->nullable(); $t->timestamps(); $t->softDeletes(); });
+        Schema::create('department_user', function (Blueprint $t) { $t->id(); $t->unsignedBigInteger('department_id'); $t->unsignedBigInteger('user_id'); $t->string('position')->nullable(); $t->timestamps(); });
         Schema::create('clients', function (Blueprint $t) { $t->id(); $t->unsignedBigInteger('organization_id'); $t->unsignedBigInteger('created_by')->nullable(); $t->unsignedBigInteger('assigned_to')->nullable(); $t->string('first_name'); $t->string('last_name')->nullable(); $t->string('company')->nullable(); $t->string('email')->nullable(); $t->string('phone')->nullable(); $t->string('phone_normalized')->nullable(); $t->string('job_title')->nullable(); $t->string('website')->nullable(); $t->string('city')->nullable(); $t->string('state')->nullable(); $t->string('country')->nullable(); $t->timestamps(); $t->softDeletes(); });
         Schema::create('leads', function (Blueprint $t) { $t->id(); $t->unsignedBigInteger('organization_id'); $t->unsignedBigInteger('client_id')->nullable(); $t->unsignedBigInteger('created_by'); $t->unsignedBigInteger('assigned_to')->nullable(); $t->unsignedBigInteger('department_id')->nullable(); $t->string('first_name'); $t->string('last_name')->nullable(); $t->string('status')->default('new'); $t->string('client_type')->nullable(); $t->string('business_type')->nullable(); $t->string('market_type')->nullable(); $t->string('types')->nullable(); $t->string('phone')->nullable(); $t->string('phone_normalized')->nullable(); $t->timestamps(); $t->softDeletes(); });
         Schema::create('deals', function (Blueprint $t) { $t->id(); $t->unsignedBigInteger('organization_id'); $t->unsignedBigInteger('client_id')->nullable(); $t->unsignedBigInteger('lead_id')->nullable(); $t->unsignedBigInteger('assigned_to')->nullable(); $t->unsignedBigInteger('created_by'); $t->unsignedBigInteger('pipeline_id')->nullable(); $t->unsignedBigInteger('stage_id')->nullable(); $t->string('title'); $t->decimal('value', 15, 2)->default(0); $t->string('currency')->default('INR'); $t->string('status')->default('open'); $t->string('business_type')->nullable(); $t->date('closed_at')->nullable(); $t->timestamps(); $t->softDeletes(); });
@@ -127,6 +129,22 @@ class CommercialArchitectureTest extends TestCase
         $employee = $service->progress(1, $employeeA->id, '2027-01-01', '2027-01-31');
         self::assertSame(240000.0, $employee['achieved_amount']);
         self::assertSame(150000.0, $employee['received_amount']);
+    }
+
+    public function test_collection_summary_compares_equivalent_partial_month_periods_without_dividing_by_zero(): void
+    {
+        $employee = User::forceCreate(['organization_id' => 1, 'name' => 'Revenue Rep', 'email' => 'revenue-rep@example.com', 'password' => 'password', 'role' => 'employee']);
+        $deal = Deal::create(['organization_id' => 1, 'assigned_to' => $employee->id, 'created_by' => $employee->id, 'title' => 'Collection comparison', 'value' => 500000, 'status' => 'open']);
+        DealPayment::create(['organization_id' => 1, 'deal_id' => $deal->id, 'created_by' => $employee->id, 'amount' => 100000, 'payment_date' => '2027-09-03']);
+        DealPayment::create(['organization_id' => 1, 'deal_id' => $deal->id, 'created_by' => $employee->id, 'amount' => 150000, 'payment_date' => '2027-10-03']);
+
+        $summary = app(RevenueRecognitionService::class)->collectionSummary(1, $employee->id, Carbon::parse('2027-10-05'));
+
+        self::assertSame(150000.0, $summary['collected_this_month']);
+        self::assertTrue($summary['comparisons']['collected_this_month']['available']);
+        self::assertSame(50.0, $summary['comparisons']['collected_this_month']['change_percent']);
+        self::assertSame('increase', $summary['comparisons']['collected_this_month']['direction']);
+        self::assertFalse($summary['comparisons']['receivable']['available']);
     }
 
     public function test_custom_target_counts_only_records_inside_its_inclusive_date_range(): void

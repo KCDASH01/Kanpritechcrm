@@ -9,7 +9,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import client from '@/lib/api/client';
-import type { ApiResponse, DashboardData, DashboardPerformance, DashboardPerformanceDetail } from '@/types';
+import type { ApiResponse, DashboardData, DashboardPerformance, DashboardPerformanceDetail, RevenueComparison, TargetProgress } from '@/types';
 import { useAuthStore } from '@/store/authStore';
 import { SkeletonCard, SkeletonTable } from '@/components/ui/Skeleton';
 import { Badge } from '@/components/ui/Badge';
@@ -76,29 +76,44 @@ function progressTone(pct: number | null) {
   return { fill: 'bg-emerald-700', text: 'text-emerald-800', badge: 'bg-emerald-100' };
 }
 
-function TargetProgressRow({ label, actual, target, percentage, onClick }: {
-  label: string; actual: number; target: number; percentage: number | null; onClick: () => void;
+function TargetProgressRow({ label, actual, target, remaining, percentage, daysLeft, periods, variant, onClick }: {
+  label: string;
+  actual: number;
+  target: number;
+  remaining: number;
+  percentage: number | null;
+  daysLeft?: number | null;
+  periods?: TargetProgress['periods'];
+  variant: 'sales' | 'collection';
+  onClick: () => void;
 }) {
   const tone = progressTone(percentage);
   const displayPct = percentage === null ? null : Number(percentage.toFixed(2));
+  const colors = variant === 'sales'
+    ? { card: 'from-[#F5EEFF] to-[#FAF6FF]', accent: 'text-[#7C3AED]', track: 'bg-[#E9DFF8]', icon: 'bg-[#EDE0FF] text-[#7C3AED]', glyph: '↗' }
+    : { card: 'from-[#E8F4FF] to-[#F4F9FF]', accent: 'text-[#2563EB]', track: 'bg-[#D5E8FC]', icon: 'bg-[#DCEEFF] text-[#2563EB]', glyph: '₹' };
+  const hasTarget = target > 0;
   return (
-    <button type="button" onClick={onClick} className="w-full text-left rounded-xl p-4 hover:bg-gray-50 transition-colors group">
-      <div className="flex items-start justify-between gap-4 mb-2.5">
-        <div>
-          <p className="text-sm font-semibold text-gray-800 group-hover:text-indigo-700">{label}</p>
-          {target > 0 ? (
-            <p className="text-sm text-gray-500 mt-0.5">{fmtCurrency(actual)} / {fmtCurrency(target)}</p>
-          ) : (
-            <p className="text-sm text-gray-400 mt-0.5">No Target Set · Achieved {fmtCurrency(actual)}</p>
-          )}
-        </div>
+    <button type="button" onClick={onClick} className={`group w-full rounded-2xl border border-white/70 bg-gradient-to-br ${colors.card} p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md`}>
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3"><span className={`flex h-10 w-10 items-center justify-center rounded-xl text-lg font-bold ${colors.icon}`}>{colors.glyph}</span><div><p className={`text-sm font-bold ${colors.accent}`}>{label}</p><p className="mt-0.5 text-[11px] text-gray-500">Click for contributing records</p></div></div>
         {displayPct !== null ? (
           <span className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-bold ${tone.badge} ${tone.text}`}>
             {displayPct}%{displayPct > 100 ? ' Achieved' : ''}
           </span>
-        ) : <span className="text-xs font-semibold text-gray-400">View details →</span>}
+        ) : <span className="rounded-full bg-white/70 px-2.5 py-1 text-xs font-semibold text-gray-500">No target assigned</span>}
       </div>
-      <div className="h-[18px] bg-gray-100 rounded-full overflow-hidden ring-1 ring-inset ring-gray-200">
+      {hasTarget ? <>
+        <div className="grid grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-3">
+          <div><p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Target</p><p className="mt-0.5 text-sm font-bold text-gray-900">{fmtCurrency(target)}</p></div>
+          <div><p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Achieved</p><p className="mt-0.5 text-sm font-bold text-gray-900">{fmtCurrency(actual)}</p></div>
+          <div><p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Remaining</p><p className="mt-0.5 text-sm font-bold text-gray-900">{fmtCurrency(remaining)}</p></div>
+          <div><p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Achievement</p><p className="mt-0.5 text-sm font-bold text-gray-900">{displayPct}%</p></div>
+          <div><p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Days left</p><p className="mt-0.5 text-sm font-bold text-gray-900">{daysLeft == null ? 'Varies by employee' : daysLeft}</p></div>
+        </div>
+        {!!periods?.length && <div className="mt-3 rounded-xl bg-white/55 px-3 py-2 text-[10px] text-gray-600">{periods.slice(0, 3).map((period) => <p key={`${period.user_id}-${period.period_start}`} className="truncate"><span className="font-semibold">{period.user_name ?? `Employee ${period.user_id}`}:</span> {period.period_label ?? `${period.period_start} – ${period.period_end}`}</p>)}{periods.length > 3 && <p className="mt-0.5 font-semibold text-gray-500">+{periods.length - 3} more target periods</p>}</div>}
+      </> : <div className="rounded-xl bg-white/55 px-4 py-5 text-center"><p className="text-sm font-semibold text-gray-600">No target assigned</p><p className="mt-1 text-xs text-gray-400">Set a target to begin tracking achievement.</p></div>}
+      <div className={`mt-4 h-[22px] overflow-hidden rounded-full ring-1 ring-inset ring-black/5 ${colors.track}`}>
         <div className={`h-full rounded-full transition-all duration-700 ${tone.fill}`} style={{ width: `${Math.min(Math.max(percentage ?? 0, 0), 100)}%` }} />
       </div>
       {displayPct !== null && displayPct > 100 && <div className="h-1 mt-1 rounded-full bg-emerald-700" style={{ width: `${Math.min(displayPct - 100, 100)}%` }} />}
@@ -106,15 +121,27 @@ function TargetProgressRow({ label, actual, target, percentage, onClick }: {
   );
 }
 
+function ComparisonIndicator({ comparison, adverseIncrease = false }: { comparison: RevenueComparison; adverseIncrease?: boolean }) {
+  if (!comparison.available || comparison.change_percent === null) return <p className="mt-2 text-[10px] text-gray-400">{comparison.context ? `${comparison.context} · ` : ''}{comparison.label}</p>;
+  const direction = comparison.direction;
+  const positive = adverseIncrease ? direction === 'decrease' : direction === 'increase';
+  const negative = adverseIncrease ? direction === 'increase' : direction === 'decrease';
+  const tone = positive ? 'text-emerald-700' : negative ? 'text-red-600' : 'text-gray-500';
+  const arrow = direction === 'increase' ? '↑' : direction === 'decrease' ? '↓' : '→';
+  return <p className={`mt-2 text-[10px] font-semibold ${tone}`}>{comparison.context ? `${comparison.context}: ` : ''}{arrow} {Math.abs(comparison.change_percent).toFixed(1)}% {comparison.label}</p>;
+}
+
 function PerformanceOverview({ performance, canManage, selectedMember, onSelectMember, onOpen }: {
   performance: DashboardPerformance; canManage: boolean; selectedMember: string;
   onSelectMember: (value: string) => void; onOpen: (type: DetailType) => void;
 }) {
   const target = performance.target;
-  const revenueCards: { label: string; value: number; type: DetailType; color: string; icon: string }[] = [
-    { label: 'Total Revenue Collected', value: performance.revenue.total_collected, type: 'collections_all', color: 'text-indigo-700 bg-indigo-50', icon: '₹' },
-    { label: 'Collected This Month', value: performance.revenue.collected_this_month, type: 'collections_month', color: 'text-emerald-700 bg-emerald-50', icon: '✓' },
-    { label: 'Receivable', value: performance.revenue.receivable, type: 'receivables', color: 'text-amber-700 bg-amber-50', icon: '↗' },
+  const unavailableComparison: RevenueComparison = { available: false, change_percent: null, direction: 'neutral', label: 'No comparison available' };
+  const comparisons = performance.revenue.comparisons;
+  const revenueCards: { label: string; value: number; type: DetailType; card: string; accent: string; iconBg: string; icon: string; comparison: RevenueComparison; adverseIncrease?: boolean }[] = [
+    { label: 'Total Revenue Collected', value: performance.revenue.total_collected, type: 'collections_all', card: 'from-[#E7F9F1] to-[#F2FCF7]', accent: 'text-[#059669]', iconBg: 'bg-[#CEF5E3]', icon: '₹', comparison: comparisons?.total_collected ?? unavailableComparison },
+    { label: 'Collected This Month', value: performance.revenue.collected_this_month, type: 'collections_month', card: 'from-[#E4F3FF] to-[#F1F8FF]', accent: 'text-[#0284C7]', iconBg: 'bg-[#D1EAFF]', icon: '✓', comparison: comparisons?.collected_this_month ?? unavailableComparison },
+    { label: 'Receivable', value: performance.revenue.receivable, type: 'receivables', card: 'from-[#FFF3DC] to-[#FFFAEF]', accent: 'text-[#EA8500]', iconBg: 'bg-[#FFE6BA]', icon: '↗', comparison: comparisons?.receivable ?? unavailableComparison, adverseIncrease: true },
   ];
 
   return <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -128,13 +155,13 @@ function PerformanceOverview({ performance, canManage, selectedMember, onSelectM
       </label>}
     </div>
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 p-2 border-b border-gray-100">
-      <TargetProgressRow label="Sales Target" actual={target.achieved_amount} target={target.target_amount} percentage={target.sales_percentage} onClick={() => onOpen('sales')} />
-      <TargetProgressRow label="Collection Target" actual={target.received_amount} target={target.receivable_amount} percentage={target.collection_percentage} onClick={() => onOpen('target_collections')} />
+      <TargetProgressRow label="Sales Target" variant="sales" actual={target.achieved_amount} target={target.target_amount} remaining={target.remaining_sales_amount ?? Math.max(target.target_amount - target.achieved_amount, 0)} percentage={target.sales_percentage} daysLeft={target.days_remaining} periods={target.scope === 'team' && target.target_count > 1 ? target.periods : undefined} onClick={() => onOpen('sales')} />
+      <TargetProgressRow label="Collection Target" variant="collection" actual={target.received_amount} target={target.receivable_amount} remaining={target.remaining_collection_amount ?? Math.max(target.receivable_amount - target.received_amount, 0)} percentage={target.collection_percentage} daysLeft={target.days_remaining} periods={target.scope === 'team' && target.target_count > 1 ? target.periods : undefined} onClick={() => onOpen('target_collections')} />
     </div>
     <div className="p-5"><p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">Revenue</p><div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-      {revenueCards.map((card) => <button key={card.type} type="button" onClick={() => onOpen(card.type)} className="text-left rounded-2xl border border-gray-100 p-4 hover:border-indigo-200 hover:shadow-md transition-all group">
-        <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold ${card.color}`}>{card.icon}</div>
-        <p className="text-xs text-gray-500 mt-3 group-hover:text-indigo-600">{card.label}</p><p className="text-xl font-bold text-gray-900 mt-1">₹{card.value.toLocaleString('en-IN')}</p><p className="text-[10px] text-gray-400 mt-2">View details →</p>
+      {revenueCards.map((card) => <button key={card.type} type="button" onClick={() => onOpen(card.type)} className={`group rounded-2xl border border-white/70 bg-gradient-to-br ${card.card} p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-md`}>
+        <div className={`flex h-9 w-9 items-center justify-center rounded-xl font-bold ${card.iconBg} ${card.accent}`}>{card.icon}</div>
+        <p className={`mt-3 text-xs font-semibold ${card.accent}`}>{card.label}</p><p className="mt-1 text-xl font-bold text-gray-900">₹{card.value.toLocaleString('en-IN')}</p><ComparisonIndicator comparison={card.comparison} adverseIncrease={card.adverseIncrease} /><p className="mt-2 text-[10px] text-gray-400">View details →</p>
       </button>)}
     </div></div>
   </motion.section>;

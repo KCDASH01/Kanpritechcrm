@@ -271,8 +271,8 @@ class SalesTargetController extends Controller
 
         $category = $data['category'] ?? 'overall';
         $mode = $data['mode'] ?? 'actual';
-        $rows = $query->orderByDesc('period_end')->get()->map(function (SalesTarget $target) use ($settings, $category, $mode, $canManage) {
-            $progress = $this->progress->progressForTarget($target);
+        $rows = $query->orderByDesc('period_end')->get()->map(function (SalesTarget $target) use ($settings, $category, $mode, $canManage, $now) {
+            $progress = $this->progress->progressForTarget($target, $now);
             $sales = $progress['sales_percentage'];
             $collection = $progress['collection_percentage'];
             $overall = $sales !== null && $collection !== null

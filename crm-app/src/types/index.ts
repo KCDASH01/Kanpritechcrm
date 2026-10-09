@@ -360,7 +360,23 @@ export interface TargetProgress {
   remaining_collection_amount?: number;
   days_elapsed?: number | null;
   days_remaining?: number | null;
-  periods?: { user_id: number; period_start: string; period_end: string }[];
+  periods?: {
+    user_id: number;
+    user_name?: string | null;
+    target_type?: SalesTargetType;
+    period_start: string;
+    period_end: string;
+    period_label?: string;
+    days_remaining?: number;
+  }[];
+}
+
+export interface RevenueComparison {
+  available: boolean;
+  change_percent: number | null;
+  direction: 'increase' | 'decrease' | 'neutral';
+  label: string;
+  context?: string;
 }
 
 export interface LeaderboardSettings {
@@ -408,6 +424,11 @@ export interface DashboardPerformance {
     total_collected: number;
     collected_this_month: number;
     receivable: number;
+    comparisons?: {
+      total_collected: RevenueComparison;
+      collected_this_month: RevenueComparison;
+      receivable: RevenueComparison;
+    };
   };
   team_members: { id: number; name: string }[];
 }

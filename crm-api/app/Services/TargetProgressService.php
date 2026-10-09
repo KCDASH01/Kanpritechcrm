@@ -96,7 +96,7 @@ class TargetProgressService
     }
 
     /** @return array<string, float|int|string|bool|null|array> */
-    public function progressForTarget(SalesTarget $target): array
+    public function progressForTarget(SalesTarget $target, ?Carbon $at = null): array
     {
         $start = Carbon::parse($target->period_start)->toDateString();
         $end = $this->periodEnd($target)->toDateString();
@@ -104,7 +104,7 @@ class TargetProgressService
         $collected = $this->received((int) $target->organization_id, (int) $target->user_id, $start, $end);
         $salesTarget = (float) $target->target_amount;
         $collectionTarget = (float) $target->receivable_amount;
-        $today = now()->startOfDay();
+        $today = ($at ?? now())->copy()->startOfDay();
         $startDate = Carbon::parse($start);
         $endDate = Carbon::parse($end);
         $duration = $startDate->diffInDays($endDate) + 1;
@@ -141,7 +141,7 @@ class TargetProgressService
     {
         $at ??= now();
         $targets = $this->targetsForDate($organizationId, $at);
-        $items = $targets->map(fn (SalesTarget $target) => $this->progressForTarget($target));
+        $items = $targets->map(fn (SalesTarget $target) => $this->progressForTarget($target, $at));
 
         $salesTarget = (float) $items->sum('target_amount');
         $achieved = (float) $items->sum('achieved_amount');
@@ -151,7 +151,9 @@ class TargetProgressService
         return [
             'period_start' => $items->min('period_start') ?: $at->copy()->startOfMonth()->toDateString(),
             'period_end' => $items->max('period_end') ?: $at->copy()->endOfMonth()->toDateString(),
-            'period_label' => 'Active target periods',
+            'period_label' => $items->count() === 1
+                ? (string) $items->first()['period_label']
+                : ($items->isEmpty() ? 'No active target period' : 'Multiple active target periods'),
             'period_status' => 'active',
             'has_target' => $items->isNotEmpty(),
             'target_count' => $items->count(),
@@ -169,8 +171,12 @@ class TargetProgressService
             'user_id' => null,
             'periods' => $items->map(fn (array $item) => [
                 'user_id' => $item['user_id'],
+                'user_name' => $targets->firstWhere('user_id', $item['user_id'])?->user?->name,
+                'target_type' => $item['target_type'],
                 'period_start' => $item['period_start'],
                 'period_end' => $item['period_end'],
+                'period_label' => $item['period_label'],
+                'days_remaining' => $item['days_remaining'],
             ])->values()->all(),
         ];
     }
