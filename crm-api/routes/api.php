@@ -131,6 +131,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Calendar (scheduled follow-ups & meetings from leads)
         Route::get('calendar', [CalendarController::class, 'index']);
+        Route::get('calendar/collections', [CalendarController::class, 'collections']);
 
         // Activities
         Route::patch('activities/{activity}/done', [ActivityController::class, 'markDone']);

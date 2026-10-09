@@ -8,6 +8,7 @@ import { activitiesApi } from '@/lib/api/activities';
 import { calendarApi, type CalendarEvent } from '@/lib/api/calendar';
 import { useAuthStore } from '@/store/authStore';
 import { AccessDenied } from '@/components/ui/AccessDenied';
+import { CollectionCalendar } from '@/components/calendar/CollectionCalendar';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -87,6 +88,13 @@ function leadLink(event: CalendarEvent): { href: string; label: string } {
   return { href: `/leads/${event.lead_id}`, label: event.lead_name || 'View Lead' };
 }
 
+function CalendarTabs({ active, onChange }: { active: 'collections' | 'activities'; onChange: (tab: 'collections' | 'activities') => void }) {
+  return <div className="inline-flex max-w-full gap-1 rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
+    <button onClick={() => onChange('collections')} className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors sm:px-4 ${active === 'collections' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Collections</button>
+    <button onClick={() => onChange('activities')} className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors sm:px-4 ${active === 'activities' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Follow-ups &amp; Meetings</button>
+  </div>;
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function CalendarPage() {
@@ -104,6 +112,7 @@ export default function CalendarPage() {
   }
   const assignedFilter = canManage ? undefined : user?.id;
 
+  const [activeTab, setActiveTab]   = useState<'collections' | 'activities'>('collections');
   const [view, setView]             = useState<'month' | 'week'>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
@@ -120,6 +129,7 @@ export default function CalendarPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['calendar-events', from, to, assignedFilter],
     queryFn:  () => calendarApi.list({ date_from: from, date_to: to, assigned_to: assignedFilter }),
+    enabled: activeTab === 'activities',
   });
   const events: CalendarEvent[] = data ?? [];
 
@@ -182,8 +192,14 @@ export default function CalendarPage() {
         return `${mon.getDate()} ${MONTHS[mon.getMonth()].slice(0,3)} – ${sun.getDate()} ${MONTHS[sun.getMonth()].slice(0,3)} ${sun.getFullYear()}`;
       })();
 
+  if (activeTab === 'collections') {
+    return <div className="space-y-4"><CalendarTabs active={activeTab} onChange={setActiveTab} /><CollectionCalendar canManage={canManage} /></div>;
+  }
+
   return (
-    <div className="flex h-[calc(100dvh-5rem)] min-h-[560px] gap-4 lg:h-[calc(100dvh-5.5rem)]">
+    <div className="space-y-4">
+      <CalendarTabs active={activeTab} onChange={setActiveTab} />
+      <div className="flex h-[calc(100dvh-9rem)] min-h-[560px] gap-4 lg:h-[calc(100dvh-9.5rem)]">
 
       {/* ── Main calendar ─────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden min-w-0">
@@ -461,6 +477,7 @@ export default function CalendarPage() {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
     </div>
   );
 }

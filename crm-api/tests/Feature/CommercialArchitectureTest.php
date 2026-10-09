@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Http\Controllers\Client\ClientController;
+use App\Http\Controllers\Calendar\CalendarController;
 use App\Models\Client;
 use App\Models\Deal;
 use App\Models\DealPayment;
@@ -147,6 +148,30 @@ class CommercialArchitectureTest extends TestCase
         self::assertFalse($summary['comparisons']['receivable']['available']);
     }
 
+    public function test_collection_calendar_groups_historical_payment_dates_and_forces_employee_scope(): void
+    {
+        $admin = User::forceCreate(['organization_id' => 1, 'name' => 'Admin', 'email' => 'calendar-admin@example.com', 'password' => 'password', 'role' => 'admin']);
+        $employeeA = User::forceCreate(['organization_id' => 1, 'name' => 'Employee A', 'email' => 'calendar-a@example.com', 'password' => 'password', 'role' => 'employee']);
+        $employeeB = User::forceCreate(['organization_id' => 1, 'name' => 'Employee B', 'email' => 'calendar-b@example.com', 'password' => 'password', 'role' => 'employee']);
+        $dealA = Deal::create(['organization_id' => 1, 'assigned_to' => $employeeA->id, 'created_by' => $admin->id, 'title' => 'A Deal', 'value' => 100000]);
+        $dealB = Deal::create(['organization_id' => 1, 'assigned_to' => $employeeB->id, 'created_by' => $admin->id, 'title' => 'B Deal', 'value' => 100000]);
+        DealPayment::create(['organization_id' => 1, 'deal_id' => $dealA->id, 'created_by' => $admin->id, 'amount' => 15000, 'payment_date' => '2026-08-15']);
+        DealPayment::create(['organization_id' => 1, 'deal_id' => $dealA->id, 'created_by' => $admin->id, 'amount' => 10000, 'payment_date' => '2026-08-15']);
+        DealPayment::create(['organization_id' => 1, 'deal_id' => $dealB->id, 'created_by' => $admin->id, 'amount' => 25000, 'payment_date' => '2026-08-15']);
+        DealPayment::create(['organization_id' => 1, 'deal_id' => $dealB->id, 'created_by' => $admin->id, 'amount' => 35000, 'payment_date' => '2026-09-09']);
+
+        $adminPayload = $this->collectionCalendarFor($admin, '2026-08');
+        self::assertSame(3, $adminPayload['summary']['transaction_count']);
+        self::assertSame(1, $adminPayload['summary']['collection_days']);
+        self::assertSame(50000.0, $adminPayload['daily'][0]['totals'][0]['amount']);
+        self::assertSame('2026-08-15', $adminPayload['daily'][0]['date']);
+
+        $employeePayload = $this->collectionCalendarFor($employeeA, '2026-08', $employeeB->id);
+        self::assertSame(2, $employeePayload['summary']['transaction_count']);
+        self::assertSame(25000.0, $employeePayload['daily'][0]['totals'][0]['amount']);
+        self::assertSame('Employee A', $employeePayload['transactions'][0]['responsible_employee']);
+    }
+
     public function test_custom_target_counts_only_records_inside_its_inclusive_date_range(): void
     {
         $employee = User::forceCreate(['organization_id' => 1, 'name' => 'Custom Period', 'email' => 'custom@example.com', 'password' => 'password', 'role' => 'employee']);
@@ -188,5 +213,16 @@ class CommercialArchitectureTest extends TestCase
         $response = app(ClientController::class)->show($request, $client->fresh());
 
         return $response->getData(true)['data'];
+    }
+
+    /** @return array<string, mixed> */
+    private function collectionCalendarFor(User $user, string $month, ?int $assignedTo = null): array
+    {
+        $parameters = ['month' => $month];
+        if ($assignedTo) $parameters['assigned_to'] = $assignedTo;
+        $request = Request::create('/api/calendar/collections', 'GET', $parameters);
+        $request->setUserResolver(fn () => $user);
+
+        return app(CalendarController::class)->collections($request)->getData(true)['data'];
     }
 }

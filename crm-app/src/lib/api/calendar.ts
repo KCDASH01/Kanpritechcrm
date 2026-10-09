@@ -30,7 +30,45 @@ export interface CalendarFilters {
   unassigned?: boolean;
 }
 
+export interface CollectionAmount {
+  currency: string;
+  amount: number;
+}
+
+export interface CollectionCalendarDay {
+  date: string;
+  transaction_count: number;
+  totals: CollectionAmount[];
+}
+
+export interface CollectionCalendarTransaction {
+  id: number;
+  payment_date: string;
+  client_name: string | null;
+  deal_id: number;
+  deal_reference: string | null;
+  amount: number;
+  currency: string;
+  payment_method: string;
+  responsible_employee: string | null;
+  payment_status: 'received';
+  deal_status: string | null;
+}
+
+export interface CollectionCalendarData {
+  month: string;
+  summary: {
+    collection_days: number;
+    transaction_count: number;
+    totals: CollectionAmount[];
+  };
+  daily: CollectionCalendarDay[];
+  transactions: CollectionCalendarTransaction[];
+}
+
 export const calendarApi = {
   list: (filters: CalendarFilters) =>
     client.get<ApiResponse<CalendarEvent[]>>('/calendar', { params: filters }).then((r) => r.data.data),
+  collections: (filters: { month: string; assigned_to?: number }) =>
+    client.get<ApiResponse<CollectionCalendarData>>('/calendar/collections', { params: filters }).then((r) => r.data.data),
 };
