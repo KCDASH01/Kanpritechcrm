@@ -74,7 +74,10 @@ return new class extends Migration
             $table->dateTime('notified_at');
             $table->dateTime('resolved_at')->nullable();
             $table->timestamps();
-            $table->unique(['organization_id', 'deduplication_key']);
+            $table->unique(
+                ['organization_id', 'deduplication_key'],
+                'cg_notification_dedupe_unique'
+            );
         });
     }
 
