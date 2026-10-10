@@ -40,4 +40,32 @@ return [
         'key_secret' => env('RAZORPAY_KEY_SECRET'),
     ],
 
+    'meta' => [
+        'app_id' => env('META_APP_ID'),
+        'app_secret' => env('META_APP_SECRET'),
+        'graph_version' => env('META_GRAPH_VERSION'),
+        'webhook_verify_token' => env('META_WEBHOOK_VERIFY_TOKEN'),
+        'redirect_uri' => env('META_REDIRECT_URI'),
+    ],
+
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'redirect_uri' => env('GOOGLE_REDIRECT_URI'),
+        'pubsub_topic' => env('GMAIL_PUBSUB_TOPIC'),
+        'pubsub_verification_token' => env('GMAIL_PUBSUB_VERIFICATION_TOKEN'),
+    ],
+
+    'microsoft' => [
+        'client_id' => env('MICROSOFT_CLIENT_ID'),
+        'client_secret' => env('MICROSOFT_CLIENT_SECRET'),
+        'tenant' => env('MICROSOFT_TENANT', 'common'),
+        'redirect_uri' => env('MICROSOFT_REDIRECT_URI'),
+        'notification_url' => env('MICROSOFT_NOTIFICATION_URL'),
+    ],
+
+    'lead_integrations' => [
+        'frontend_url' => env('FRONTEND_URL', 'http://localhost:3000'),
+    ],
+
 ];

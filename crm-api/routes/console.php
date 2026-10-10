@@ -28,3 +28,8 @@ Schedule::command('customer-growth:process')
     ->dailyAt('01:10')
     ->withoutOverlapping()
     ->runInBackground();
+
+Schedule::command('lead-integrations:maintain')
+    ->everyTenMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();

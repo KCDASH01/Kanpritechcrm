@@ -21,6 +21,7 @@ const SECTIONS: { label: string; items: NavItem[] }[] = [
     items: [
       { href: '/dashboard',  label: 'Dashboard',  icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
       { href: '/leads',      label: 'Leads',      icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
+      { href: '/lead-integrations', label: 'Lead Integrations', icon: 'M8 12h8m-4-4v8M5 5l3 3m11-3-3 3M5 19l3-3m11 3-3-3' },
       { href: '/clients',    label: 'Clients',    icon: 'M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2m7-10a4 4 0 100-8 4 4 0 000 8zm13 10v-2a4 4 0 00-3-3.87m-4-9.13a4 4 0 010 7.75' },
       { href: '/customer-growth', label: 'Customer Growth', icon: 'M3 17l6-6 4 4 8-8M14 7h7v7' },
       { href: '/follow-ups', label: 'FollowUp',   icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
@@ -86,7 +87,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
     if (href === '/team' || href === '/departments') return canManageTeam();
     if (href === '/billing') return canManageBilling() || isSsoUser();
     // Reports & Targets are Business/Enterprise-only features — hide when not on a paid plan
-    if (href === '/reports' || href === '/geographic-analytics' || href === '/customer-growth') return isPaidPlan();
+    if (href === '/reports' || href === '/geographic-analytics' || href === '/customer-growth' || href === '/lead-integrations') return isPaidPlan();
     if (href === '/calendar' || href === '/targets') return isPaidPlan();
     return true;
   };

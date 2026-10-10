@@ -13,6 +13,7 @@ import type { CrmNotification, MyTargetProgress } from '@/types';
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard':   'Dashboard',
   '/leads':       'Leads',
+  '/lead-integrations': 'Lead Integrations',
   '/follow-ups':  'FollowUp',
   '/meetings':    'Meetings',
   '/important':   'Important',

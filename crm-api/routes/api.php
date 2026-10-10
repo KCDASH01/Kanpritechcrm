@@ -18,6 +18,9 @@ use App\Http\Controllers\GeographicAnalytics\GeographicAnalyticsController;
 use App\Http\Controllers\Important\ImportantController;
 use App\Http\Controllers\Meeting\MeetingController;
 use App\Http\Controllers\Lead\LeadController;
+use App\Http\Controllers\LeadIntegration\LeadIntegrationController;
+use App\Http\Controllers\LeadIntegration\OAuthController as LeadIntegrationOAuthController;
+use App\Http\Controllers\LeadIntegration\WebhookController as LeadIntegrationWebhookController;
 use App\Http\Controllers\Note\NoteController;
 use App\Http\Controllers\Notification\NotificationController;
 use App\Http\Controllers\Pipeline\PipelineController;
@@ -41,6 +44,14 @@ Route::prefix('auth')->group(function () {
 });
 
 Route::post('sso/login', [SSOController::class, 'login']);
+
+Route::get('webhooks/meta', [LeadIntegrationWebhookController::class, 'verifyMeta']);
+Route::post('webhooks/meta', [LeadIntegrationWebhookController::class, 'meta']);
+Route::post('webhooks/whatsapp', [LeadIntegrationWebhookController::class, 'whatsapp']);
+Route::post('webhooks/email/inbound', [LeadIntegrationWebhookController::class, 'inboundEmail']);
+Route::post('webhooks/google/gmail', [LeadIntegrationWebhookController::class, 'gmail']);
+Route::match(['get', 'post'], 'webhooks/microsoft/mail', [LeadIntegrationWebhookController::class, 'microsoft']);
+Route::get('lead-integrations/oauth/{provider}/callback', [LeadIntegrationOAuthController::class, 'callback']);
 
 // ── Authenticated routes ───────────────────────────────────────────────────────
 
@@ -189,6 +200,24 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::patch('customer-growth/retention-tasks/{task}/complete', [CustomerGrowthController::class, 'completeRetentionTask']);
             Route::get('customer-growth/settings', [CustomerGrowthController::class, 'settings']);
             Route::put('customer-growth/settings', [CustomerGrowthController::class, 'updateSettings']);
+
+            // Unified lead integrations (all writes are owner/admin checked in the controller)
+            Route::get('lead-integrations', [LeadIntegrationController::class, 'index']);
+            Route::get('lead-integrations/history', [LeadIntegrationController::class, 'history']);
+            Route::get('lead-integrations/review-queue', [LeadIntegrationController::class, 'reviewQueue']);
+            Route::post('lead-integrations/connections', [LeadIntegrationController::class, 'storeConnection']);
+            Route::delete('lead-integrations/connections/{connection}', [LeadIntegrationController::class, 'disconnect']);
+            Route::post('lead-integrations/connections/{connection}/meta-history', [LeadIntegrationController::class, 'syncMetaHistory']);
+            Route::get('lead-integrations/oauth/{provider}', [LeadIntegrationOAuthController::class, 'authorizeProvider']);
+            Route::post('lead-integrations/campaigns', [LeadIntegrationController::class, 'storeCampaign']);
+            Route::put('lead-integrations/campaigns/{campaign}', [LeadIntegrationController::class, 'updateCampaign']);
+            Route::delete('lead-integrations/campaigns/{campaign}', [LeadIntegrationController::class, 'destroyCampaign']);
+            Route::post('lead-integrations/campaigns/{campaign}/recipients', [LeadIntegrationController::class, 'storeRecipients']);
+            Route::post('lead-integrations/routing-rules', [LeadIntegrationController::class, 'storeRule']);
+            Route::put('lead-integrations/routing-rules/{rule}', [LeadIntegrationController::class, 'updateRule']);
+            Route::delete('lead-integrations/routing-rules/{rule}', [LeadIntegrationController::class, 'destroyRule']);
+            Route::put('lead-integrations/settings', [LeadIntegrationController::class, 'updateSettings']);
+            Route::post('lead-integrations/review-queue/{review}/resolve', [LeadIntegrationController::class, 'resolveReview']);
 
             // Bulk lead import (Business plan feature)
             Route::post('leads/bulk-import', [LeadController::class, 'bulkImport']);
