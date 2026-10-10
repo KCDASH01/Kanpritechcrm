@@ -40,7 +40,7 @@ class CustomerGrowthService
         $clients = Client::query()
             ->where('organization_id', $organizationId)
             ->with([
-                'deals' => fn ($query) => $query->where('status', 'won')->whereNotNull('service_type'),
+                'deals' => fn ($query) => $query->where('status', 'won')->with('lead:id,types'),
                 'recurringBusinesses' => fn ($query) => $query->where('status', 'ACTIVE')->whereNotNull('service_type'),
             ])->get();
 
@@ -48,7 +48,10 @@ class CustomerGrowthService
         foreach ($clients as $client) {
             $purchases = collect();
             foreach ($client->deals as $deal) {
-                $purchases->push(['service' => $deal->service_type, 'deal_id' => $deal->id, 'recurring_id' => null]);
+                $service = $deal->service_type ?: $deal->lead?->types;
+                if ($service) {
+                    $purchases->push(['service' => $service, 'deal_id' => $deal->id, 'recurring_id' => null]);
+                }
             }
             foreach ($client->recurringBusinesses as $contract) {
                 $purchases->push(['service' => $contract->service_type, 'deal_id' => $contract->deal_id, 'recurring_id' => $contract->id]);
@@ -237,12 +240,14 @@ class CustomerGrowthService
     private function comparableEstimate(int $organizationId, string $service, int $excludeClientId): ?Deal
     {
         return Deal::query()->where('organization_id', $organizationId)->where('status', 'won')
-            ->whereRaw('LOWER(service_type) = ?', [$this->serviceKey($service)])
+            ->whereRaw("LOWER(TRIM(REPLACE(REPLACE(service_type, '_', ' '), '-', ' '))) = ?", [$this->serviceKey($service)])
             ->where('client_id', '!=', $excludeClientId)->whereNotNull('value')->latest('closed_at')->first();
     }
 
     private function serviceKey(string $value): string
     {
+        $value = preg_replace('/[_-]+/', ' ', $value) ?? $value;
+
         return strtolower(trim(preg_replace('/\\s+/', ' ', $value) ?? $value));
     }
 

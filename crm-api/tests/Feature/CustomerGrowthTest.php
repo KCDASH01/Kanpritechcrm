@@ -6,6 +6,7 @@ use App\Models\Client;
 use App\Models\CustomerGrowthSetting;
 use App\Models\Deal;
 use App\Models\GrowthRecommendation;
+use App\Models\Lead;
 use App\Models\User;
 use App\Services\CustomerGrowthService;
 use Illuminate\Database\Schema\Blueprint;
@@ -36,6 +37,14 @@ class CustomerGrowthTest extends TestCase
             $table->string('first_name');
             $table->string('last_name')->nullable();
             $table->string('company')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+        });
+        Schema::create('leads', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('organization_id');
+            $table->unsignedBigInteger('client_id')->nullable();
+            $table->string('types')->nullable();
             $table->timestamps();
             $table->softDeletes();
         });
@@ -128,8 +137,9 @@ class CustomerGrowthTest extends TestCase
         $employee = User::forceCreate(['organization_id' => 1, 'name' => 'Rep', 'email' => 'growth-rep@example.test', 'password' => 'password', 'role' => 'employee']);
         $client = Client::create(['organization_id' => 1, 'created_by' => $admin->id, 'assigned_to' => $employee->id, 'first_name' => 'Acme']);
         $other = Client::create(['organization_id' => 1, 'created_by' => $admin->id, 'first_name' => 'Comparable']);
-        Deal::create(['organization_id' => 1, 'client_id' => $client->id, 'assigned_to' => $employee->id, 'created_by' => $admin->id, 'title' => 'Website', 'value' => 100000, 'currency' => 'INR', 'status' => 'won', 'service_type' => 'Website Development']);
-        Deal::create(['organization_id' => 1, 'client_id' => $other->id, 'created_by' => $admin->id, 'title' => 'SEO comparable', 'value' => 50000, 'currency' => 'INR', 'status' => 'won', 'service_type' => 'SEO']);
+        $historicalLead = Lead::forceCreate(['organization_id' => 1, 'client_id' => $client->id, 'types' => 'website_development']);
+        Deal::create(['organization_id' => 1, 'client_id' => $client->id, 'lead_id' => $historicalLead->id, 'assigned_to' => $employee->id, 'created_by' => $admin->id, 'title' => 'Website', 'value' => 100000, 'currency' => 'INR', 'status' => 'won', 'service_type' => null]);
+        Deal::create(['organization_id' => 1, 'client_id' => $other->id, 'created_by' => $admin->id, 'title' => 'SEO comparable', 'value' => 50000, 'currency' => 'INR', 'status' => 'won', 'service_type' => 'seo']);
         CustomerGrowthSetting::create([
             'organization_id' => 1,
             'service_mappings' => [
