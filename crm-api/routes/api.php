@@ -12,6 +12,7 @@ use App\Http\Controllers\EmailTemplate\EmailTemplateController;
 use App\Http\Controllers\Employee\EmployeeController;
 use App\Http\Controllers\Calendar\CalendarController;
 use App\Http\Controllers\Client\ClientController;
+use App\Http\Controllers\CustomerGrowth\CustomerGrowthController;
 use App\Http\Controllers\FollowUp\FollowUpController;
 use App\Http\Controllers\GeographicAnalytics\GeographicAnalyticsController;
 use App\Http\Controllers\Important\ImportantController;
@@ -177,6 +178,16 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('geographic-analytics', [GeographicAnalyticsController::class, 'overview']);
             Route::get('geographic-analytics/deals', [GeographicAnalyticsController::class, 'deals']);
             Route::get('geographic-analytics/export', [GeographicAnalyticsController::class, 'export']);
+
+            // Customer growth and retention (isolated from existing financial workflows)
+            Route::get('customer-growth', [CustomerGrowthController::class, 'index']);
+            Route::post('customer-growth/refresh', [CustomerGrowthController::class, 'refresh']);
+            Route::patch('customer-growth/recommendations/{recommendation}', [CustomerGrowthController::class, 'updateRecommendation']);
+            Route::post('customer-growth/recommendations/{recommendation}/link-deal', [CustomerGrowthController::class, 'linkDeal']);
+            Route::post('customer-growth/retention-tasks', [CustomerGrowthController::class, 'storeRetentionTask']);
+            Route::patch('customer-growth/retention-tasks/{task}/complete', [CustomerGrowthController::class, 'completeRetentionTask']);
+            Route::get('customer-growth/settings', [CustomerGrowthController::class, 'settings']);
+            Route::put('customer-growth/settings', [CustomerGrowthController::class, 'updateSettings']);
 
             // Bulk lead import (Business plan feature)
             Route::post('leads/bulk-import', [LeadController::class, 'bulkImport']);

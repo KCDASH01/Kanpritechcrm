@@ -67,6 +67,13 @@ export default function ClientDetailsPage() {
         </div>
       </div>
 
+      <section className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div><h2 className="font-semibold text-gray-900">Customer Growth & Retention</h2><p className="mt-1 text-xs text-gray-500">Review recommended services, customer health, renewals and retention actions without changing this customer record.</p></div>
+          <div className="flex flex-wrap gap-2"><Link href={`/customer-growth?client_id=${client.id}`} className="flex min-h-10 items-center rounded-xl bg-indigo-600 px-3 text-xs font-semibold text-white">Growth Opportunities</Link><Link href={`/customer-growth?client_id=${client.id}&tab=retention`} className="flex min-h-10 items-center rounded-xl border border-indigo-200 bg-white px-3 text-xs font-semibold text-indigo-700">Health & Renewals</Link></div>
+        </div>
+      </section>
+
       <section className="overflow-hidden rounded-2xl border bg-white">
         <h2 className="border-b px-4 py-4 font-semibold sm:px-5">Leads / Opportunities</h2>
         <div className="divide-y">
