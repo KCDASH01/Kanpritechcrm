@@ -19,11 +19,13 @@ export interface GrowthOverview {
   summary: { total: number; potential_revenue: GrowthMoney[]; cross_sell: number; upsell: number; converted: number; actual_won_value: GrowthMoney[] };
   recommendations: GrowthRecommendation[]; health: HealthRow[]; renewals: RenewalRow[]; settings: GrowthSettings;
 }
+export interface LinkableDeal { id: number; title: string; value: string | number; currency: string; status: 'open' | 'won' | 'lost'; closed_at?: string | null }
 
 export const customerGrowthApi = {
   overview: (params?: Record<string, string | number | undefined>) => client.get<{ data: GrowthOverview }>('/customer-growth', { params }).then((r) => r.data.data),
   refresh: () => client.post<{ data: { created: number } }>('/customer-growth/refresh').then((r) => r.data.data),
   updateRecommendation: (id: number, payload: Record<string, unknown>) => client.patch(`/customer-growth/recommendations/${id}`, payload).then((r) => r.data.data),
+  candidateDeals: (id: number) => client.get<{ data: LinkableDeal[] }>(`/customer-growth/recommendations/${id}/deals`).then((r) => r.data.data),
   linkDeal: (id: number, dealId: number) => client.post(`/customer-growth/recommendations/${id}/link-deal`, { deal_id: dealId }).then((r) => r.data.data),
   createRetentionTask: (payload: Record<string, unknown>) => client.post('/customer-growth/retention-tasks', payload).then((r) => r.data.data),
   getSettings: () => client.get<{ data: GrowthSettings }>('/customer-growth/settings').then((r) => r.data.data),

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { customerGrowthApi, type GrowthMoney, type GrowthSettings } from '@/lib/api/customerGrowth';
+import { customerGrowthApi, type GrowthMoney, type GrowthRecommendation, type GrowthSettings } from '@/lib/api/customerGrowth';
 import { useAuthStore } from '@/store/authStore';
 
 type Tab = 'opportunities' | 'retention' | 'settings';
@@ -23,10 +23,13 @@ export default function CustomerGrowthPage() {
   const clientId = Number(searchParams.get('client_id')) || undefined;
   const [tab, setTab] = useState<Tab>(searchParams.get('tab') === 'retention' ? 'retention' : 'opportunities');
   const [status, setStatus] = useState('');
+  const [linkRecommendation, setLinkRecommendation] = useState<GrowthRecommendation | null>(null);
   const overview = useQuery({ queryKey: ['customer-growth', status, clientId], queryFn: () => customerGrowthApi.overview({ status: status || undefined, client_id: clientId }) });
   const update = useMutation({ mutationFn: ({ id, payload }: { id: number; payload: Record<string, unknown> }) => customerGrowthApi.updateRecommendation(id, payload), onSuccess: () => qc.invalidateQueries({ queryKey: ['customer-growth'] }) });
   const refresh = useMutation({ mutationFn: customerGrowthApi.refresh, onSuccess: () => qc.invalidateQueries({ queryKey: ['customer-growth'] }) });
   const task = useMutation({ mutationFn: customerGrowthApi.createRetentionTask, onSuccess: () => qc.invalidateQueries({ queryKey: ['customer-growth'] }) });
+  const candidateDeals = useQuery({ queryKey: ['customer-growth-deals', linkRecommendation?.id], queryFn: () => customerGrowthApi.candidateDeals(linkRecommendation!.id), enabled: Boolean(linkRecommendation) });
+  const linkDeal = useMutation({ mutationFn: ({ recommendationId, dealId }: { recommendationId: number; dealId: number }) => customerGrowthApi.linkDeal(recommendationId, dealId), onSuccess: () => { setLinkRecommendation(null); qc.invalidateQueries({ queryKey: ['customer-growth'] }); } });
   const data = overview.data;
 
   return <div className="space-y-5">
@@ -66,7 +69,7 @@ export default function CustomerGrowthPage() {
             <div className="mt-3 flex flex-wrap gap-2">
               <Link href={`/clients/${row.client_id}`} className="flex min-h-10 items-center rounded-xl border border-gray-200 px-3 text-xs font-semibold">Customer 360°</Link>
               <Link href={`/leads?new=1&client_id=${row.client_id}`} className="flex min-h-10 items-center rounded-xl bg-indigo-600 px-3 text-xs font-semibold text-white">Create lead opportunity</Link>
-              <button onClick={() => { const value = window.prompt('Enter the existing deal ID created for this opportunity:'); if (value && Number(value)) customerGrowthApi.linkDeal(row.id, Number(value)).then(() => qc.invalidateQueries({ queryKey: ['customer-growth'] })); }} className="min-h-10 rounded-xl border border-indigo-200 px-3 text-xs font-semibold text-indigo-700">Link created deal</button>
+              <button onClick={() => setLinkRecommendation(row)} className="min-h-10 rounded-xl border border-indigo-200 px-3 text-xs font-semibold text-indigo-700">Link created deal</button>
             </div>
           </article>)}
       </div>
@@ -78,6 +81,17 @@ export default function CustomerGrowthPage() {
     </div>}
 
     {data && tab === 'settings' && (canManage ? <Settings initial={data.settings} /> : <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">Only Business Owners and Administrators can configure organization-wide automation.</div>)}
+
+    {linkRecommendation && <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setLinkRecommendation(null); }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="link-deal-title" className="max-h-[85vh] w-full overflow-y-auto rounded-t-2xl bg-white p-4 shadow-xl sm:max-w-xl sm:rounded-2xl sm:p-6">
+        <div className="flex items-start justify-between gap-4"><div><h2 id="link-deal-title" className="font-bold text-gray-900">Select the created deal</h2><p className="mt-1 text-xs text-gray-500">Choose a deal belonging to this customer. No deal ID is required.</p></div><button onClick={() => setLinkRecommendation(null)} aria-label="Close" className="min-h-10 min-w-10 rounded-lg text-xl text-gray-500 hover:bg-gray-100">×</button></div>
+        {candidateDeals.isLoading && <div className="mt-4 h-28 animate-pulse rounded-xl bg-gray-100" />}
+        {candidateDeals.isError && <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">Deals could not be loaded. Please close this window and try again.</p>}
+        {candidateDeals.data?.length === 0 && <div className="mt-4 rounded-xl border border-dashed border-gray-200 p-5 text-center"><p className="text-sm text-gray-600">No deals are linked to this customer yet.</p><Link href={`/leads?new=1&client_id=${linkRecommendation.client_id}`} className="mt-3 inline-flex min-h-10 items-center rounded-xl bg-indigo-600 px-4 text-xs font-semibold text-white">Create lead opportunity</Link></div>}
+        <div className="mt-4 space-y-2">{candidateDeals.data?.map((deal) => <div key={deal.id} className="flex flex-col gap-3 rounded-xl border border-gray-200 p-3 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="break-words text-sm font-semibold text-gray-900">{deal.title}</p><p className="mt-1 text-xs text-gray-500">{label(deal.status)} · {money([{ currency: deal.currency || 'INR', amount: Number(deal.value) }])}{deal.closed_at ? ` · ${deal.closed_at}` : ''}</p></div><button onClick={() => linkDeal.mutate({ recommendationId: linkRecommendation.id, dealId: deal.id })} disabled={linkDeal.isPending} className="min-h-10 rounded-xl bg-indigo-600 px-4 text-xs font-semibold text-white disabled:opacity-50">Link this deal</button></div>)}</div>
+        {linkDeal.isError && <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">This deal could not be linked. Confirm it belongs to the same customer and try again.</p>}
+      </div>
+    </div>}
   </div>;
 }
 

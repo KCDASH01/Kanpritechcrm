@@ -83,6 +83,17 @@ class CustomerGrowthController extends Controller
         return response()->json(['data' => $recommendation->fresh(['convertedDeal']), 'message' => 'Existing deal linked successfully.']);
     }
 
+    public function candidateDeals(Request $request, GrowthRecommendation $recommendation): JsonResponse
+    {
+        $this->authorizeRecommendation($request, $recommendation);
+        $deals = Deal::query()->where('organization_id', $request->user()->organization_id)
+            ->where('client_id', $recommendation->client_id)
+            ->when(! $request->user()->isAdmin(), fn ($query) => $query->where('assigned_to', $request->user()->id))
+            ->latest()->get(['id', 'title', 'value', 'currency', 'status', 'closed_at']);
+
+        return response()->json(['data' => $deals]);
+    }
+
     public function storeRetentionTask(Request $request): JsonResponse
     {
         $data = $request->validate([

@@ -182,6 +182,7 @@ Route::middleware('auth:sanctum')->group(function () {
             // Customer growth and retention (isolated from existing financial workflows)
             Route::get('customer-growth', [CustomerGrowthController::class, 'index']);
             Route::post('customer-growth/refresh', [CustomerGrowthController::class, 'refresh']);
+            Route::get('customer-growth/recommendations/{recommendation}/deals', [CustomerGrowthController::class, 'candidateDeals']);
             Route::patch('customer-growth/recommendations/{recommendation}', [CustomerGrowthController::class, 'updateRecommendation']);
             Route::post('customer-growth/recommendations/{recommendation}/link-deal', [CustomerGrowthController::class, 'linkDeal']);
             Route::post('customer-growth/retention-tasks', [CustomerGrowthController::class, 'storeRetentionTask']);
