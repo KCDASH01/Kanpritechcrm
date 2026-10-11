@@ -73,6 +73,7 @@ function LeadForm({ lead, presetClientId, onSave, onClose, saving, phoneError, o
 }) {
   const isPaidPlan = useAuthStore((s) => s.isPaidPlan)();
   const isAdmin    = useAuthStore((s) => s.isAdmin)();
+  const isRecurringLead = lead?.business_type === 'RECURRING';
 
   const { data: employees, isLoading: employeesLoading } = useQuery({
     queryKey: ['employees', { role: 'employee' }],
@@ -106,14 +107,14 @@ function LeadForm({ lead, presetClientId, onSave, onClose, saving, phoneError, o
     notes:      lead?.notes      ?? '',
     expected_value: lead?.expected_value ?? null,
     currency: lead?.currency ?? 'INR',
-    recurring_frequency: lead?.recurring_frequency ?? 'MONTHLY',
-    recurring_amount: lead?.recurring_amount ?? null,
-    recurring_start_date: lead?.recurring_start_date ?? '',
-    recurring_end_type: lead?.recurring_end_type ?? 'ONGOING',
-    recurring_end_date: lead?.recurring_end_date ?? null,
-    next_billing_date: lead?.next_billing_date ?? null,
-    billing_cycles: lead?.billing_cycles ?? null,
-    contract_value: lead?.contract_value ?? null,
+    recurring_frequency: isRecurringLead ? (lead.recurring_frequency ?? 'MONTHLY') : null,
+    recurring_amount: isRecurringLead ? (lead.recurring_amount ?? null) : null,
+    recurring_start_date: isRecurringLead ? (lead.recurring_start_date ?? null) : null,
+    recurring_end_type: isRecurringLead ? (lead.recurring_end_type ?? 'ONGOING') : null,
+    recurring_end_date: isRecurringLead ? (lead.recurring_end_date ?? null) : null,
+    next_billing_date: isRecurringLead ? (lead.next_billing_date ?? null) : null,
+    billing_cycles: isRecurringLead ? (lead.billing_cycles ?? null) : null,
+    contract_value: isRecurringLead ? (lead.contract_value ?? null) : null,
   });
   const [clientSearch, setClientSearch] = useState('');
 
@@ -170,11 +171,20 @@ function LeadForm({ lead, presetClientId, onSave, onClose, saving, phoneError, o
     && (form.business_type !== 'RECURRING' || (!!form.recurring_frequency && !!form.recurring_amount && !!form.recurring_start_date
       && (form.recurring_end_type !== 'FIXED' || !!form.recurring_end_date)));
 
-  const submit = () => onSave({
+  const submit = () => onSave(form.business_type === 'RECURRING' ? {
     ...form,
-    contract_value: form.business_type === 'RECURRING' ? (calculatedContract ?? form.contract_value ?? null) : null,
-    next_billing_date: form.business_type === 'RECURRING'
-      ? (form.next_billing_date || addFrequency(form.recurring_start_date ?? '', form.recurring_frequency)) : null,
+    contract_value: calculatedContract ?? form.contract_value ?? null,
+    next_billing_date: form.next_billing_date || addFrequency(form.recurring_start_date ?? '', form.recurring_frequency),
+  } : {
+    ...form,
+    recurring_frequency: null,
+    recurring_amount: null,
+    recurring_start_date: null,
+    recurring_end_type: null,
+    recurring_end_date: null,
+    next_billing_date: null,
+    billing_cycles: null,
+    contract_value: null,
   });
 
   const field = (key: keyof LeadPayload, label: string, type = 'text', required = false, readOnly = false) => (
@@ -261,7 +271,23 @@ function LeadForm({ lead, presetClientId, onSave, onClose, saving, phoneError, o
         </div>
         <div>
           <label className="block text-xs font-semibold text-gray-600 mb-1">Business Type *</label>
-          <select value={form.business_type} onChange={(e) => setForm((f) => ({ ...f, business_type: e.target.value as 'ONE_TIME' | 'RECURRING' }))} className={inputCls}>
+          <select value={form.business_type} onChange={(e) => setForm((f) => e.target.value === 'ONE_TIME' ? {
+            ...f,
+            business_type: 'ONE_TIME',
+            recurring_frequency: null,
+            recurring_amount: null,
+            recurring_start_date: null,
+            recurring_end_type: null,
+            recurring_end_date: null,
+            next_billing_date: null,
+            billing_cycles: null,
+            contract_value: null,
+          } : {
+            ...f,
+            business_type: 'RECURRING',
+            recurring_frequency: f.recurring_frequency ?? 'MONTHLY',
+            recurring_end_type: f.recurring_end_type ?? 'ONGOING',
+          })} className={inputCls}>
             <option value="ONE_TIME">One Time</option><option value="RECURRING">Recurring</option>
           </select>
         </div>

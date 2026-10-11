@@ -26,6 +26,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 
 class LeadController extends Controller
 {
@@ -563,6 +564,26 @@ class LeadController extends Controller
             return response()->json(['message' => 'Invalid pipeline or stage.'], 422);
         }
 
+        if (($lead->business_type ?: 'ONE_TIME') === 'RECURRING') {
+            Validator::make([
+                'recurring_frequency' => $lead->recurring_frequency,
+                'recurring_amount' => $lead->recurring_amount,
+                'recurring_start_date' => $lead->recurring_start_date?->toDateString(),
+                'recurring_end_type' => $lead->recurring_end_type,
+                'recurring_end_date' => $lead->recurring_end_date?->toDateString(),
+                'next_billing_date' => $lead->next_billing_date?->toDateString(),
+                'billing_cycles' => $lead->billing_cycles,
+            ], [
+                'recurring_frequency' => ['required', 'in:MONTHLY,QUARTERLY,HALF_YEARLY,YEARLY'],
+                'recurring_amount' => ['required', 'numeric', 'gt:0'],
+                'recurring_start_date' => ['required', 'date'],
+                'recurring_end_type' => ['required', 'in:ONGOING,FIXED'],
+                'recurring_end_date' => ['required_if:recurring_end_type,FIXED', 'nullable', 'date', 'after_or_equal:recurring_start_date'],
+                'next_billing_date' => ['nullable', 'date', 'after_or_equal:recurring_start_date'],
+                'billing_cycles' => ['nullable', 'integer', 'min:1'],
+            ])->validate();
+        }
+
         $user       = $request->user();
         $oldStatus  = $lead->status;
         $dealMarkedWon = false;
@@ -580,12 +601,13 @@ class LeadController extends Controller
             }
 
             $businessType = $lead->business_type ?: 'ONE_TIME';
-            $contractValue = $lead->contract_value;
+            $isRecurring = $businessType === 'RECURRING';
+            $contractValue = $isRecurring ? $lead->contract_value : null;
             if ($businessType === 'RECURRING' && $contractValue === null && $lead->billing_cycles) {
                 $contractValue = round((float) $lead->recurring_amount * (int) $lead->billing_cycles, 2);
             }
-            $nextBilling = $lead->next_billing_date;
-            if ($businessType === 'RECURRING' && ! $nextBilling) {
+            $nextBilling = $isRecurring ? $lead->next_billing_date : null;
+            if ($isRecurring && ! $nextBilling) {
                 $nextBilling = $this->recurringRevenue->nextBillingDate($lead->recurring_start_date, $lead->recurring_frequency)->toDateString();
             }
             $dealValue = $request->input('value');
@@ -612,12 +634,12 @@ class LeadController extends Controller
                 'business_type'   => $businessType,
                 'market_type'     => $lead->market_type,
                 'service_type'    => $lead->types,
-                'recurring_frequency' => $lead->recurring_frequency,
-                'recurring_amount' => $lead->recurring_amount,
-                'recurring_start_date' => $lead->recurring_start_date,
-                'recurring_end_date' => $lead->recurring_end_date,
+                'recurring_frequency' => $isRecurring ? $lead->recurring_frequency : null,
+                'recurring_amount' => $isRecurring ? $lead->recurring_amount : null,
+                'recurring_start_date' => $isRecurring ? $lead->recurring_start_date : null,
+                'recurring_end_date' => $isRecurring ? $lead->recurring_end_date : null,
                 'next_billing_date' => $nextBilling,
-                'billing_cycles' => $lead->billing_cycles,
+                'billing_cycles' => $isRecurring ? $lead->billing_cycles : null,
                 'contract_value' => $contractValue,
             ]);
 

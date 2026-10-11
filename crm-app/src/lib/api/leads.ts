@@ -67,8 +67,8 @@ export interface LeadPayload {
   currency?: 'INR' | 'USD';
   recurring_frequency?: 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY' | null;
   recurring_amount?: number | null;
-  recurring_start_date?: string;
-  recurring_end_type?: 'ONGOING' | 'FIXED';
+  recurring_start_date?: string | null;
+  recurring_end_type?: 'ONGOING' | 'FIXED' | null;
   recurring_end_date?: string | null;
   next_billing_date?: string | null;
   billing_cycles?: number | null;
