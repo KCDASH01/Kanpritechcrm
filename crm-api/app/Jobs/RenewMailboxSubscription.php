@@ -52,10 +52,12 @@ class RenewMailboxSubscription implements ShouldQueue
             $settings['subscription_client_state'] = $clientState;
             $settings['subscription_expires_at'] = $subscription['expirationDateTime'] ?? $payload['expirationDateTime'];
         } else {
+            $connection->update(['webhook_status' => 'polling', 'last_error' => null]);
+
             return;
         }
 
-        $connection->update(['settings' => $settings, 'last_error' => null]);
+        $connection->update(['settings' => $settings, 'webhook_status' => 'healthy', 'last_error' => null]);
     }
 
     public function failed(\Throwable $exception): void

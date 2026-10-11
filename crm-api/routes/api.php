@@ -213,6 +213,9 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('lead-integrations/connections/{connection}/pause', [LeadIntegrationController::class, 'pause']);
             Route::post('lead-integrations/connections/{connection}/resume', [LeadIntegrationController::class, 'resume']);
             Route::post('lead-integrations/connections/{connection}/test', [LeadIntegrationController::class, 'testConnection']);
+            Route::put('lead-integrations/connections/{connection}', [LeadIntegrationController::class, 'updateConnection']);
+            Route::post('lead-integrations/connections/{connection}/sync', [LeadIntegrationController::class, 'syncConnection']);
+            Route::get('lead-integrations/connections/{connection}/history', [LeadIntegrationController::class, 'connectionHistory']);
             Route::get('lead-integrations/connections/{connection}/assets', [LeadIntegrationController::class, 'assets']);
             Route::put('lead-integrations/connections/{connection}/assets', [LeadIntegrationController::class, 'selectAssets']);
             Route::post('lead-integrations/connections/{connection}/meta-history', [LeadIntegrationController::class, 'syncMetaHistory']);

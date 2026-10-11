@@ -7,13 +7,17 @@ use App\Models\IntegrationAsset;
 use App\Models\IntegrationConnection;
 use App\Models\IntegrationConnectionAudit;
 use App\Models\User;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use JsonException;
+use Throwable;
 
 class OAuthController extends Controller
 {
@@ -24,35 +28,66 @@ class OAuthController extends Controller
         $this->assertConfigured($provider);
 
         $nonce = Str::uuid()->toString();
-        Cache::put('lead-integration-oauth:'.$provider.':'.$nonce, true, now()->addMinutes(10));
+        $codeVerifier = in_array($provider, ['google', 'microsoft'], true) ? Str::random(96) : null;
+        Cache::put('lead-integration-oauth:'.$provider.':'.$nonce, [
+            'code_verifier' => $codeVerifier,
+        ], now()->addMinutes(10));
         $state = Crypt::encryptString(json_encode([
             'provider' => $provider, 'organization_id' => $request->user()->organization_id,
             'user_id' => $request->user()->id, 'nonce' => $nonce, 'issued_at' => time(),
         ], JSON_THROW_ON_ERROR));
 
-        return response()->json(['data' => ['authorization_url' => $this->authorizationUrl($provider, $state)]]);
+        return response()->json(['data' => ['authorization_url' => $this->authorizationUrl($provider, $state, $codeVerifier)]]);
     }
 
     public function callback(Request $request, string $provider): RedirectResponse
     {
         abort_unless(in_array($provider, ['meta', 'whatsapp', 'google', 'microsoft'], true), 404);
-        $request->validate(['code' => ['required', 'string'], 'state' => ['required', 'string']]);
-        $state = json_decode(Crypt::decryptString($request->string('state')->toString()), true, flags: JSON_THROW_ON_ERROR);
-        abort_unless(($state['provider'] ?? null) === $provider && time() - (int) ($state['issued_at'] ?? 0) <= 600, 401);
-        abort_unless(Cache::pull('lead-integration-oauth:'.$provider.':'.(string) ($state['nonce'] ?? '')) === true, 401, 'OAuth state expired or was already used.');
-        $user = User::query()->whereKey($state['user_id'])->where('organization_id', $state['organization_id'])->firstOrFail();
-        abort_unless($user->isAdmin(), 403);
+        $frontend = rtrim((string) config('services.lead_integrations.frontend_url'), '/').'/lead-integrations';
 
-        $connection = match ($provider) {
-            'meta' => $this->connectMeta($request->string('code')->toString(), $user),
-            'whatsapp' => $this->connectWhatsApp($request->string('code')->toString(), $user),
-            default => $this->connectMailbox($provider, $request->string('code')->toString(), $user),
-        };
+        try {
+            $encryptedState = $request->string('state')->toString();
+            if ($encryptedState === '') {
+                return redirect($frontend.'?oauth_provider='.$provider.'&oauth_error=invalid_state');
+            }
+            $state = json_decode(Crypt::decryptString($encryptedState), true, flags: JSON_THROW_ON_ERROR);
+            if (($state['provider'] ?? null) !== $provider || time() - (int) ($state['issued_at'] ?? 0) > 600) {
+                return redirect($frontend.'?oauth_provider='.$provider.'&oauth_error=invalid_state');
+            }
+            $oauthSession = Cache::pull('lead-integration-oauth:'.$provider.':'.(string) ($state['nonce'] ?? ''));
+            if (! is_array($oauthSession)) {
+                return redirect($frontend.'?oauth_provider='.$provider.'&oauth_error=expired_state');
+            }
+            if ($request->filled('error')) {
+                return redirect($frontend.'?oauth_provider='.$provider.'&oauth_error=access_denied');
+            }
+            $code = $request->string('code')->toString();
+            if ($code === '') {
+                return redirect($frontend.'?oauth_provider='.$provider.'&oauth_error=missing_code');
+            }
 
-        return redirect(rtrim((string) config('services.lead_integrations.frontend_url'), '/').'/lead-integrations?connected='.$provider.'&connection_id='.$connection->id.'&step=assets');
+            $user = User::query()->whereKey($state['user_id'])->where('organization_id', $state['organization_id'])->firstOrFail();
+            abort_unless($user->isAdmin(), 403);
+            $connection = match ($provider) {
+                'meta' => $this->connectMeta($code, $user),
+                'whatsapp' => $this->connectWhatsApp($code, $user),
+                default => $this->connectMailbox($provider, $code, $user, $oauthSession['code_verifier'] ?? null),
+            };
+
+            return redirect($frontend.'?connected='.$provider.'&connection_id='.$connection->id.'&step=configure');
+        } catch (DecryptException|JsonException) {
+            return redirect($frontend.'?oauth_provider='.$provider.'&oauth_error=invalid_state');
+        } catch (Throwable $exception) {
+            Log::warning('Lead integration OAuth callback failed.', [
+                'provider' => $provider,
+                'error' => $exception->getMessage(),
+            ]);
+
+            return redirect($frontend.'?oauth_provider='.$provider.'&oauth_error=provider_failed');
+        }
     }
 
-    private function authorizationUrl(string $provider, string $state): string
+    private function authorizationUrl(string $provider, string $state, ?string $codeVerifier = null): string
     {
         if (in_array($provider, ['meta', 'whatsapp'], true)) {
             $version = config('services.meta.graph_version');
@@ -73,6 +108,7 @@ class OAuthController extends Controller
                 'client_id' => config('services.google.client_id'), 'redirect_uri' => config('services.google.redirect_uri'),
                 'response_type' => 'code', 'access_type' => 'offline', 'prompt' => 'consent', 'state' => $state,
                 'scope' => 'openid email https://www.googleapis.com/auth/gmail.readonly',
+                'code_challenge' => $this->codeChallenge($codeVerifier), 'code_challenge_method' => 'S256',
             ]);
         }
         $tenant = config('services.microsoft.tenant');
@@ -81,6 +117,7 @@ class OAuthController extends Controller
             'client_id' => config('services.microsoft.client_id'), 'redirect_uri' => config('services.microsoft.redirect_uri'),
             'response_type' => 'code', 'response_mode' => 'query', 'state' => $state,
             'scope' => 'openid email offline_access User.Read Mail.Read',
+            'code_challenge' => $this->codeChallenge($codeVerifier), 'code_challenge_method' => 'S256',
         ]);
     }
 
@@ -178,13 +215,15 @@ class OAuthController extends Controller
         return $connection;
     }
 
-    private function connectMailbox(string $provider, string $code, User $user): IntegrationConnection
+    private function connectMailbox(string $provider, string $code, User $user, ?string $codeVerifier): IntegrationConnection
     {
         if ($provider === 'google') {
             $token = Http::asForm()->post('https://oauth2.googleapis.com/token', [
                 'client_id' => config('services.google.client_id'), 'client_secret' => config('services.google.client_secret'),
                 'redirect_uri' => config('services.google.redirect_uri'), 'grant_type' => 'authorization_code', 'code' => $code,
+                'code_verifier' => $codeVerifier,
             ])->throw()->json();
+            $this->assertScopes($provider, (string) ($token['scope'] ?? ''), ['https://www.googleapis.com/auth/gmail.readonly']);
             $profile = Http::withToken($token['access_token'])->get('https://gmail.googleapis.com/gmail/v1/users/me/profile')->throw()->json();
             $email = mb_strtolower((string) $profile['emailAddress']);
             $scopes = ['https://www.googleapis.com/auth/gmail.readonly'];
@@ -194,20 +233,37 @@ class OAuthController extends Controller
                 'client_id' => config('services.microsoft.client_id'), 'client_secret' => config('services.microsoft.client_secret'),
                 'redirect_uri' => config('services.microsoft.redirect_uri'), 'grant_type' => 'authorization_code', 'code' => $code,
                 'scope' => 'openid email offline_access User.Read Mail.Read',
+                'code_verifier' => $codeVerifier,
             ])->throw()->json();
+            $this->assertScopes($provider, (string) ($token['scope'] ?? ''), ['User.Read', 'Mail.Read']);
             $profile = Http::withToken($token['access_token'])->get('https://graph.microsoft.com/v1.0/me?$select=id,displayName,mail,userPrincipalName')->throw()->json();
             $email = mb_strtolower((string) ($profile['mail'] ?? $profile['userPrincipalName']));
-            $scopes = ['Mail.Read'];
+            $scopes = ['User.Read', 'Mail.Read', 'offline_access'];
         }
-        $connection = IntegrationConnection::query()->updateOrCreate(
-            ['organization_id' => $user->organization_id, 'provider' => $provider, 'external_account_id' => $email],
-            [
-                'connected_by' => $user->id, 'name' => $email, 'account_email' => $email, 'status' => 'active',
-                'access_token' => $token['access_token'], 'refresh_token' => $token['refresh_token'] ?? null,
-                'token_expires_at' => now()->addSeconds((int) ($token['expires_in'] ?? 3600)), 'scopes' => $scopes,
-                'settings' => ['history_id' => $profile['historyId'] ?? null], 'last_error' => null,
-            ]
-        );
+        $connection = IntegrationConnection::withTrashed()->firstOrNew([
+            'organization_id' => $user->organization_id, 'provider' => $provider, 'external_account_id' => $email,
+        ]);
+        if ($connection->trashed()) {
+            $connection->restore();
+        }
+        $existingSettings = $connection->settings ?? [];
+        $connection->fill([
+            'connected_by' => $user->id, 'name' => $email, 'account_email' => $email, 'status' => 'active',
+            'access_token' => $token['access_token'], 'refresh_token' => $token['refresh_token'] ?? $connection->refresh_token,
+            'token_expires_at' => now()->addSeconds((int) ($token['expires_in'] ?? 3600)), 'scopes' => $scopes,
+            'settings' => array_merge([
+                'connection_name' => $email,
+                'department_id' => null,
+                'default_owner_id' => null,
+                'auto_assign' => true,
+                'preserve_existing_owner' => true,
+                'capture_new_enquiries' => true,
+                'capture_campaign_replies' => true,
+                'review_unrecognized' => true,
+                'initial_sync' => 'recent_7_days',
+            ], $existingSettings, ['history_id' => $profile['historyId'] ?? data_get($existingSettings, 'history_id')]),
+            'last_error' => null, 'webhook_status' => 'pending',
+        ])->save();
         IntegrationAsset::query()->updateOrCreate(
             ['connection_id' => $connection->id, 'asset_type' => 'mailbox', 'external_id' => $email],
             ['organization_id' => $user->organization_id, 'provider' => $provider, 'name' => $email, 'status' => 'active', 'is_selected' => true, 'last_verified_at' => now()]
@@ -215,6 +271,20 @@ class OAuthController extends Controller
         $this->audit($connection, $user, 'authorize', 'success', ['mailbox' => $email]);
 
         return $connection;
+    }
+
+    private function codeChallenge(?string $codeVerifier): string
+    {
+        return rtrim(strtr(base64_encode(hash('sha256', (string) $codeVerifier, true)), '+/', '-_'), '=');
+    }
+
+    private function assertScopes(string $provider, string $granted, array $required): void
+    {
+        abort_if($granted === '', 422, ucfirst($provider).' did not confirm the granted mailbox permissions.');
+        $scopes = preg_split('/\s+/', trim($granted)) ?: [];
+        foreach ($required as $scope) {
+            abort_unless(in_array($scope, $scopes, true), 422, ucfirst($provider).' did not grant the required mailbox permission.');
+        }
     }
 
     private function assertConfigured(string $provider): void
@@ -225,7 +295,7 @@ class OAuthController extends Controller
             'google' => config('services.google.client_id') && config('services.google.client_secret') && config('services.google.redirect_uri'),
             'microsoft' => config('services.microsoft.client_id') && config('services.microsoft.client_secret') && config('services.microsoft.redirect_uri'),
         };
-        abort_unless($configured, 503, ucfirst($provider).' OAuth is not configured on this server.');
+        abort_unless($configured, 503, ucfirst($provider).' connection is temporarily unavailable. Please contact your CRM administrator.');
     }
 
     private function syncMetaCollection(IntegrationConnection $connection, string $token, string $type, string $url, string $fields): void

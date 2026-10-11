@@ -4,7 +4,9 @@ namespace App\Http\Controllers\LeadIntegration;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\ProcessIntegrationEvent;
+use App\Jobs\RenewMailboxSubscription;
 use App\Jobs\RetrieveMetaLead;
+use App\Jobs\SyncMailbox;
 use App\Models\Deal;
 use App\Models\DealPayment;
 use App\Models\IntegrationAutomation;
@@ -41,10 +43,10 @@ class LeadIntegrationController extends Controller
                 'Meta Tech Provider/Embedded Signup eligibility, business verification and an eligible number are required.'),
             $this->provider('google', 'Gmail / Google Workspace', 'oauth', ['mailbox_sync', 'reply_attribution'],
                 (bool) (config('services.google.client_id') && config('services.google.client_secret') && config('services.google.redirect_uri')),
-                'Google OAuth consent and Gmail API access are required.'),
+                'Google connection is temporarily unavailable. Please contact your CRM administrator.'),
             $this->provider('microsoft', 'Microsoft 365 / Outlook', 'oauth', ['mailbox_sync', 'reply_attribution'],
                 (bool) (config('services.microsoft.client_id') && config('services.microsoft.client_secret') && config('services.microsoft.redirect_uri')),
-                'Microsoft consent for User.Read, Mail.Read and offline_access is required.'),
+                'Microsoft connection is temporarily unavailable. Please contact your CRM administrator.'),
             $this->provider('email', 'Other Email', 'advanced', ['approved_forwarding'], true,
                 'Use an approved forwarding endpoint. Passwords are never collected in the browser.'),
         ]]);
@@ -115,8 +117,8 @@ class LeadIntegrationController extends Controller
                 : null,
             'provider_readiness' => [
                 'meta' => (bool) (config('services.meta.app_id') && config('services.meta.app_secret') && config('services.meta.graph_version')),
-                'google' => (bool) (config('services.google.client_id') && config('services.google.client_secret')),
-                'microsoft' => (bool) (config('services.microsoft.client_id') && config('services.microsoft.client_secret')),
+                'google' => (bool) (config('services.google.client_id') && config('services.google.client_secret') && config('services.google.redirect_uri')),
+                'microsoft' => (bool) (config('services.microsoft.client_id') && config('services.microsoft.client_secret') && config('services.microsoft.redirect_uri')),
                 'whatsapp' => (bool) (config('services.meta.app_id') && config('services.meta.app_secret')
                     && config('services.meta.graph_version') && config('services.meta.whatsapp_config_id')
                     && config('services.meta.whatsapp_redirect_uri')),
@@ -224,6 +226,61 @@ class LeadIntegrationController extends Controller
         return response()->json(['message' => 'Integration disconnected. Historical CRM data was preserved.']);
     }
 
+    public function updateConnection(Request $request, IntegrationConnection $connection): JsonResponse
+    {
+        $this->admin($request);
+        $this->owned($request, $connection);
+        abort_unless(in_array($connection->provider, ['google', 'microsoft', 'email'], true), 422, 'This connection does not support mailbox settings.');
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:191'],
+            'department_id' => ['nullable', 'integer', Rule::exists('departments', 'id')->where(fn ($query) => $query->where('organization_id', $request->user()->organization_id))],
+            'default_owner_id' => ['nullable', 'integer', $this->employeeRule($request)],
+            'auto_assign' => ['required', 'boolean'],
+            'capture_new_enquiries' => ['required', 'boolean'],
+            'capture_campaign_replies' => ['required', 'boolean'],
+            'review_unrecognized' => ['required', 'boolean'],
+            'initial_sync' => ['required', 'in:none,recent_7_days'],
+        ]);
+        $settings = array_merge($connection->settings ?? [], $data, ['preserve_existing_owner' => true]);
+        unset($settings['name']);
+        $connection->update(['name' => $data['name'], 'settings' => $settings]);
+        $this->audit($request, $connection, 'configure', 'success', [
+            'department_id' => $data['department_id'] ?? null,
+            'default_owner_id' => $data['default_owner_id'] ?? null,
+        ]);
+
+        if ($connection->status === 'active' && $data['initial_sync'] === 'recent_7_days' && in_array($connection->provider, ['google', 'microsoft'], true)) {
+            SyncMailbox::dispatch($connection->id);
+            RenewMailboxSubscription::dispatch($connection->id);
+        }
+
+        return response()->json(['data' => $connection->fresh(), 'message' => 'Email account settings saved.']);
+    }
+
+    public function syncConnection(Request $request, IntegrationConnection $connection): JsonResponse
+    {
+        $this->admin($request);
+        $this->owned($request, $connection);
+        abort_unless(in_array($connection->provider, ['google', 'microsoft'], true), 422, 'Manual synchronization is available for Google and Microsoft mailboxes.');
+        abort_unless($connection->status === 'active', 422, 'Reconnect or resume this mailbox before synchronizing it.');
+        SyncMailbox::dispatch($connection->id);
+        RenewMailboxSubscription::dispatch($connection->id);
+        $this->audit($request, $connection, 'sync', 'queued');
+
+        return response()->json(['data' => ['queued' => true], 'message' => 'Mailbox synchronization was queued.']);
+    }
+
+    public function connectionHistory(Request $request, IntegrationConnection $connection): JsonResponse
+    {
+        $this->admin($request);
+        $this->owned($request, $connection);
+
+        return response()->json(['data' => IntegrationConnectionAudit::query()
+            ->where('organization_id', $request->user()->organization_id)
+            ->where('connection_id', $connection->id)
+            ->latest()->limit(100)->get()]);
+    }
+
     public function pause(Request $request, IntegrationConnection $connection): JsonResponse
     {
         $this->admin($request);
@@ -270,7 +327,7 @@ class LeadIntegrationController extends Controller
             }
         }
         $connection->update([
-            'health_checked_at' => now(), 'webhook_status' => $healthy ? 'healthy' : 'attention',
+            'health_checked_at' => now(), 'webhook_status' => $healthy ? $connection->webhook_status : 'attention',
             'last_error' => $healthy ? null : $message,
         ]);
         $this->audit($request, $connection, 'test', $healthy ? 'success' : 'failed', ['message' => $message]);
@@ -603,7 +660,7 @@ class LeadIntegrationController extends Controller
 
     private function owned(Request $request, object $model): void
     {
-        abort_unless($model->organization_id === $request->user()->organization_id, 404);
+        abort_unless((int) $model->organization_id === (int) $request->user()->organization_id, 404);
     }
 
     private function provider(string $id, string $name, string $method, array $capabilities, bool $available, string $requirement): array

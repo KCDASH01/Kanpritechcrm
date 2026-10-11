@@ -60,6 +60,15 @@ class LeadRoutingService
             }
         }
 
+        $connectionOwner = isset($context['_connection_default_owner_id']) ? (int) $context['_connection_default_owner_id'] : null;
+        if ($connectionOwner && $this->eligible($organizationId, $connectionOwner)) {
+            return [
+                'user_id' => $connectionOwner,
+                'department_id' => isset($context['_connection_department_id']) ? (int) $context['_connection_department_id'] : null,
+                'reason' => 'mailbox_default_owner',
+            ];
+        }
+
         $settings = LeadIntegrationSetting::query()->where('organization_id', $organizationId)->first();
         if ($settings?->default_owner_id && $this->eligible($organizationId, $settings->default_owner_id)) {
             return ['user_id' => $settings->default_owner_id, 'department_id' => null, 'reason' => 'default_owner'];

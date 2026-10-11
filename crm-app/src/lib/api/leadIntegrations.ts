@@ -3,6 +3,8 @@ import client from './client';
 export type IntegrationProvider = 'meta' | 'whatsapp' | 'google' | 'microsoft' | 'email';
 export interface IntegrationAsset { id: number; provider: IntegrationProvider; asset_type: string; external_id: string; parent_external_id?: string | null; name: string; status: string; is_selected: boolean; capabilities?: string[] | null; metadata?: Record<string, unknown> | null }
 export interface IntegrationConnection { id: number; provider: IntegrationProvider; name: string; status: string; account_email?: string | null; external_account_id?: string | null; last_synced_at?: string | null; last_event_at?: string | null; health_checked_at?: string | null; webhook_status?: string | null; selected_assets_count?: number; assets?: IntegrationAsset[]; last_error?: string | null; settings?: Record<string, unknown> | null }
+export interface EmailConnectionSettings { name: string; department_id: number | null; default_owner_id: number | null; auto_assign: boolean; capture_new_enquiries: boolean; capture_campaign_replies: boolean; review_unrecognized: boolean; initial_sync: 'none' | 'recent_7_days' }
+export interface IntegrationConnectionAudit { id: number; action: string; status: string; details?: Record<string, unknown> | null; created_at: string }
 export interface IntegrationProviderOption { id: IntegrationProvider; name: string; method: string; capabilities: string[]; available: boolean; requirement: string }
 export interface IntegrationAutomation { id: number; name: string; template_key?: string | null; trigger: string; conditions?: Record<string, unknown> | null; actions: Array<Record<string, unknown>>; is_active: boolean }
 export interface IntegrationCampaign { id: number; platform: IntegrationProvider; external_id?: string | null; name: string; status: string; assigned_to?: { id: number; name: string } | null; start_date?: string | null; end_date?: string | null; target_market?: string | null; service?: string | null }
@@ -25,6 +27,9 @@ export const leadIntegrationsApi = {
   pause: (id: number) => client.post(`/lead-integrations/connections/${id}/pause`).then((r) => r.data.data),
   resume: (id: number) => client.post(`/lead-integrations/connections/${id}/resume`).then((r) => r.data.data),
   testConnection: (id: number) => client.post(`/lead-integrations/connections/${id}/test`).then((r) => r.data.data),
+  updateConnection: (id: number, payload: EmailConnectionSettings) => client.put(`/lead-integrations/connections/${id}`, payload).then((r) => r.data.data),
+  syncConnection: (id: number) => client.post(`/lead-integrations/connections/${id}/sync`).then((r) => r.data.data),
+  connectionHistory: (id: number) => client.get<{ data: IntegrationConnectionAudit[] }>(`/lead-integrations/connections/${id}/history`).then((r) => r.data.data),
   assets: (id: number, params?: { type?: string; search?: string }) => client.get<{ data: IntegrationAsset[] }>(`/lead-integrations/connections/${id}/assets`, { params }).then((r) => r.data.data),
   selectAssets: (id: number, asset_ids: number[]) => client.put(`/lead-integrations/connections/${id}/assets`, { asset_ids }).then((r) => r.data.data),
   syncMetaHistory: (id: number, payload: { form_id: string; date_from: string; date_to: string }) => client.post(`/lead-integrations/connections/${id}/meta-history`, payload).then((r) => r.data.data),

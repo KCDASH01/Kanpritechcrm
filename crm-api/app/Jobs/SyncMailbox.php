@@ -42,8 +42,10 @@ class SyncMailbox implements ShouldQueue
     /** @return array<int, array<string, mixed>> */
     private function gmail(IntegrationConnection $connection): array
     {
+        $after = $connection->last_synced_at?->copy()->subMinutes(5)
+            ?? (data_get($connection->settings, 'initial_sync', 'recent_7_days') === 'none' ? $connection->created_at : null);
         $list = Http::withToken($connection->access_token)->get('https://gmail.googleapis.com/gmail/v1/users/me/messages', [
-            'q' => 'newer_than:7d', 'maxResults' => 50,
+            'q' => $after ? 'after:'.$after->timestamp : 'newer_than:7d', 'maxResults' => 50,
         ])->throw()->json('messages', []);
         $result = [];
         foreach ($list as $row) {
@@ -67,7 +69,10 @@ class SyncMailbox implements ShouldQueue
     /** @return array<int, array<string, mixed>> */
     private function microsoft(IntegrationConnection $connection): array
     {
-        $since = ($connection->last_synced_at ?: now()->subDays(7))->copy()->subMinutes(5)->toIso8601String();
+        $firstSyncStart = data_get($connection->settings, 'initial_sync', 'recent_7_days') === 'none'
+            ? $connection->created_at
+            : now()->subDays(7);
+        $since = ($connection->last_synced_at ?: $firstSyncStart)->copy()->subMinutes(5)->toIso8601String();
         $rows = Http::withToken($connection->access_token)->get('https://graph.microsoft.com/v1.0/me/messages', [
             '$filter' => "receivedDateTime ge {$since}", '$top' => 50,
             '$select' => 'id,internetMessageId,conversationId,from,toRecipients,subject,body,internetMessageHeaders,receivedDateTime',
@@ -94,7 +99,9 @@ class SyncMailbox implements ShouldQueue
     private function ingest(IntegrationConnection $connection, array $message, EmailLeadParser $parser): void
     {
         $parsed = $parser->parse((string) $message['subject'], (string) $message['body'], (bool) $message['is_html']);
-        $authorized = collect((array) data_get($connection->settings, 'authorized_senders', []))->contains($message['from']);
+        $settings = $connection->settings ?? [];
+        $authorized = in_array($connection->provider, ['google', 'microsoft'], true)
+            || collect((array) data_get($settings, 'authorized_senders', []))->contains($message['from']);
         $recipient = $this->recipient($connection->organization_id, $message);
         if ($recipient && $parsed['classification'] === 'unsubscribe') {
             $recipient->update(['status' => 'unsubscribed', 'unsubscribed_at' => now()]);
@@ -106,6 +113,8 @@ class SyncMailbox implements ShouldQueue
             'classification' => $parsed['classification'], 'sender' => $message['from'], 'receiving_alias' => $message['to'],
             'mailbox_id' => (string) $connection->id, 'external_message_id' => $message['message_id'],
             'campaign_id' => $recipient?->campaign?->external_id,
+            '_connection_default_owner_id' => data_get($settings, 'auto_assign', true) ? data_get($settings, 'default_owner_id') : null,
+            '_connection_department_id' => data_get($settings, 'department_id'),
         ]);
         if ($recipient?->lead_id) {
             $data['lead_id'] = $recipient->lead_id;
@@ -121,7 +130,18 @@ class SyncMailbox implements ShouldQueue
         if (! $event->wasRecentlyCreated) {
             return;
         }
+        if (($eventType === 'forwarded_email' && ! data_get($settings, 'capture_new_enquiries', true))
+            || ($eventType === 'email_reply' && ! data_get($settings, 'capture_campaign_replies', true))) {
+            $event->update(['status' => 'ignored', 'processed_at' => now()]);
+
+            return;
+        }
         if ($eventType === 'email_reply' && ! $recipient) {
+            if (! data_get($settings, 'review_unrecognized', true)) {
+                $event->update(['status' => 'ignored', 'processed_at' => now()]);
+
+                return;
+            }
             $event->update(['status' => 'review', 'error_message' => 'unmatched_email_campaign', 'processed_at' => now()]);
             IntegrationReviewItem::create([
                 'organization_id' => $connection->organization_id, 'integration_event_id' => $event->id,
