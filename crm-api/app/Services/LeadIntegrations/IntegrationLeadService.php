@@ -16,11 +16,14 @@ use Illuminate\Support\Facades\DB;
 
 class IntegrationLeadService
 {
-    public function __construct(private readonly LeadRoutingService $routing) {}
+    public function __construct(
+        private readonly LeadRoutingService $routing,
+        private readonly IntegrationAutomationService $automations,
+    ) {}
 
     public function process(IntegrationEvent $event, array $data): IntegrationEvent
     {
-        return DB::transaction(function () use ($event, $data): IntegrationEvent {
+        $result = DB::transaction(function () use ($event, $data): IntegrationEvent {
             $event = IntegrationEvent::query()->lockForUpdate()->findOrFail($event->id);
             if (in_array($event->status, ['imported', 'linked', 'ignored'], true)) {
                 return $event;
@@ -103,6 +106,9 @@ class IntegrationLeadService
 
             return $event->fresh();
         }, 3);
+        $this->automations->execute($result);
+
+        return $result;
     }
 
     private function findExistingLead(int $organizationId, array $data, IntegrationEvent $event): ?Lead

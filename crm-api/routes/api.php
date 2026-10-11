@@ -203,10 +203,18 @@ Route::middleware('auth:sanctum')->group(function () {
 
             // Unified lead integrations (all writes are owner/admin checked in the controller)
             Route::get('lead-integrations', [LeadIntegrationController::class, 'index']);
+            Route::get('lead-integrations/providers', [LeadIntegrationController::class, 'providers']);
             Route::get('lead-integrations/history', [LeadIntegrationController::class, 'history']);
+            Route::get('lead-integrations/history/export', [LeadIntegrationController::class, 'exportHistory']);
+            Route::post('lead-integrations/history/{event}/retry', [LeadIntegrationController::class, 'retryEvent']);
             Route::get('lead-integrations/review-queue', [LeadIntegrationController::class, 'reviewQueue']);
             Route::post('lead-integrations/connections', [LeadIntegrationController::class, 'storeConnection']);
             Route::delete('lead-integrations/connections/{connection}', [LeadIntegrationController::class, 'disconnect']);
+            Route::post('lead-integrations/connections/{connection}/pause', [LeadIntegrationController::class, 'pause']);
+            Route::post('lead-integrations/connections/{connection}/resume', [LeadIntegrationController::class, 'resume']);
+            Route::post('lead-integrations/connections/{connection}/test', [LeadIntegrationController::class, 'testConnection']);
+            Route::get('lead-integrations/connections/{connection}/assets', [LeadIntegrationController::class, 'assets']);
+            Route::put('lead-integrations/connections/{connection}/assets', [LeadIntegrationController::class, 'selectAssets']);
             Route::post('lead-integrations/connections/{connection}/meta-history', [LeadIntegrationController::class, 'syncMetaHistory']);
             Route::get('lead-integrations/oauth/{provider}', [LeadIntegrationOAuthController::class, 'authorizeProvider']);
             Route::post('lead-integrations/campaigns', [LeadIntegrationController::class, 'storeCampaign']);
@@ -216,6 +224,11 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('lead-integrations/routing-rules', [LeadIntegrationController::class, 'storeRule']);
             Route::put('lead-integrations/routing-rules/{rule}', [LeadIntegrationController::class, 'updateRule']);
             Route::delete('lead-integrations/routing-rules/{rule}', [LeadIntegrationController::class, 'destroyRule']);
+            Route::post('lead-integrations/routing-rules/preview', [LeadIntegrationController::class, 'routingPreview']);
+            Route::get('lead-integrations/automations', [LeadIntegrationController::class, 'automations']);
+            Route::post('lead-integrations/automations', [LeadIntegrationController::class, 'storeAutomation']);
+            Route::patch('lead-integrations/automations/{automation}', [LeadIntegrationController::class, 'updateAutomation']);
+            Route::post('lead-integrations/automations/{automation}/test', [LeadIntegrationController::class, 'testAutomation']);
             Route::put('lead-integrations/settings', [LeadIntegrationController::class, 'updateSettings']);
             Route::post('lead-integrations/review-queue/{review}/resolve', [LeadIntegrationController::class, 'resolveReview']);
 

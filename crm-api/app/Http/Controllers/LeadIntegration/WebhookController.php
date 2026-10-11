@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\ProcessIntegrationEvent;
 use App\Jobs\RetrieveMetaLead;
 use App\Jobs\SyncMailbox;
+use App\Models\IntegrationAsset;
 use App\Models\IntegrationCampaignRecipient;
 use App\Models\IntegrationConnection;
 use App\Models\IntegrationEvent;
@@ -40,12 +41,12 @@ class WebhookController extends Controller
                 }
                 $value = (array) ($change['value'] ?? []);
                 $pageId = (string) ($value['page_id'] ?? $entry['id'] ?? '');
-                $connection = IntegrationConnection::query()
-                    ->where('provider', 'meta')
-                    ->where('external_account_id', $pageId)
-                    ->where('status', 'active')
-                    ->first();
-                if (! $connection || empty($value['leadgen_id'])) {
+                $asset = IntegrationAsset::query()->with('connection')
+                    ->where('provider', 'meta')->where('asset_type', 'page')->where('external_id', $pageId)
+                    ->where('is_selected', true)->first();
+                $connection = $asset?->connection ?: IntegrationConnection::query()
+                    ->where('provider', 'meta')->where('external_account_id', $pageId)->where('status', 'active')->first();
+                if (! $connection || $connection->status !== 'active' || empty($value['leadgen_id'])) {
                     continue;
                 }
                 $externalId = 'leadgen:'.(string) $value['leadgen_id'];
@@ -59,6 +60,7 @@ class WebhookController extends Controller
                     ]
                 );
                 if ($event->wasRecentlyCreated) {
+                    $connection->update(['last_event_at' => now(), 'webhook_status' => 'healthy']);
                     RetrieveMetaLead::dispatch($event->id);
                 }
             }
@@ -74,12 +76,12 @@ class WebhookController extends Controller
             foreach ((array) data_get($entry, 'changes', []) as $change) {
                 $value = (array) ($change['value'] ?? []);
                 $phoneNumberId = (string) data_get($value, 'metadata.phone_number_id', '');
-                $connection = IntegrationConnection::query()
-                    ->where('provider', 'whatsapp')
-                    ->where('external_account_id', $phoneNumberId)
-                    ->where('status', 'active')
-                    ->first();
-                if (! $connection || ! data_get($connection->settings, 'eligibility_verified', false)) {
+                $asset = IntegrationAsset::query()->with('connection')
+                    ->where('provider', 'whatsapp')->where('asset_type', 'phone_number')->where('external_id', $phoneNumberId)
+                    ->where('is_selected', true)->first();
+                $connection = $asset?->connection ?: IntegrationConnection::query()
+                    ->where('provider', 'whatsapp')->where('external_account_id', $phoneNumberId)->where('status', 'active')->first();
+                if (! $connection || $connection->status !== 'active' || ! data_get($connection->settings, 'eligibility_verified', false)) {
                     continue;
                 }
                 foreach ((array) ($value['messages'] ?? []) as $message) {
@@ -106,6 +108,7 @@ class WebhookController extends Controller
                         ]
                     );
                     if ($event->wasRecentlyCreated) {
+                        $connection->update(['last_event_at' => now(), 'webhook_status' => 'healthy']);
                         ProcessIntegrationEvent::dispatch($event->id);
                     }
                 }

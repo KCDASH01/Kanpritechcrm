@@ -46,6 +46,8 @@ return [
         'graph_version' => env('META_GRAPH_VERSION'),
         'webhook_verify_token' => env('META_WEBHOOK_VERIFY_TOKEN'),
         'redirect_uri' => env('META_REDIRECT_URI'),
+        'whatsapp_config_id' => env('WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID'),
+        'whatsapp_redirect_uri' => env('WHATSAPP_REDIRECT_URI'),
     ],
 
     'google' => [

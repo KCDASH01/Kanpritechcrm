@@ -15,6 +15,24 @@ class LeadRoutingService
      */
     public function resolve(int $organizationId, array $context): array
     {
+        return $this->resolveFor($organizationId, $context, true);
+    }
+
+    /**
+     * Preview routing without advancing a round-robin cursor.
+     *
+     * @return array{user_id: ?int, department_id: ?int, reason: string}
+     */
+    public function preview(int $organizationId, array $context): array
+    {
+        return $this->resolveFor($organizationId, $context, false);
+    }
+
+    /**
+     * @return array{user_id: ?int, department_id: ?int, reason: string}
+     */
+    private function resolveFor(int $organizationId, array $context, bool $advanceRoundRobin): array
+    {
         $campaign = $this->campaign($organizationId, $context);
         if ($campaign?->assigned_to && $this->eligible($organizationId, $campaign->assigned_to)) {
             return ['user_id' => $campaign->assigned_to, 'department_id' => null, 'reason' => 'campaign_mapping'];
@@ -32,7 +50,7 @@ class LeadRoutingService
                 continue;
             }
 
-            $userId = $this->userForRule($rule);
+            $userId = $this->userForRule($rule, $advanceRoundRobin);
             if ($userId !== null) {
                 return [
                     'user_id' => $userId,
@@ -75,6 +93,8 @@ class LeadRoutingService
             'mailbox' => $context['mailbox_id'] ?? null,
             'authorized_sender' => isset($context['sender']) ? mb_strtolower((string) $context['sender']) : null,
             'provider' => $context['provider'] ?? null,
+            'country' => $context['country'] ?? null,
+            'service' => $context['service'] ?? null,
             'default' => 'default',
             default => null,
         };
@@ -83,20 +103,22 @@ class LeadRoutingService
             || ($value !== null && (string) $rule->source_key === (string) $value);
     }
 
-    private function userForRule(LeadRoutingRule $rule): ?int
+    private function userForRule(LeadRoutingRule $rule, bool $advanceRoundRobin = true): ?int
     {
-        if ($rule->strategy === 'round_robin' && $rule->department_id) {
-            return DB::transaction(function () use ($rule): ?int {
+        if ($rule->strategy === 'round_robin') {
+            return DB::transaction(function () use ($rule, $advanceRoundRobin): ?int {
                 $locked = LeadRoutingRule::query()->lockForUpdate()->find($rule->id);
                 if (! $locked) {
                     return null;
                 }
 
+                $selectedIds = array_values(array_filter(array_map('intval', (array) data_get($locked->settings, 'user_ids', []))));
                 $ids = User::query()
                     ->where('users.organization_id', $locked->organization_id)
-                    ->where('users.role', 'employee')
                     ->where('users.is_active', true)
-                    ->whereHas('departments', fn ($query) => $query->where('departments.id', $locked->department_id))
+                    ->whereIn('users.role', ['owner', 'admin', 'employee'])
+                    ->when($selectedIds !== [], fn ($query) => $query->whereIn('users.id', $selectedIds))
+                    ->when($selectedIds === [] && $locked->department_id, fn ($query) => $query->whereHas('departments', fn ($department) => $department->where('departments.id', $locked->department_id)))
                     ->orderBy('users.id')
                     ->pluck('users.id')
                     ->all();
@@ -107,7 +129,9 @@ class LeadRoutingService
 
                 $position = array_search($locked->last_assigned_user_id, $ids, true);
                 $next = $ids[$position === false ? 0 : (($position + 1) % count($ids))];
-                $locked->update(['last_assigned_user_id' => $next]);
+                if ($advanceRoundRobin) {
+                    $locked->update(['last_assigned_user_id' => $next]);
+                }
 
                 return $next;
             });

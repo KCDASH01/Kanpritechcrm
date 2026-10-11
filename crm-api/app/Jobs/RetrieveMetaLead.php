@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\IntegrationAsset;
 use App\Models\IntegrationEvent;
 use App\Models\LeadIntegrationSetting;
 use App\Services\LeadIntegrations\IntegrationLeadService;
@@ -42,8 +43,11 @@ class RetrieveMetaLead implements ShouldQueue
         if (! $version) {
             throw new RuntimeException('META_GRAPH_VERSION is not configured.');
         }
+        $pageId = (string) data_get($event->payload, 'page_id', '');
+        $pageToken = $pageId !== '' ? IntegrationAsset::query()->where('connection_id', $event->connection_id)
+            ->where('asset_type', 'page')->where('external_id', $pageId)->where('is_selected', true)->first()?->access_token : null;
         $response = Http::retry(3, 500, throw: false)
-            ->withToken($event->connection->access_token)
+            ->withToken($pageToken ?: $event->connection->access_token)
             ->get("https://graph.facebook.com/{$version}/{$leadId}", [
                 'fields' => 'id,created_time,ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,form_id,field_data',
             ]);

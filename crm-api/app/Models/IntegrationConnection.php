@@ -14,7 +14,8 @@ class IntegrationConnection extends Model
     protected $fillable = [
         'organization_id', 'connected_by', 'provider', 'name', 'status',
         'external_account_id', 'account_email', 'access_token', 'refresh_token',
-        'token_expires_at', 'scopes', 'settings', 'last_synced_at', 'last_error',
+        'token_expires_at', 'scopes', 'settings', 'last_synced_at', 'paused_at',
+        'last_event_at', 'health_checked_at', 'webhook_status', 'sync_cursor', 'last_error',
     ];
 
     protected $hidden = ['access_token', 'refresh_token'];
@@ -28,6 +29,9 @@ class IntegrationConnection extends Model
             'scopes' => 'array',
             'settings' => 'array',
             'last_synced_at' => 'datetime',
+            'paused_at' => 'datetime',
+            'last_event_at' => 'datetime',
+            'health_checked_at' => 'datetime',
         ];
     }
 
@@ -44,5 +48,10 @@ class IntegrationConnection extends Model
     public function campaigns(): HasMany
     {
         return $this->hasMany(IntegrationCampaign::class, 'connection_id');
+    }
+
+    public function assets(): HasMany
+    {
+        return $this->hasMany(IntegrationAsset::class, 'connection_id');
     }
 }
