@@ -197,7 +197,7 @@ export default function DashboardPage() {
 
   const dashboardQueryKey = ['dashboard', assignedFilter];
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: dashboardQueryKey,
     queryFn: () =>
       client
@@ -301,9 +301,36 @@ export default function DashboardPage() {
     );
   }
 
-  const leadsTrend    = fillDates(data?.charts?.leads_trend   ?? []);
-  const revenueTrend  = fillRevenue(data?.charts?.revenue_trend ?? []);
-  const dealsByStage  = (data?.charts?.deals_by_stage ?? []).map((d) => ({
+  if (isError || !data) {
+    const message = error instanceof Error
+      ? error.message
+      : 'The dashboard service is temporarily unavailable.';
+
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center px-4">
+        <div role="alert" className="w-full max-w-xl rounded-2xl border border-red-200 bg-white p-6 text-center shadow-sm">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-xl text-red-600">!</div>
+          <h1 className="mt-4 text-lg font-bold text-gray-900">Dashboard data could not be loaded</h1>
+          <p className="mt-2 text-sm text-gray-600">
+            The figures below are unavailable, so the CRM is not showing misleading zero values.
+          </p>
+          <p className="mt-2 break-words text-xs text-gray-400">{message}</p>
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            disabled={isFetching}
+            className="mt-5 min-h-11 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-wait disabled:opacity-60"
+          >
+            {isFetching ? 'Retrying…' : 'Retry dashboard'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const leadsTrend    = fillDates(data.charts.leads_trend);
+  const revenueTrend  = fillRevenue(data.charts.revenue_trend);
+  const dealsByStage  = data.charts.deals_by_stage.map((d) => ({
     name:  d.stage?.name ?? `Stage ${d.stage_id}`,
     count: d.count,
     value: d.total_value,

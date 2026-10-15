@@ -261,7 +261,23 @@ class DealController extends Controller
             return response()->json(['message' => 'Only managers can delete deals.'], 403);
         }
 
-        $deal->delete();
+        DB::transaction(function () use ($deal): void {
+            $deletedOn = now()->toDateString();
+            $contract = $deal->recurringBusiness()->lockForUpdate()->first();
+
+            if ($contract && in_array($contract->status, ['ACTIVE', 'PAUSED'], true)) {
+                $contract->update([
+                    'status' => 'CANCELLED',
+                    'cancelled_at' => now(),
+                    'end_date' => ! $contract->end_date || $contract->end_date->gt($deletedOn)
+                        ? $deletedOn
+                        : $contract->end_date,
+                    'next_billing_date' => null,
+                ]);
+            }
+
+            $deal->delete();
+        });
 
         return response()->json(['message' => 'Deal deleted successfully.']);
     }

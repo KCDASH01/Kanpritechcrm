@@ -35,7 +35,15 @@ export function PerformanceLeaderboard({ canManage, currentUserId }: { canManage
     retry: false,
   });
   const departments = useQuery({ queryKey: ['departments', 'leaderboard'], queryFn: departmentsApi.list, enabled: canManage, retry: false });
-  if (leaderboard.isError) return null;
+  if (leaderboard.isError) {
+    return <section role="alert" className="rounded-2xl border border-amber-200 bg-white p-5 shadow-sm">
+      <h2 className="text-base font-bold text-gray-900">Performance Leaderboard unavailable</h2>
+      <p className="mt-1 text-sm text-gray-500">Rankings could not be loaded. No performance values are being assumed.</p>
+      <button type="button" onClick={() => void leaderboard.refetch()} disabled={leaderboard.isFetching} className="mt-3 min-h-10 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+        {leaderboard.isFetching ? 'Retrying…' : 'Retry leaderboard'}
+      </button>
+    </section>;
+  }
   const rows = leaderboard.data?.rows ?? [];
   const ownRank = leaderboard.data?.own_rank;
 

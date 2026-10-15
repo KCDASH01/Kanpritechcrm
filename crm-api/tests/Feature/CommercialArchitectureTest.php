@@ -4,7 +4,11 @@ namespace Tests\Feature;
 
 use App\Http\Controllers\Calendar\CalendarController;
 use App\Http\Controllers\Client\ClientController;
+use App\Http\Controllers\Dashboard\DashboardController;
+use App\Http\Controllers\Deal\DealController;
+use App\Http\Controllers\RecurringBusiness\RecurringBusinessController;
 use App\Http\Controllers\SalesTarget\SalesTargetController;
+use App\Models\Activity;
 use App\Models\Client;
 use App\Models\Deal;
 use App\Models\DealPayment;
@@ -19,8 +23,10 @@ use App\Services\RevenueRecognitionService;
 use App\Services\TargetProgressService;
 use Carbon\Carbon;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class CommercialArchitectureTest extends TestCase
@@ -142,6 +148,18 @@ class CommercialArchitectureTest extends TestCase
             $t->text('notes')->nullable();
             $t->timestamps();
         });
+        Schema::create('activities', function (Blueprint $t) {
+            $t->id();
+            $t->unsignedBigInteger('organization_id');
+            $t->unsignedBigInteger('assigned_to')->nullable();
+            $t->string('subject_type');
+            $t->unsignedBigInteger('subject_id');
+            $t->string('type');
+            $t->boolean('is_done')->default(false);
+            $t->dateTime('due_at')->nullable();
+            $t->timestamps();
+            $t->softDeletes();
+        });
         Schema::create('recurring_businesses', function (Blueprint $t) {
             $t->id();
             $t->unsignedBigInteger('organization_id');
@@ -161,6 +179,9 @@ class CommercialArchitectureTest extends TestCase
             $t->unsignedInteger('billing_cycles')->nullable();
             $t->decimal('contract_value', 15, 2)->nullable();
             $t->string('status')->default('ACTIVE');
+            $t->text('notes')->nullable();
+            $t->dateTime('paused_at')->nullable();
+            $t->dateTime('cancelled_at')->nullable();
             $t->timestamps();
         });
         Schema::create('sales_targets', function (Blueprint $t) {
@@ -249,6 +270,134 @@ class CommercialArchitectureTest extends TestCase
         $service = new RecurringRevenueService;
         self::assertSame(50000.0, $service->dueAmount($business, Carbon::parse('2027-02-15')));
         self::assertSame(25000.0, $service->collectedAmount($business));
+    }
+
+    public function test_soft_deleted_recurring_deal_keeps_history_without_breaking_dashboard_or_list(): void
+    {
+        Carbon::setTestNow('2027-04-15 12:00:00');
+        $owner = User::forceCreate(['organization_id' => 1, 'name' => 'Owner', 'email' => 'recurring-owner@example.com', 'password' => 'password', 'role' => 'owner']);
+        $employeeA = User::forceCreate(['organization_id' => 1, 'name' => 'Employee A', 'email' => 'recurring-a@example.com', 'password' => 'password', 'role' => 'employee']);
+        $employeeB = User::forceCreate(['organization_id' => 1, 'name' => 'Employee B', 'email' => 'recurring-b@example.com', 'password' => 'password', 'role' => 'employee']);
+
+        $validDeal = Deal::create(['organization_id' => 1, 'assigned_to' => $employeeA->id, 'created_by' => $owner->id, 'title' => 'Valid Retainer', 'value' => 25000, 'status' => 'open', 'business_type' => 'RECURRING']);
+        $validBusiness = RecurringBusiness::create(['organization_id' => 1, 'deal_id' => $validDeal->id, 'assigned_to' => $employeeA->id, 'created_by' => $owner->id, 'business_name' => 'Valid Retainer', 'amount' => 25000, 'frequency' => 'MONTHLY', 'start_date' => '2027-01-01', 'status' => 'ACTIVE']);
+        DealPayment::create(['organization_id' => 1, 'deal_id' => $validDeal->id, 'created_by' => $owner->id, 'amount' => 25000, 'payment_date' => '2027-04-01']);
+
+        $deletedDeal = Deal::create(['organization_id' => 1, 'assigned_to' => $employeeB->id, 'created_by' => $owner->id, 'title' => 'Archived Test Retainer', 'value' => 305000, 'status' => 'open', 'business_type' => 'RECURRING']);
+        $deletedBusiness = RecurringBusiness::create(['organization_id' => 1, 'deal_id' => $deletedDeal->id, 'assigned_to' => $employeeB->id, 'created_by' => $owner->id, 'business_name' => 'Archived Test Retainer', 'amount' => 61000, 'frequency' => 'MONTHLY', 'start_date' => '2026-12-01', 'status' => 'ACTIVE']);
+        foreach ([60000, 60000, 60000, 60000, 65000] as $index => $amount) {
+            DealPayment::create(['organization_id' => 1, 'deal_id' => $deletedDeal->id, 'created_by' => $owner->id, 'amount' => $amount, 'payment_date' => Carbon::parse('2026-12-01')->addMonths($index)->toDateString()]);
+        }
+        $deletedDeal->delete(); // Reproduce the legacy production state: contract still says ACTIVE.
+
+        $newLead = Lead::create(['organization_id' => 1, 'created_by' => $owner->id, 'assigned_to' => $employeeA->id, 'first_name' => 'New', 'last_name' => 'Lead', 'status' => 'new']);
+        $followupLead = Lead::create(['organization_id' => 1, 'created_by' => $owner->id, 'assigned_to' => $employeeA->id, 'first_name' => 'Due', 'last_name' => 'Today', 'status' => 'followup']);
+        $meetingLead = Lead::create(['organization_id' => 1, 'created_by' => $owner->id, 'assigned_to' => $employeeA->id, 'first_name' => 'Overdue', 'last_name' => 'Meeting', 'status' => 'meeting']);
+        Activity::create(['organization_id' => 1, 'assigned_to' => $employeeA->id, 'subject_type' => 'lead', 'subject_id' => $followupLead->id, 'type' => 'task', 'due_at' => now()->addHour(), 'is_done' => false]);
+        Activity::create(['organization_id' => 1, 'assigned_to' => $employeeA->id, 'subject_type' => 'lead', 'subject_id' => $meetingLead->id, 'type' => 'meeting', 'due_at' => now()->subHour(), 'is_done' => false]);
+
+        $wonDeal = Deal::create(['organization_id' => 1, 'assigned_to' => $employeeA->id, 'created_by' => $owner->id, 'title' => 'Won Website', 'value' => 100000, 'status' => 'won', 'business_type' => 'ONE_TIME', 'closed_at' => now()->toDateString()]);
+        SalesTarget::create(['organization_id' => 1, 'user_id' => $employeeA->id, 'target_type' => 'monthly', 'target_amount' => 200000, 'receivable_amount' => 100000, 'period_start' => '2027-04-01', 'period_end' => '2027-04-30', 'created_by' => $owner->id]);
+
+        $listResponse = $this->recurringBusinessIndexFor($owner);
+        self::assertSame(200, $listResponse->getStatusCode());
+        $list = $listResponse->getData(true)['data'];
+        self::assertCount(2, $list['rows']);
+        self::assertSame(1, $list['summary']['active_count']);
+        self::assertSame(1, $list['summary']['cancelled_or_expired']);
+        $archivedRow = collect($list['rows'])->firstWhere('id', $deletedBusiness->id);
+        self::assertSame('CANCELLED', $archivedRow['status']);
+        self::assertSame(305000.0, (float) $archivedRow['collected_revenue']);
+        self::assertNull($archivedRow['next_billing_date']);
+        self::assertNotNull($archivedRow['deal_deleted_at']);
+
+        $revenue = app(RevenueRecognitionService::class);
+        self::assertSame(330000.0, (float) $revenue->breakdown(1)['recurring_revenue']);
+        self::assertSame(330000.0, (float) $revenue->collectionSummary(1, null, Carbon::now())['total_collected']);
+
+        $dashboardRequest = Request::create('/api/dashboard', 'GET');
+        $dashboardRequest->setUserResolver(fn () => $owner);
+        $dashboard = app(DashboardController::class)->index($dashboardRequest);
+        self::assertSame(200, $dashboard->getStatusCode());
+        $dashboardData = $dashboard->getData(true)['data'];
+        self::assertSame(3, $dashboardData['stats']['total_leads']);
+        self::assertSame(1, $dashboardData['stats']['new_leads']);
+        self::assertSame(1, $dashboardData['stats']['open_deals']);
+        self::assertSame(1, $dashboardData['stats']['won_deals']);
+        self::assertSame(25000.0, (float) $dashboardData['stats']['deal_value']);
+        self::assertSame(1, $dashboardData['stats']['due_today_activities']);
+        self::assertSame(1, $dashboardData['stats']['overdue_activities']);
+        self::assertSame(330000.0, (float) $dashboardData['stats']['recurring_revenue']);
+        self::assertSame(100000.0, (float) $dashboardData['stats']['one_time_revenue']);
+        self::assertSame(430000.0, (float) $dashboardData['stats']['total_revenue']);
+        self::assertNotEmpty($dashboardData['charts']['leads_trend']);
+        self::assertNotEmpty($dashboardData['charts']['deals_by_stage']);
+        self::assertNotEmpty($dashboardData['charts']['revenue_trend']);
+        self::assertCount(3, $dashboardData['recent_leads']);
+        self::assertCount(2, $dashboardData['recent_deals']);
+        self::assertTrue($dashboardData['target_progress']['has_target']);
+        self::assertSame(200000.0, (float) $dashboardData['performance']['target']['target_amount']);
+        self::assertSame(125000.0, (float) $dashboardData['performance']['target']['achieved_amount']);
+        self::assertSame(25000.0, (float) $dashboardData['performance']['target']['received_amount']);
+        self::assertSame('01 Apr 2027 – 30 Apr 2027', $dashboardData['performance']['period_label']);
+
+        $employeeDashboard = $this->dashboardFor($employeeA);
+        self::assertSame(3, $employeeDashboard['stats']['total_leads']);
+        self::assertSame(125000.0, (float) $employeeDashboard['stats']['total_revenue']);
+        self::assertSame($employeeA->id, $employeeDashboard['performance']['selected_user_id']);
+
+        $archivedEmployeeDashboard = $this->dashboardFor($employeeB);
+        self::assertSame(305000.0, (float) $archivedEmployeeDashboard['stats']['recurring_revenue']);
+        self::assertSame(0, $archivedEmployeeDashboard['stats']['open_deals']);
+        self::assertCount(0, $archivedEmployeeDashboard['recent_deals']);
+
+        self::assertSame([$validBusiness->id], collect($this->recurringBusinessIndexFor($employeeA)->getData(true)['data']['rows'])->pluck('id')->all());
+        self::assertSame([$deletedBusiness->id], collect($this->recurringBusinessIndexFor($employeeB)->getData(true)['data']['rows'])->pluck('id')->all());
+
+        $otherOrganization = Organization::create(['name' => 'Other Tenant', 'slug' => 'other-tenant', 'timezone' => 'Asia/Kolkata']);
+        $otherOwner = User::forceCreate(['organization_id' => $otherOrganization->id, 'name' => 'Other Owner', 'email' => 'other-recurring-owner@example.com', 'password' => 'password', 'role' => 'owner']);
+        self::assertCount(0, $this->recurringBusinessIndexFor($otherOwner)->getData(true)['data']['rows']);
+        $emptyDashboard = $this->dashboardFor($otherOwner);
+        self::assertSame(0, $emptyDashboard['stats']['total_leads']);
+        self::assertSame(0.0, (float) $emptyDashboard['stats']['total_revenue']);
+        self::assertSame([], $emptyDashboard['recent_leads']);
+        self::assertSame([], $emptyDashboard['recent_deals']);
+        self::assertFalse($emptyDashboard['target_progress']['has_target']);
+        Carbon::setTestNow();
+    }
+
+    public function test_deleting_deal_cancels_future_recurring_billing_and_preserves_payments(): void
+    {
+        Carbon::setTestNow('2027-04-15 12:00:00');
+        $admin = User::forceCreate(['organization_id' => 1, 'name' => 'Admin', 'email' => 'delete-recurring-admin@example.com', 'password' => 'password', 'role' => 'admin']);
+        $deal = Deal::create(['organization_id' => 1, 'assigned_to' => $admin->id, 'created_by' => $admin->id, 'title' => 'Delete Retainer', 'value' => 120000, 'status' => 'open', 'business_type' => 'RECURRING']);
+        $business = RecurringBusiness::create(['organization_id' => 1, 'deal_id' => $deal->id, 'assigned_to' => $admin->id, 'created_by' => $admin->id, 'business_name' => 'Delete Retainer', 'amount' => 10000, 'frequency' => 'MONTHLY', 'start_date' => '2027-01-01', 'next_billing_date' => '2027-05-01', 'status' => 'ACTIVE']);
+        DealPayment::create(['organization_id' => 1, 'deal_id' => $deal->id, 'created_by' => $admin->id, 'amount' => 30000, 'payment_date' => '2027-03-01']);
+
+        $request = Request::create("/api/deals/{$deal->id}", 'DELETE');
+        $request->setUserResolver(fn () => $admin);
+        $response = app(DealController::class)->destroy($request, $deal);
+        $business->refresh()->load('deal.payments');
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertNotNull(Deal::withTrashed()->find($deal->id)?->deleted_at);
+        self::assertSame('CANCELLED', $business->status);
+        self::assertSame('2027-04-15', $business->end_date?->toDateString());
+        self::assertNotNull($business->cancelled_at);
+        self::assertNull($business->next_billing_date);
+        self::assertCount(1, $business->deal?->payments ?? []);
+        self::assertSame(30000.0, app(RecurringRevenueService::class)->collectedAmount($business));
+        self::assertNull(app(RecurringRevenueService::class)->upcomingBillingDate($business, Carbon::now()));
+
+        $reactivateRequest = Request::create("/api/recurring-businesses/{$business->id}", 'PUT', ['status' => 'ACTIVE']);
+        $reactivateRequest->setUserResolver(fn () => $admin);
+        try {
+            app(RecurringBusinessController::class)->update($reactivateRequest, $business);
+            self::fail('Archived deals must not be reactivated as recurring contracts.');
+        } catch (ValidationException $exception) {
+            self::assertArrayHasKey('status', $exception->errors());
+        }
+        Carbon::setTestNow();
     }
 
     public function test_target_progress_uses_onboarded_business_and_actual_payments(): void
@@ -488,6 +637,23 @@ class CommercialArchitectureTest extends TestCase
         $response = app(ClientController::class)->show($request, $client->fresh());
 
         return $response->getData(true)['data'];
+    }
+
+    private function recurringBusinessIndexFor(User $user): JsonResponse
+    {
+        $request = Request::create('/api/recurring-businesses', 'GET');
+        $request->setUserResolver(fn () => $user);
+
+        return app(RecurringBusinessController::class)->index($request);
+    }
+
+    /** @return array<string, mixed> */
+    private function dashboardFor(User $user): array
+    {
+        $request = Request::create('/api/dashboard', 'GET');
+        $request->setUserResolver(fn () => $user);
+
+        return app(DashboardController::class)->index($request)->getData(true)['data'];
     }
 
     /** @return array<string, mixed> */

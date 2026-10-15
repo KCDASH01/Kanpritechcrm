@@ -28,7 +28,8 @@ class DealPayment extends Model
 
     public function deal(): BelongsTo
     {
-        return $this->belongsTo(Deal::class);
+        // A payment remains an auditable financial record after its deal is archived.
+        return $this->belongsTo(Deal::class)->withTrashed();
     }
 
     public function createdBy(): BelongsTo

@@ -11,10 +11,13 @@ class RecurringBusinessResource extends JsonResource
     public function toArray(Request $request): array
     {
         $calculator = app(RecurringRevenueService::class);
-        $collected = $this->deal ? $calculator->collectedAmount($this->resource) : 0;
-        $due = $this->deal ? $calculator->dueAmount($this->resource, now()) : 0;
+        $collected = $calculator->collectedAmount($this->resource);
+        $due = $calculator->dueAmount($this->resource, now());
         $upcoming = $calculator->upcomingBillingDate($this->resource, now());
-        $status = $this->status === 'ACTIVE' && $this->end_date && $this->end_date->isPast() ? 'EXPIRED' : $this->status;
+        $dealDeleted = $calculator->dealWasDeleted($this->resource);
+        $status = $dealDeleted && in_array($this->status, ['ACTIVE', 'PAUSED'], true)
+            ? 'CANCELLED'
+            : ($this->status === 'ACTIVE' && $this->end_date && $this->end_date->isPast() ? 'EXPIRED' : $this->status);
         return [
             'id' => $this->id,
             'business_name' => $this->business_name,
@@ -29,6 +32,7 @@ class RecurringBusinessResource extends JsonResource
             'contract_value' => $this->contract_value !== null ? (float) $this->contract_value : null,
             'status' => $status,
             'notes' => $this->notes,
+            'deal_deleted_at' => $dealDeleted ? $this->deal?->deleted_at?->toIso8601String() : null,
             'collected_revenue' => $collected,
             'due_revenue' => $due,
             'outstanding' => max(0, round($due - $collected, 2)),

@@ -783,6 +783,7 @@ export interface RecurringBusiness {
   contract_value?: number;
   status: 'ACTIVE' | 'PAUSED' | 'EXPIRED' | 'CANCELLED' | 'COMPLETED';
   notes?: string;
+  deal_deleted_at?: string | null;
   collected_revenue: number;
   due_revenue: number;
   outstanding: number;

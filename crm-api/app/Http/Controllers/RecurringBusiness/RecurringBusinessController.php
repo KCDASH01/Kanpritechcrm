@@ -9,6 +9,7 @@ use App\Services\RecurringRevenueService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class RecurringBusinessController extends Controller
 {
@@ -54,6 +55,12 @@ class RecurringBusinessController extends Controller
             'end_date' => ['sometimes', 'nullable', 'date', 'after_or_equal:'.$recurringBusiness->start_date->toDateString()],
             'notes' => ['sometimes', 'nullable', 'string'],
         ]);
+        if (in_array($data['status'] ?? null, ['ACTIVE', 'PAUSED'], true)
+            && $recurringBusiness->deal?->trashed()) {
+            throw ValidationException::withMessages([
+                'status' => 'An archived deal cannot have an active or paused recurring contract.',
+            ]);
+        }
         if (($data['status'] ?? null) === 'PAUSED') $data['paused_at'] = now();
         if (($data['status'] ?? null) === 'ACTIVE') $data['paused_at'] = null;
         if (($data['status'] ?? null) === 'CANCELLED') $data['cancelled_at'] = now();

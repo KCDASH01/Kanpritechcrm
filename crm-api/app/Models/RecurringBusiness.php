@@ -31,7 +31,8 @@ class RecurringBusiness extends Model
     public function organization(): BelongsTo { return $this->belongsTo(Organization::class); }
     public function client(): BelongsTo { return $this->belongsTo(Client::class); }
     public function lead(): BelongsTo { return $this->belongsTo(Lead::class); }
-    public function deal(): BelongsTo { return $this->belongsTo(Deal::class); }
+    /** Financial history remains linked when the deal is soft-deleted. */
+    public function deal(): BelongsTo { return $this->belongsTo(Deal::class)->withTrashed(); }
     public function assignedTo(): BelongsTo { return $this->belongsTo(User::class, 'assigned_to'); }
     public function department(): BelongsTo { return $this->belongsTo(Department::class); }
     public function createdBy(): BelongsTo { return $this->belongsTo(User::class, 'created_by'); }
