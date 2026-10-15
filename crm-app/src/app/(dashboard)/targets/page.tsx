@@ -132,8 +132,8 @@ function TargetDetailsModal({ targetId, onClose }: { targetId: number | null; on
               <div className="max-h-64 divide-y overflow-y-auto">
                 {data.deals.length ? data.deals.map((raw) => {
                   const deal = raw as { id: number; title?: string; client?: string; amount?: number; date?: string };
-                  return <Link key={deal.id} href={`/deals?search=${encodeURIComponent(deal.title ?? '')}`} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50"><div className="min-w-0"><p className="truncate text-sm font-medium text-gray-800">{deal.title}</p><p className="text-xs text-gray-400">{deal.client || '—'} · {deal.date ? displayDate(deal.date) : '—'}</p></div><span className="shrink-0 text-sm font-semibold">{fmtAmount(Number(deal.amount ?? 0))}</span></Link>;
-                }) : <p className="p-5 text-sm text-gray-400">No qualifying won deals in this period.</p>}
+                  return <Link key={deal.id} href={`/deals?search=${encodeURIComponent(deal.title ?? '')}`} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50"><div className="min-w-0"><p className="truncate text-sm font-medium text-gray-800">{deal.title}</p><p className="text-xs text-gray-400">{deal.client || '—'} · Deal created {deal.date ? displayDate(deal.date) : '—'}</p></div><span className="shrink-0 text-sm font-semibold">{fmtAmount(Number(deal.amount ?? 0))}</span></Link>;
+                }) : <p className="p-5 text-sm text-gray-400">No qualifying deals in this period.</p>}
               </div>
             </div>
             <div className="overflow-hidden rounded-2xl border">

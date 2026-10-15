@@ -380,6 +380,74 @@ class CommercialArchitectureTest extends TestCase
         self::assertCount(2, $team['periods']);
     }
 
+    public function test_sales_achievement_uses_inclusive_created_dates_and_matches_detail_rows(): void
+    {
+        $employee = User::forceCreate(['organization_id' => 1, 'name' => 'Boundary Rep', 'email' => 'boundary@example.com', 'password' => 'password', 'role' => 'employee']);
+        $otherEmployee = User::forceCreate(['organization_id' => 1, 'name' => 'Other Rep', 'email' => 'other-boundary@example.com', 'password' => 'password', 'role' => 'employee']);
+        $target = SalesTarget::create(['organization_id' => 1, 'user_id' => $employee->id, 'target_type' => 'custom', 'target_amount' => 1000, 'receivable_amount' => 500, 'period_start' => '2027-01-10', 'period_end' => '2027-01-31']);
+        Organization::create(['name' => 'Other Org', 'slug' => 'other-org', 'timezone' => 'Asia/Kolkata']);
+
+        Deal::forceCreate(['organization_id' => 1, 'assigned_to' => $employee->id, 'created_by' => $employee->id, 'title' => 'Before', 'value' => 9000, 'status' => 'open', 'created_at' => '2027-01-09 23:59:59', 'updated_at' => '2027-01-09 23:59:59']);
+        $atStart = Deal::forceCreate(['organization_id' => 1, 'assigned_to' => $employee->id, 'created_by' => $employee->id, 'title' => 'At start', 'value' => 100, 'status' => 'open', 'created_at' => '2027-01-10 00:00:00', 'updated_at' => '2027-01-10 00:00:00']);
+        $atEnd = Deal::forceCreate(['organization_id' => 1, 'assigned_to' => $employee->id, 'created_by' => $employee->id, 'title' => 'At end', 'value' => 200, 'status' => 'won', 'created_at' => '2027-01-31 23:59:59', 'updated_at' => '2027-01-31 23:59:59']);
+        Deal::forceCreate(['organization_id' => 1, 'assigned_to' => $employee->id, 'created_by' => $employee->id, 'title' => 'After', 'value' => 9000, 'status' => 'open', 'created_at' => '2027-02-01 00:00:00', 'updated_at' => '2027-02-01 00:00:00']);
+        Deal::forceCreate(['organization_id' => 1, 'assigned_to' => $employee->id, 'created_by' => $employee->id, 'title' => 'Lost', 'value' => 9000, 'status' => 'lost', 'created_at' => '2027-01-20 12:00:00', 'updated_at' => '2027-01-20 12:00:00']);
+        Deal::forceCreate(['organization_id' => 1, 'assigned_to' => $otherEmployee->id, 'created_by' => $otherEmployee->id, 'title' => 'Other employee', 'value' => 9000, 'status' => 'open', 'created_at' => '2027-01-20 12:00:00', 'updated_at' => '2027-01-20 12:00:00']);
+        Deal::forceCreate(['organization_id' => 2, 'assigned_to' => $employee->id, 'created_by' => $employee->id, 'title' => 'Other organization', 'value' => 9000, 'status' => 'open', 'created_at' => '2027-01-20 12:00:00', 'updated_at' => '2027-01-20 12:00:00']);
+
+        $service = new TargetProgressService;
+        $progress = $service->progressForTarget($target, Carbon::parse('2027-01-20'));
+        $expectedIds = [$atStart->id, $atEnd->id];
+        $rangeIds = $service->salesDetailsQuery(1, $employee->id, '2027-01-10', '2027-01-31')->orderBy('id')->pluck('id')->all();
+        $activeIds = $service->activeSalesDetailsQuery(1, $employee->id, Carbon::parse('2027-01-20'))->orderBy('id')->pluck('id')->all();
+
+        self::assertSame(300.0, $progress['achieved_amount']);
+        self::assertSame($expectedIds, $rangeIds);
+        self::assertSame($expectedIds, $activeIds);
+        self::assertSame($progress['achieved_amount'], (float) Deal::query()->whereIn('id', $activeIds)->sum('value'));
+    }
+
+    public function test_sales_achievement_converts_business_day_bounds_to_storage_timezone(): void
+    {
+        $organization = Organization::create(['name' => 'New York Org', 'slug' => 'new-york-org', 'timezone' => 'America/New_York']);
+        $employee = User::forceCreate(['organization_id' => $organization->id, 'name' => 'New York Rep', 'email' => 'new-york@example.com', 'password' => 'password', 'role' => 'employee']);
+
+        Deal::forceCreate(['organization_id' => $organization->id, 'assigned_to' => $employee->id, 'created_by' => $employee->id, 'title' => 'Before local day', 'value' => 9000, 'status' => 'open', 'created_at' => '2027-01-10 10:29:59', 'updated_at' => '2027-01-10 10:29:59']);
+        $insideStart = Deal::forceCreate(['organization_id' => $organization->id, 'assigned_to' => $employee->id, 'created_by' => $employee->id, 'title' => 'Local day start', 'value' => 100, 'status' => 'open', 'created_at' => '2027-01-10 10:30:00', 'updated_at' => '2027-01-10 10:30:00']);
+        $insideEnd = Deal::forceCreate(['organization_id' => $organization->id, 'assigned_to' => $employee->id, 'created_by' => $employee->id, 'title' => 'Local day end', 'value' => 200, 'status' => 'open', 'created_at' => '2027-01-11 10:29:59', 'updated_at' => '2027-01-11 10:29:59']);
+        Deal::forceCreate(['organization_id' => $organization->id, 'assigned_to' => $employee->id, 'created_by' => $employee->id, 'title' => 'After local day', 'value' => 9000, 'status' => 'open', 'created_at' => '2027-01-11 10:30:00', 'updated_at' => '2027-01-11 10:30:00']);
+
+        $service = new TargetProgressService;
+
+        self::assertSame(300.0, $service->achieved($organization->id, $employee->id, '2027-01-10', '2027-01-10'));
+        self::assertSame([$insideStart->id, $insideEnd->id], $service->salesDetailsQuery($organization->id, $employee->id, '2027-01-10', '2027-01-10')->orderBy('id')->pluck('id')->all());
+    }
+
+    public function test_overlapping_legacy_targets_choose_one_active_period_per_employee_everywhere(): void
+    {
+        Carbon::setTestNow('2027-01-20 10:00:00');
+        $owner = User::forceCreate(['organization_id' => 1, 'name' => 'Target Owner', 'email' => 'target-owner@example.com', 'password' => 'password', 'role' => 'owner']);
+        $employee = User::forceCreate(['organization_id' => 1, 'name' => 'Overlap Rep', 'email' => 'overlap@example.com', 'password' => 'password', 'role' => 'employee']);
+        SalesTarget::create(['organization_id' => 1, 'user_id' => $employee->id, 'target_type' => 'monthly', 'target_amount' => 1000, 'receivable_amount' => 500, 'period_start' => '2027-01-01', 'period_end' => '2027-01-31']);
+        $selected = SalesTarget::create(['organization_id' => 1, 'user_id' => $employee->id, 'target_type' => 'custom', 'target_amount' => 2000, 'receivable_amount' => 1000, 'period_start' => '2027-01-10', 'period_end' => '2027-02-09']);
+        $deal = Deal::forceCreate(['organization_id' => 1, 'assigned_to' => $employee->id, 'created_by' => $employee->id, 'title' => 'Count once', 'value' => 500, 'status' => 'open', 'created_at' => '2027-01-15 12:00:00', 'updated_at' => '2027-01-15 12:00:00']);
+
+        $service = new TargetProgressService;
+        $team = $service->activeTeamProgress(1, Carbon::now());
+        self::assertSame($selected->id, $service->activeTarget(1, $employee->id, Carbon::now())?->id);
+        self::assertSame([$selected->id], $service->targetsForDate(1, Carbon::now())->pluck('id')->all());
+        self::assertSame(1, $team['target_count']);
+        self::assertSame(500.0, $team['achieved_amount']);
+        self::assertSame([$deal->id], $service->activeSalesDetailsQuery(1, null, Carbon::now())->pluck('id')->all());
+
+        $request = Request::create('/api/sales-targets/leaderboard', 'GET');
+        $request->setUserResolver(fn () => $owner);
+        $rows = app(SalesTargetController::class)->leaderboard($request)->getData(true)['data']['rows'];
+        self::assertCount(1, $rows);
+        self::assertSame($selected->id, $rows[0]['target_id']);
+        Carbon::setTestNow();
+    }
+
     public function test_leaderboard_settings_limit_rows_to_selected_members(): void
     {
         Carbon::setTestNow('2027-01-20 10:00:00');

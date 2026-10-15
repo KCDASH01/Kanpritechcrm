@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Deal;
 use App\Models\DealPayment;
+use App\Models\Organization;
 use App\Models\SalesTarget;
 use App\Models\User;
 use Carbon\CarbonInterface;
@@ -74,6 +75,7 @@ class TargetProgressService
                     });
             })
             ->orderByDesc('period_start')
+            ->orderByDesc('id')
             ->first();
     }
 
@@ -98,7 +100,11 @@ class TargetProgressService
             })
             ->with(['user:id,name,email', 'user.departments:id,name'])
             ->orderBy('user_id')
-            ->get();
+            ->orderByDesc('period_start')
+            ->orderByDesc('id')
+            ->get()
+            ->unique(fn (SalesTarget $target) => (int) $target->user_id)
+            ->values();
     }
 
     /** @return array<string, float|int|string|bool|null|array> */
@@ -244,13 +250,14 @@ class TargetProgressService
         if ($ids->isEmpty()) {
             return 0.0;
         }
+        [$start, $endExclusive] = $this->dealCreatedAtBounds($organizationId, $from, $to);
 
         return (float) Deal::query()
             ->where('organization_id', $organizationId)
             ->whereIn('assigned_to', $ids)
             ->where('status', '!=', 'lost')
-            ->whereDate('created_at', '>=', $from)
-            ->whereDate('created_at', '<=', $to)
+            ->where('created_at', '>=', $start)
+            ->where('created_at', '<', $endExclusive)
             ->sum('value');
     }
 
@@ -272,13 +279,14 @@ class TargetProgressService
     public function salesDetailsQuery(int $organizationId, ?int $userId, string $from, string $to): Builder
     {
         $ids = $userId ? collect([$userId]) : $this->eligibleUserIds($organizationId);
+        [$start, $endExclusive] = $this->dealCreatedAtBounds($organizationId, $from, $to);
 
         return Deal::query()
             ->where('organization_id', $organizationId)
             ->whereIn('assigned_to', $ids)
             ->where('status', '!=', 'lost')
-            ->whereDate('created_at', '>=', $from)
-            ->whereDate('created_at', '<=', $to);
+            ->where('created_at', '>=', $start)
+            ->where('created_at', '<', $endExclusive);
     }
 
     public function collectionDetailsQuery(int $organizationId, ?int $userId, ?string $from = null, ?string $to = null): Builder
@@ -292,7 +300,7 @@ class TargetProgressService
             ->when($to, fn (Builder $query) => $query->whereDate('payment_date', '<=', $to));
     }
 
-    public function activeSalesDetailsQuery(int $organizationId, ?int $userId, Carbon $at): Builder
+    public function activeSalesDetailsQuery(int $organizationId, ?int $userId, CarbonInterface $at): Builder
     {
         $targets = $userId
             ? collect(array_filter([$this->activeTarget($organizationId, $userId, $at)]))
@@ -305,10 +313,15 @@ class TargetProgressService
             ->when($targets->isNotEmpty(), function (Builder $query) use ($targets) {
                 $query->where(function (Builder $ranges) use ($targets) {
                     foreach ($targets as $target) {
-                        $ranges->orWhere(function (Builder $range) use ($target) {
+                        [$start, $endExclusive] = $this->dealCreatedAtBounds(
+                            (int) $target->organization_id,
+                            Carbon::parse($target->period_start)->toDateString(),
+                            $this->periodEnd($target)->toDateString(),
+                        );
+                        $ranges->orWhere(function (Builder $range) use ($target, $start, $endExclusive) {
                             $range->where('assigned_to', $target->user_id)
-                                ->whereDate('created_at', '>=', Carbon::parse($target->period_start)->toDateString())
-                                ->whereDate('created_at', '<=', $this->periodEnd($target)->toDateString());
+                                ->where('created_at', '>=', $start)
+                                ->where('created_at', '<', $endExclusive);
                         });
                     }
                 });
@@ -362,5 +375,23 @@ class TargetProgressService
         }
 
         return $days;
+    }
+
+    /** @return array{0:Carbon,1:Carbon} */
+    private function dealCreatedAtBounds(int $organizationId, string $from, string $to): array
+    {
+        $businessTimezone = Organization::query()->whereKey($organizationId)->value('timezone')
+            ?: config('app.timezone');
+        $storageTimezone = config('app.timezone');
+
+        $start = Carbon::parse($from, $businessTimezone)
+            ->startOfDay()
+            ->setTimezone($storageTimezone);
+        $endExclusive = Carbon::parse($to, $businessTimezone)
+            ->addDay()
+            ->startOfDay()
+            ->setTimezone($storageTimezone);
+
+        return [$start, $endExclusive];
     }
 }

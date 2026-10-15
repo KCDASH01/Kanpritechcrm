@@ -187,6 +187,7 @@ class SalesTargetController extends Controller
 
         $start = Carbon::parse($salesTarget->period_start)->toDateString();
         $end = $this->progress->periodEnd($salesTarget)->toDateString();
+        $timezone = $request->user()->organization?->timezone ?: config('app.timezone');
         $salesTarget->load(['user:id,name,email', 'user.departments:id,name']);
         $payload = $this->targetPayload($salesTarget);
         $payload['deals'] = $this->progress->salesDetailsQuery($this->orgId($request), (int) $salesTarget->user_id, $start, $end)
@@ -196,7 +197,7 @@ class SalesTargetController extends Controller
                 'title' => $deal->title,
                 'client' => $deal->client?->company ?: $deal->client?->full_name,
                 'amount' => (float) $deal->value,
-                'date' => $deal->created_at?->toDateString(),
+                'date' => $deal->created_at?->copy()->setTimezone($timezone)->toDateString(),
             ])->values();
         $payload['payments'] = $this->progress->collectionDetailsQuery($this->orgId($request), (int) $salesTarget->user_id, $start, $end)
             ->with('deal:id,title')->orderByDesc('payment_date')->limit(200)->get()
@@ -276,7 +277,12 @@ class SalesTargetController extends Controller
 
         $category = $data['category'] ?? 'overall';
         $mode = $data['mode'] ?? 'actual';
-        $rows = $query->orderByDesc('period_end')->get()->map(function (SalesTarget $target) use ($settings, $category, $mode, $canManage, $now) {
+        $targets = $scope === 'active'
+            ? $query->orderBy('user_id')->orderByDesc('period_start')->orderByDesc('id')->get()
+                ->unique(fn (SalesTarget $target) => (int) $target->user_id)->values()
+            : $query->orderByDesc('period_end')->orderByDesc('id')->get();
+
+        $rows = $targets->map(function (SalesTarget $target) use ($settings, $category, $mode, $canManage, $now) {
             $progress = $this->progress->progressForTarget($target, $now);
             $sales = $progress['sales_percentage'];
             $collection = $progress['collection_percentage'];
