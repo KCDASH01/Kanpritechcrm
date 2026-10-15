@@ -4,10 +4,12 @@ namespace Tests\Feature;
 
 use App\Http\Controllers\Calendar\CalendarController;
 use App\Http\Controllers\Client\ClientController;
+use App\Http\Controllers\SalesTarget\SalesTargetController;
 use App\Models\Client;
 use App\Models\Deal;
 use App\Models\DealPayment;
 use App\Models\Lead;
+use App\Models\Organization;
 use App\Models\RecurringBusiness;
 use App\Models\SalesTarget;
 use App\Models\User;
@@ -26,6 +28,16 @@ class CommercialArchitectureTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        Schema::create('organizations', function (Blueprint $t) {
+            $t->id();
+            $t->string('name');
+            $t->string('slug')->unique();
+            $t->string('timezone')->nullable();
+            $t->json('settings')->nullable();
+            $t->boolean('is_active')->default(true);
+            $t->timestamps();
+        });
+        Organization::create(['name' => 'Acme', 'slug' => 'acme', 'timezone' => 'Asia/Kolkata']);
         Schema::create('users', function (Blueprint $t) {
             $t->id();
             $t->unsignedBigInteger('organization_id');
@@ -239,14 +251,15 @@ class CommercialArchitectureTest extends TestCase
         self::assertSame(25000.0, $service->collectedAmount($business));
     }
 
-    public function test_target_progress_uses_summed_targets_won_deals_and_actual_payments(): void
+    public function test_target_progress_uses_onboarded_business_and_actual_payments(): void
     {
         $employeeA = User::forceCreate(['organization_id' => 1, 'name' => 'Employee A', 'email' => 'target-a@example.com', 'password' => 'password', 'role' => 'employee']);
         $employeeB = User::forceCreate(['organization_id' => 1, 'name' => 'Employee B', 'email' => 'target-b@example.com', 'password' => 'password', 'role' => 'employee']);
         SalesTarget::create(['organization_id' => 1, 'user_id' => $employeeA->id, 'target_amount' => 300000, 'receivable_amount' => 200000, 'period_start' => '2027-01-01']);
         SalesTarget::create(['organization_id' => 1, 'user_id' => $employeeB->id, 'target_amount' => 200000, 'receivable_amount' => 100000, 'period_start' => '2027-01-01']);
-        $dealA = Deal::create(['organization_id' => 1, 'assigned_to' => $employeeA->id, 'created_by' => $employeeA->id, 'title' => 'Website', 'value' => 240000, 'status' => 'won', 'business_type' => 'ONE_TIME', 'closed_at' => '2027-01-10']);
-        $dealB = Deal::create(['organization_id' => 1, 'assigned_to' => $employeeB->id, 'created_by' => $employeeB->id, 'title' => 'App', 'value' => 120000, 'status' => 'won', 'business_type' => 'ONE_TIME', 'closed_at' => '2027-01-12']);
+        $dealA = Deal::forceCreate(['organization_id' => 1, 'assigned_to' => $employeeA->id, 'created_by' => $employeeA->id, 'title' => 'Website', 'value' => 240000, 'status' => 'open', 'business_type' => 'ONE_TIME', 'created_at' => '2027-01-10', 'updated_at' => '2027-01-10']);
+        $dealB = Deal::forceCreate(['organization_id' => 1, 'assigned_to' => $employeeB->id, 'created_by' => $employeeB->id, 'title' => 'App', 'value' => 120000, 'status' => 'won', 'business_type' => 'ONE_TIME', 'closed_at' => '2027-01-20', 'created_at' => '2027-01-12', 'updated_at' => '2027-01-20']);
+        Deal::forceCreate(['organization_id' => 1, 'assigned_to' => $employeeA->id, 'created_by' => $employeeA->id, 'title' => 'Lost business', 'value' => 900000, 'status' => 'lost', 'created_at' => '2027-01-14', 'updated_at' => '2027-01-14']);
         DealPayment::create(['organization_id' => 1, 'deal_id' => $dealA->id, 'created_by' => $employeeA->id, 'amount' => 150000, 'payment_date' => '2027-01-15']);
         DealPayment::create(['organization_id' => 1, 'deal_id' => $dealB->id, 'created_by' => $employeeB->id, 'amount' => 60000, 'payment_date' => '2027-01-18']);
 
@@ -339,8 +352,8 @@ class CommercialArchitectureTest extends TestCase
     {
         $employee = User::forceCreate(['organization_id' => 1, 'name' => 'Custom Period', 'email' => 'custom@example.com', 'password' => 'password', 'role' => 'employee']);
         $target = SalesTarget::create(['organization_id' => 1, 'user_id' => $employee->id, 'target_type' => 'custom', 'target_amount' => 200000, 'receivable_amount' => 100000, 'period_start' => '2027-01-10', 'period_end' => '2027-02-09']);
-        $inside = Deal::create(['organization_id' => 1, 'assigned_to' => $employee->id, 'created_by' => $employee->id, 'title' => 'Inside', 'value' => 120000, 'status' => 'won', 'closed_at' => '2027-01-10']);
-        Deal::create(['organization_id' => 1, 'assigned_to' => $employee->id, 'created_by' => $employee->id, 'title' => 'Outside', 'value' => 500000, 'status' => 'won', 'closed_at' => '2027-02-10']);
+        $inside = Deal::forceCreate(['organization_id' => 1, 'assigned_to' => $employee->id, 'created_by' => $employee->id, 'title' => 'Inside', 'value' => 120000, 'status' => 'open', 'created_at' => '2027-01-10', 'updated_at' => '2027-01-10']);
+        Deal::forceCreate(['organization_id' => 1, 'assigned_to' => $employee->id, 'created_by' => $employee->id, 'title' => 'Outside', 'value' => 500000, 'status' => 'open', 'created_at' => '2027-02-10', 'updated_at' => '2027-02-10']);
         DealPayment::create(['organization_id' => 1, 'deal_id' => $inside->id, 'created_by' => $employee->id, 'amount' => 75000, 'payment_date' => '2027-02-09']);
         DealPayment::create(['organization_id' => 1, 'deal_id' => $inside->id, 'created_by' => $employee->id, 'amount' => 25000, 'payment_date' => '2027-02-10']);
 
@@ -358,13 +371,44 @@ class CommercialArchitectureTest extends TestCase
         $employeeB = User::forceCreate(['organization_id' => 1, 'name' => 'Late', 'email' => 'late@example.com', 'password' => 'password', 'role' => 'employee']);
         SalesTarget::create(['organization_id' => 1, 'user_id' => $employeeA->id, 'target_type' => 'custom', 'target_amount' => 100000, 'receivable_amount' => 50000, 'period_start' => '2027-01-01', 'period_end' => '2027-01-31']);
         SalesTarget::create(['organization_id' => 1, 'user_id' => $employeeB->id, 'target_type' => 'custom', 'target_amount' => 100000, 'receivable_amount' => 50000, 'period_start' => '2027-01-16', 'period_end' => '2027-02-15']);
-        Deal::create(['organization_id' => 1, 'assigned_to' => $employeeA->id, 'created_by' => $employeeA->id, 'title' => 'Early Win', 'value' => 50000, 'status' => 'won', 'closed_at' => '2027-01-10']);
-        Deal::create(['organization_id' => 1, 'assigned_to' => $employeeB->id, 'created_by' => $employeeB->id, 'title' => 'Late Win', 'value' => 75000, 'status' => 'won', 'closed_at' => '2027-01-20']);
+        Deal::forceCreate(['organization_id' => 1, 'assigned_to' => $employeeA->id, 'created_by' => $employeeA->id, 'title' => 'Early Business', 'value' => 50000, 'status' => 'open', 'created_at' => '2027-01-10', 'updated_at' => '2027-01-10']);
+        Deal::forceCreate(['organization_id' => 1, 'assigned_to' => $employeeB->id, 'created_by' => $employeeB->id, 'title' => 'Late Business', 'value' => 75000, 'status' => 'open', 'created_at' => '2027-01-20', 'updated_at' => '2027-01-20']);
         $team = (new TargetProgressService)->activeTeamProgress(1, Carbon::parse('2027-01-20'));
         self::assertSame(200000.0, $team['target_amount']);
         self::assertSame(125000.0, $team['achieved_amount']);
         self::assertSame(62.5, $team['sales_percentage']);
         self::assertCount(2, $team['periods']);
+    }
+
+    public function test_leaderboard_settings_limit_rows_to_selected_members(): void
+    {
+        Carbon::setTestNow('2027-01-20 10:00:00');
+        $owner = User::forceCreate(['organization_id' => 1, 'name' => 'Owner', 'email' => 'leaderboard-owner@example.com', 'password' => 'password', 'role' => 'owner']);
+        $selected = User::forceCreate(['organization_id' => 1, 'name' => 'Selected', 'email' => 'selected@example.com', 'password' => 'password', 'role' => 'employee']);
+        $hidden = User::forceCreate(['organization_id' => 1, 'name' => 'Hidden', 'email' => 'hidden@example.com', 'password' => 'password', 'role' => 'employee']);
+        foreach ([$selected, $hidden] as $member) {
+            SalesTarget::create(['organization_id' => 1, 'user_id' => $member->id, 'target_type' => 'monthly', 'target_amount' => 100000, 'receivable_amount' => 50000, 'period_start' => '2027-01-01', 'period_end' => '2027-01-31']);
+        }
+
+        $controller = app(SalesTargetController::class);
+        $save = Request::create('/api/sales-targets/leaderboard-settings', 'PUT', [
+            'visibility' => 'everyone',
+            'data_visibility' => 'names_percentages',
+            'sales_weight' => 60,
+            'collection_weight' => 40,
+            'selected_user_ids' => [$selected->id],
+        ]);
+        $save->setUserResolver(fn () => $owner);
+        $controller->updateLeaderboardSettings($save);
+
+        $request = Request::create('/api/sales-targets/leaderboard', 'GET');
+        $request->setUserResolver(fn () => $owner->fresh());
+        $payload = $controller->leaderboard($request)->getData(true)['data'];
+
+        self::assertSame([$selected->id], $payload['settings']['selected_user_ids']);
+        self::assertSame([$selected->id], collect($payload['rows'])->pluck('user_id')->all());
+        self::assertFalse(collect($payload['rows'])->pluck('user_id')->contains($hidden->id));
+        Carbon::setTestNow();
     }
 
     /** @return array<string, mixed> */

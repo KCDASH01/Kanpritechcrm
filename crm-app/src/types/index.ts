@@ -384,10 +384,11 @@ export interface LeaderboardSettings {
   data_visibility: 'names_percentages' | 'amounts' | 'anonymous';
   sales_weight: number;
   collection_weight: number;
+  selected_user_ids: number[] | null;
 }
 
 export interface LeaderboardRow {
-  target_id: number;
+  target_id: number | null;
   user_id: number;
   rank: number | null;
   employee_name: string | null;
@@ -399,8 +400,8 @@ export interface LeaderboardRow {
   expected_progress: number;
   target_amount: number | null;
   receivable_amount: number | null;
-  period_start: string;
-  period_end: string;
+  period_start: string | null;
+  period_end: string | null;
   period_label: string;
   period_status: 'active' | 'completed' | 'upcoming';
   badges: string[];

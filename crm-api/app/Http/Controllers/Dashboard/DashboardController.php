@@ -235,7 +235,7 @@ class DashboardController extends Controller
             $paginator = $this->targets->activeSalesDetailsQuery($orgId, $assignedTo, $targetDate)
                 ->with(['client', 'lead', 'assignedTo', 'recurringBusiness'])
                 ->withSum('payments', 'amount')
-                ->latest('closed_at')
+                ->latest('created_at')
                 ->paginate($perPage, ['*'], 'page', $page);
             $rows = $paginator->getCollection()->map(fn (Deal $deal) => [
                     'id' => $deal->id,
@@ -247,7 +247,7 @@ class DashboardController extends Controller
                     'employee' => $deal->assignedTo?->name,
                     'deal_value' => (float) $deal->value,
                     'deal_status' => $deal->status,
-                    'date' => $deal->closed_at?->toDateString(),
+                    'date' => $deal->created_at?->toDateString(),
                     'business_type' => $deal->business_type,
                     'market_type' => $deal->market_type,
                     'collected' => (float) ($deal->payments_sum_amount ?? 0),

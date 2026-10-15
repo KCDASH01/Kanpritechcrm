@@ -248,9 +248,9 @@ class TargetProgressService
         return (float) Deal::query()
             ->where('organization_id', $organizationId)
             ->whereIn('assigned_to', $ids)
-            ->where('status', 'won')
-            ->whereDate('closed_at', '>=', $from)
-            ->whereDate('closed_at', '<=', $to)
+            ->where('status', '!=', 'lost')
+            ->whereDate('created_at', '>=', $from)
+            ->whereDate('created_at', '<=', $to)
             ->sum('value');
     }
 
@@ -276,9 +276,9 @@ class TargetProgressService
         return Deal::query()
             ->where('organization_id', $organizationId)
             ->whereIn('assigned_to', $ids)
-            ->where('status', 'won')
-            ->whereDate('closed_at', '>=', $from)
-            ->whereDate('closed_at', '<=', $to);
+            ->where('status', '!=', 'lost')
+            ->whereDate('created_at', '>=', $from)
+            ->whereDate('created_at', '<=', $to);
     }
 
     public function collectionDetailsQuery(int $organizationId, ?int $userId, ?string $from = null, ?string $to = null): Builder
@@ -300,15 +300,15 @@ class TargetProgressService
 
         return Deal::query()
             ->where('organization_id', $organizationId)
-            ->where('status', 'won')
+            ->where('status', '!=', 'lost')
             ->when($targets->isEmpty(), fn (Builder $query) => $query->whereRaw('1 = 0'))
             ->when($targets->isNotEmpty(), function (Builder $query) use ($targets) {
                 $query->where(function (Builder $ranges) use ($targets) {
                     foreach ($targets as $target) {
                         $ranges->orWhere(function (Builder $range) use ($target) {
                             $range->where('assigned_to', $target->user_id)
-                                ->whereDate('closed_at', '>=', Carbon::parse($target->period_start)->toDateString())
-                                ->whereDate('closed_at', '<=', $this->periodEnd($target)->toDateString());
+                                ->whereDate('created_at', '>=', Carbon::parse($target->period_start)->toDateString())
+                                ->whereDate('created_at', '<=', $this->periodEnd($target)->toDateString());
                         });
                     }
                 });

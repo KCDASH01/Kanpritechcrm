@@ -190,13 +190,13 @@ class SalesTargetController extends Controller
         $salesTarget->load(['user:id,name,email', 'user.departments:id,name']);
         $payload = $this->targetPayload($salesTarget);
         $payload['deals'] = $this->progress->salesDetailsQuery($this->orgId($request), (int) $salesTarget->user_id, $start, $end)
-            ->with(['client:id,company,first_name,last_name'])->orderByDesc('closed_at')->limit(200)->get()
+            ->with(['client:id,company,first_name,last_name'])->orderByDesc('created_at')->limit(200)->get()
             ->map(fn ($deal) => [
                 'id' => $deal->id,
                 'title' => $deal->title,
                 'client' => $deal->client?->company ?: $deal->client?->full_name,
                 'amount' => (float) $deal->value,
-                'date' => $deal->closed_at?->toDateString(),
+                'date' => $deal->created_at?->toDateString(),
             ])->values();
         $payload['payments'] = $this->progress->collectionDetailsQuery($this->orgId($request), (int) $salesTarget->user_id, $start, $end)
             ->with('deal:id,title')->orderByDesc('payment_date')->limit(200)->get()
@@ -263,6 +263,11 @@ class SalesTargetController extends Controller
                 $user->where('is_active', true)->where('role', '!=', 'owner')
                     ->when($data['department_id'] ?? null, fn (Builder $member) => $member->whereHas('departments', fn (Builder $department) => $department->where('departments.id', $data['department_id'])));
             })->with(['user:id,name', 'user.departments:id,name']);
+        if (is_array($settings['selected_user_ids'])) {
+            $settings['selected_user_ids'] === []
+                ? $query->whereRaw('1 = 0')
+                : $query->whereIn('user_id', $settings['selected_user_ids']);
+        }
         if ($scope === 'active') {
             $query->whereDate('period_start', '<=', $now->toDateString())->whereDate('period_end', '>=', $now->toDateString());
         } else {
@@ -308,7 +313,41 @@ class SalesTargetController extends Controller
                     $overall !== null && $overall > 100 ? 'Target Exceeded' : null,
                 ])),
             ];
-        })->sort(function (array $a, array $b) {
+        });
+
+        $memberQuery = User::query()
+            ->where('organization_id', $this->orgId($request))
+            ->where('is_active', true)
+            ->where('role', '!=', 'owner')
+            ->with('departments:id,name')
+            ->when($data['department_id'] ?? null, fn (Builder $member) => $member->whereHas('departments', fn (Builder $department) => $department->where('departments.id', $data['department_id'])));
+        if (is_array($settings['selected_user_ids'])) {
+            $settings['selected_user_ids'] === []
+                ? $memberQuery->whereRaw('1 = 0')
+                : $memberQuery->whereIn('id', $settings['selected_user_ids']);
+        }
+        $presentUserIds = $rows->pluck('user_id')->map(fn ($id) => (int) $id);
+        $privacy = $canManage ? 'amounts' : $settings['data_visibility'];
+        $missingMembers = $memberQuery->get()->whereNotIn('id', $presentUserIds)->map(fn (User $member) => [
+            'target_id' => null,
+            'user_id' => (int) $member->id,
+            'employee_name' => $privacy === 'anonymous' ? null : $member->name,
+            'department' => $member->departments->pluck('name')->join(', ') ?: null,
+            'sales_percentage' => null,
+            'collection_percentage' => null,
+            'overall_score' => null,
+            'ranking_score' => null,
+            'expected_progress' => 0,
+            'target_amount' => null,
+            'receivable_amount' => null,
+            'period_start' => null,
+            'period_end' => null,
+            'period_label' => $scope === 'active' ? 'No active target' : 'No completed target',
+            'period_status' => $scope,
+            'badges' => ['No Target'],
+        ]);
+
+        $rows = $rows->concat($missingMembers)->sort(function (array $a, array $b) {
             if ($a['ranking_score'] === null) return 1;
             if ($b['ranking_score'] === null) return -1;
             return $b['ranking_score'] <=> $a['ranking_score'];
@@ -355,12 +394,18 @@ class SalesTargetController extends Controller
             'data_visibility' => ['required', Rule::in(['names_percentages', 'amounts', 'anonymous'])],
             'sales_weight' => ['required', 'integer', 'min:0', 'max:100'],
             'collection_weight' => ['required', 'integer', 'min:0', 'max:100'],
+            'selected_user_ids' => ['present', 'nullable', 'array'],
+            'selected_user_ids.*' => ['integer', 'distinct', Rule::exists('users', 'id')->where(fn ($query) => $query
+                ->where('organization_id', $this->orgId($request))->where('is_active', true)->where('role', '!=', 'owner'))],
         ]);
         if ((int) $data['sales_weight'] + (int) $data['collection_weight'] !== 100) {
             throw ValidationException::withMessages(['sales_weight' => 'Sales and collection weights must total 100%.']);
         }
         $org = $request->user()->organization;
         $settings = $org->settings ?? [];
+        $data['selected_user_ids'] = is_array($data['selected_user_ids'])
+            ? array_values(array_map('intval', $data['selected_user_ids']))
+            : null;
         $settings['leaderboard'] = $data;
         $org->update(['settings' => $settings]);
 
@@ -403,6 +448,7 @@ class SalesTargetController extends Controller
             'data_visibility' => 'names_percentages',
             'sales_weight' => 60,
             'collection_weight' => 40,
+            'selected_user_ids' => null,
         ], ($organization->settings ?? [])['leaderboard'] ?? []);
     }
 }

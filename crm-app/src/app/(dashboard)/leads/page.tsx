@@ -198,7 +198,7 @@ function LeadForm({ lead, presetClientId, onSave, onClose, saving, phoneError, o
   );
 
   return (
-    <div className="space-y-5 max-h-[72vh] overflow-y-auto pr-1">
+    <div className="max-h-[72vh] space-y-5 overflow-y-auto px-1 pb-1">
       <section>
         <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-600 mb-3">Client Information</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">

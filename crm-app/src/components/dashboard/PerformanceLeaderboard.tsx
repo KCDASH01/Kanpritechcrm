@@ -29,7 +29,6 @@ export function PerformanceLeaderboard({ canManage, currentUserId }: { canManage
   const [mode, setMode] = useState<'actual' | 'pace'>('actual');
   const [periodScope, setPeriodScope] = useState<'active' | 'completed'>('active');
   const [departmentId, setDepartmentId] = useState('');
-  const [expanded, setExpanded] = useState(false);
   const leaderboard = useQuery({
     queryKey: ['performance-leaderboard', category, mode, periodScope, departmentId],
     queryFn: () => salesTargetsApi.leaderboard({ category, mode, period_scope: periodScope, department_id: departmentId ? Number(departmentId) : undefined }),
@@ -38,7 +37,6 @@ export function PerformanceLeaderboard({ canManage, currentUserId }: { canManage
   const departments = useQuery({ queryKey: ['departments', 'leaderboard'], queryFn: departmentsApi.list, enabled: canManage, retry: false });
   if (leaderboard.isError) return null;
   const rows = leaderboard.data?.rows ?? [];
-  const visibleRows = expanded ? rows : rows.slice(0, 5);
   const ownRank = leaderboard.data?.own_rank;
 
   return <section className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
@@ -52,7 +50,7 @@ export function PerformanceLeaderboard({ canManage, currentUserId }: { canManage
       </div>
     </div>
     {!leaderboard.data && leaderboard.isLoading ? <div className="space-y-2 p-5">{[1, 2, 3].map((i) => <div key={i} className="skeleton h-16 rounded-xl" />)}</div> : rows.length === 0 ? <div className="px-5 py-10 text-center text-sm text-gray-400">No targets are available for this period.</div> : <>
-      <div className="divide-y divide-gray-100">{visibleRows.map((row) => {
+      <div className="divide-y divide-gray-100">{rows.map((row) => {
         const isMe = row.user_id === currentUserId;
         const highlighted = row.rank ? rowStyle[row.rank] : undefined;
         return <div key={`${row.target_id}-${row.user_id}`} className={`grid grid-cols-[auto_1fr_auto] items-center gap-3 px-5 py-3.5 sm:grid-cols-[auto_1fr_repeat(3,minmax(72px,auto))] ${highlighted ?? (isMe ? 'bg-indigo-50/50' : 'hover:bg-gray-50')}`}>
@@ -64,8 +62,8 @@ export function PerformanceLeaderboard({ canManage, currentUserId }: { canManage
           <div className="hidden text-right sm:block"><p className="text-lg font-extrabold text-indigo-600">{score(row)}</p><p className="text-[9px] uppercase text-gray-400">{mode === 'pace' ? 'pace score' : category}</p></div>
         </div>;
       })}</div>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 bg-gray-50/60 px-5 py-3"><p className="text-[11px] text-gray-500">{mode === 'pace' ? 'Pace score compares actual progress with elapsed working days.' : 'Ranked by target achievement percentage; ties share a rank.'}</p>{rows.length > 5 && <button onClick={() => setExpanded((value) => !value)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800">{expanded ? 'Show top 5' : `View all ${rows.length}`}</button>}</div>
-      {!canManage && ownRank && !visibleRows.some((row) => row.user_id === currentUserId) && <div className="border-t border-indigo-100 bg-indigo-50 px-5 py-3 text-sm text-indigo-800">Your rank: <strong>#{ownRank.rank ?? '—'}</strong> · {score(ownRank)}</div>}
+      <div className="border-t border-gray-100 bg-gray-50/60 px-5 py-3"><p className="text-[11px] text-gray-500">{mode === 'pace' ? 'Pace score compares actual progress with elapsed working days.' : 'Ranked by target achievement percentage; ties share a rank.'}</p></div>
+      {!canManage && ownRank && !rows.some((row) => row.user_id === currentUserId) && <div className="border-t border-indigo-100 bg-indigo-50 px-5 py-3 text-sm text-indigo-800">Your rank: <strong>#{ownRank.rank ?? '—'}</strong> · {score(ownRank)}</div>}
     </>}
   </section>;
 }
