@@ -34,9 +34,10 @@ export default function ClientDetailsPage() {
           <h1 className="mt-2 break-words text-2xl font-bold text-gray-900">{client.company || client.full_name}</h1>
           <p className="break-words text-sm text-gray-500">{[client.full_name, client.email, client.phone].filter(Boolean).join(' · ')}</p>
         </div>
-        <Link href={`/leads?new=1&client_id=${client.id}`} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-indigo-700">
-          + New Opportunity
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href={`/billing-invoicing/history?client_id=${client.id}`} className="rounded-xl border border-indigo-200 px-4 py-2.5 text-center text-sm font-semibold text-indigo-700 hover:bg-indigo-50">Billing History</Link>
+          <Link href={`/leads?new=1&client_id=${client.id}`} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-indigo-700">+ New Opportunity</Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">

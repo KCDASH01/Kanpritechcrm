@@ -1262,6 +1262,8 @@ export default function DealsPage() {
                       </td>
                       <td className="px-5 py-3.5">
                         <div className="flex items-center justify-end gap-1">
+                          {deal.client_id && <Link href={`/billing-invoicing/documents/new?type=invoice&client_id=${deal.client_id}&deal_id=${deal.id}`} title="Create invoice" className="flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold text-gray-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600">₹</Link>}
+                          <Link href={`/billing-invoicing/history?deal_id=${deal.id}`} title="Billing history" className="flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold text-gray-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600">H</Link>
                           {deal.client_id && <Link href={`/leads?new=1&client_id=${deal.client_id}`} title="New opportunity for this client" className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-violet-600 hover:bg-violet-50 transition-colors text-lg">+</Link>}
                           {/* Add Payment — open deals only */}
                           {deal.status === 'open' && (

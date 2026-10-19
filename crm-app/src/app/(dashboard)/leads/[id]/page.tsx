@@ -17,6 +17,7 @@ import { ConvertToDealFormFromLead } from '@/components/leads/ConvertToDealForm'
 import { isScheduledLeadStatus, isRemarkLeadStatus, type LeadStatus, type ScheduledLeadStatus, type RemarkLeadStatus } from '@/lib/leadStatuses';
 import { AssignmentCard } from '@/components/leads/AssignmentCard';
 import { LeadActivityFeed } from '@/components/leads/LeadActivityFeed';
+import LeadProformas from '@/components/billing/LeadProformas';
 
 function leadsReturnUrl(): string {
   if (typeof window === 'undefined') return '/leads';
@@ -326,6 +327,14 @@ export default function LeadDetailPage() {
               </div>
             )}
             {lead.status !== 'converted' && (
+              <Link
+                href={`/billing-invoicing/documents/new?type=proforma&lead_id=${lead.id}`}
+                className="flex items-center gap-1.5 rounded-xl border border-indigo-200 px-4 py-2 text-sm font-semibold text-indigo-700 transition-colors hover:bg-indigo-50"
+              >
+                Create Proforma
+              </Link>
+            )}
+            {lead.status !== 'converted' && (
               <button
                 onClick={() => setConvertOpen(true)}
                 className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm"
@@ -382,6 +391,7 @@ export default function LeadDetailPage() {
               saving={saving}
               canReassign={isAdmin()}
             />
+            <LeadProformas leadId={lead.id} clientId={lead.client_id} />
           </div>
 
           {/* Right column — feed */}

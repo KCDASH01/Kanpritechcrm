@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class DealPayment extends Model
 {
@@ -21,7 +22,7 @@ class DealPayment extends Model
     protected function casts(): array
     {
         return [
-            'amount'       => 'decimal:2',
+            'amount' => 'decimal:2',
             'payment_date' => 'date',
         ];
     }
@@ -35,5 +36,10 @@ class DealPayment extends Model
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function billingAllocations(): HasMany
+    {
+        return $this->hasMany(BillingPaymentAllocation::class);
     }
 }

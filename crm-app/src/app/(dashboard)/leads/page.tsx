@@ -822,6 +822,11 @@ function ActionsMenu({ lead, onEdit, onDelete, onView, onConvert, onChangeStatus
                 </>
               )}
             </button>
+            {lead.status !== 'converted' && (
+              <Link href={`/billing-invoicing/documents/new?type=proforma&lead_id=${lead.id}`} onClick={() => setOpen(false)} className={`${menuItemCls} text-violet-700`}>
+                <span className="text-sm">₹</span> Create Proforma
+              </Link>
+            )}
 
             <div className="mx-2 my-1 border-t border-gray-100" />
 

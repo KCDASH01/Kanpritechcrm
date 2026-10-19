@@ -1,0 +1,2 @@
+import Link from 'next/link'; import BillingPage from '@/components/billing/BillingPage'; import DocumentList from '@/components/billing/DocumentList';
+export default function Page(){return <BillingPage title="Invoices" description="Issue immutable invoices and track allocations without replacing Deal revenue." action={<Link href="/billing-invoicing/documents/new?type=invoice" className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">+ New Invoice</Link>}><DocumentList type="invoice" /></BillingPage>}

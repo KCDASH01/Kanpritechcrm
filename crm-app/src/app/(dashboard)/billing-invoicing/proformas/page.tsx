@@ -1,0 +1,2 @@
+import Link from 'next/link'; import BillingPage from '@/components/billing/BillingPage'; import DocumentList from '@/components/billing/DocumentList';
+export default function Page(){return <BillingPage title="Proforma Invoices" description="Draft, approve, issue and convert customer Proformas." action={<Link href="/billing-invoicing/documents/new?type=proforma" className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">+ New Proforma</Link>}><DocumentList type="proforma" /></BillingPage>}

@@ -1,0 +1,23 @@
+{
+  "name": "growneq-billing-pdf-renderer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/render.tsx --bundle --packages=external --platform=node --format=esm --target=node20 --outfile=dist/render.mjs",
+    "check": "tsc --noEmit",
+    "qa:samples": "node scripts/render-qa-samples.mjs"
+  },
+  "dependencies": {
+    "@react-pdf/renderer": "4.3.2",
+    "qrcode": "1.5.4",
+    "react": "19.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@types/qrcode": "^1.5.5",
+    "@types/react": "^19.2.0",
+    "esbuild": "^0.25.0",
+    "typescript": "~5.8.2"
+  }
+}

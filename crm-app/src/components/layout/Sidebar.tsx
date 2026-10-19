@@ -13,7 +13,7 @@ function NavIcon({ d }: { d: string }) {
   );
 }
 
-interface NavItem { href: string; label: string; icon: string }
+interface NavItem { href: string; label: string; icon: string; children?: { href: string; label: string }[] }
 
 const SECTIONS: { label: string; items: NavItem[] }[] = [
   {
@@ -35,6 +35,17 @@ const SECTIONS: { label: string; items: NavItem[] }[] = [
       { href: '/geographic-analytics', label: 'Geographic Analytics', icon: 'M12 21a9 9 0 100-18 9 9 0 000 18zm0 0c2.21 0 4-4.03 4-9s-1.79-9-4-9-4 4.03-4 9 1.79 9 4 9zm-8.5-9h17M5 7h14M5 17h14' },
       { href: '/reports',    label: 'Reports',    icon: 'M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z' },
       { href: '/targets',    label: 'Targets',    icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
+      { href: '/billing-invoicing', label: 'Billing & Invoicing', icon: 'M9 14l6-6m-5.5.5h.01m4.99 5h.01M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z', children: [
+        { href: '/billing-invoicing', label: 'Billing Overview' },
+        { href: '/billing-invoicing/catalogue', label: 'Items & Services' },
+        { href: '/billing-invoicing/proformas', label: 'Proforma Invoices' },
+        { href: '/billing-invoicing/invoices', label: 'Invoices' },
+        { href: '/billing-invoicing/receipts', label: 'Receipts' },
+        { href: '/billing-invoicing/consolidated-receipts', label: 'Consolidated Receipts' },
+        { href: '/billing-invoicing/payments', label: 'Payments & Outstanding' },
+        { href: '/billing-invoicing/recurring', label: 'Recurring Billing' },
+        { href: '/billing-invoicing/settings', label: 'Billing Settings' },
+      ] },
     ],
   },
   {
@@ -64,6 +75,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
   const { user, isBusinessPlan, isEnterprisePlan, isPaidPlan, canManageBilling, canManageTeam, isSsoUser, clearAuth } = useAuthStore();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [billingOpen, setBillingOpen] = useState(pathname.startsWith('/billing-invoicing'));
 
   useEffect(() => {
     onClose();
@@ -86,6 +98,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
   const isVisible = (href: string) => {
     if (href === '/team' || href === '/departments') return canManageTeam();
     if (href === '/billing') return canManageBilling() || isSsoUser();
+    if (href.startsWith('/billing-invoicing')) return ['owner', 'admin'].includes(user?.role ?? '');
     // Reports & Targets are Business/Enterprise-only features — hide when not on a paid plan
     if (href === '/reports' || href === '/geographic-analytics' || href === '/customer-growth' || href === '/lead-integrations') return isPaidPlan();
     if (href === '/calendar' || href === '/targets') return isPaidPlan();
@@ -180,6 +193,15 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
               <div className="space-y-0.5">
                 {visible.map((item) => {
                   const active = isActive(item.href);
+                  if (item.children) return (
+                    <div key={item.href}>
+                    <button type="button" onClick={() => setBillingOpen((value) => !value)} aria-expanded={billingOpen} className={[
+                      'flex w-full items-center gap-3 pl-[10px] pr-3 py-2.5 rounded-xl text-sm font-medium transition-all border-l-2',
+                      active ? 'bg-white/10 text-white border-indigo-400' : 'text-gray-500 hover:bg-white/5 hover:text-gray-200 border-transparent',
+                    ].join(' ')}><span className={active ? 'text-indigo-400' : 'text-gray-600'}><NavIcon d={item.icon}/></span><span className="flex-1 text-left">{item.label}</span><span className={`transition-transform ${billingOpen ? 'rotate-180' : ''}`}>⌄</span></button>
+                    {billingOpen && <div className="ml-5 mt-1 space-y-0.5 border-l border-white/10 pl-3">{item.children.map((child) => { const childActive = pathname === child.href || (child.href !== '/billing-invoicing' && pathname.startsWith(child.href)); return <Link key={child.href} href={child.href} onClick={onClose} className={`block rounded-lg px-3 py-2 text-xs ${childActive ? 'bg-indigo-500/15 text-indigo-300' : 'text-gray-500 hover:bg-white/5 hover:text-gray-300'}`}>{child.label}</Link>; })}</div>}
+                    </div>
+                  );
                   return (
                     <Link
                       key={item.href}

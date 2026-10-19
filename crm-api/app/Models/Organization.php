@@ -67,6 +67,21 @@ class Organization extends Model
         return $this->hasMany(Department::class);
     }
 
+    public function billingProfile(): HasOne
+    {
+        return $this->hasOne(BillingProfile::class);
+    }
+
+    public function billingSequences(): HasMany
+    {
+        return $this->hasMany(BillingDocumentSequence::class);
+    }
+
+    public function billingDocuments(): HasMany
+    {
+        return $this->hasMany(BillingDocument::class);
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     public function activeSubscription(): ?Subscription

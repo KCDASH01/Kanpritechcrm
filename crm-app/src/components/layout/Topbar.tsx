@@ -28,6 +28,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/team':        'Team',
   '/departments': 'Departments',
   '/billing':     'Billing',
+  '/billing-invoicing': 'Billing & Invoicing',
+  '/billing-invoicing/settings': 'Billing Settings',
   '/settings':    'Settings',
 };
 
