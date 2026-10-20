@@ -2,6 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Keep the independently scrolling dark sidebar subtle in Chromium and Firefox. */
+.sidebar-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(75 85 99 / 0.7) transparent;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-thumb {
+  background: rgb(75 85 99 / 0.7);
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgb(107 114 128 / 0.85);
+}
+
 @layer base {
   html {
     -webkit-font-smoothing: antialiased;
