@@ -198,7 +198,8 @@ return new class extends Migration
 
         Schema::create('billing_consolidated_receipt_payments', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('billing_consolidated_receipt_id')->constrained()->restrictOnDelete();
+            $table->foreignId('billing_consolidated_receipt_id')
+                ->constrained(indexName: 'bill_con_pay_receipt_fk')->restrictOnDelete();
             $table->foreignId('deal_payment_id')->constrained()->restrictOnDelete();
             $table->decimal('amount_snapshot', 18, 2);
             $table->timestamps();
