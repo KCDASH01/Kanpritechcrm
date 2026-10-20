@@ -40,6 +40,8 @@ export interface BillingProfile {
   payment_terms_days: number;
   approval_required?: boolean;
   default_notes?: string | null;
+  default_terms?: string | null;
+  default_payment_link?: string | null;
   document_footer?: string | null;
   default_template: string;
   financial_year_start_month: number;
@@ -67,6 +69,7 @@ export interface BillingDocument {
   deal_id?: number | null; assigned_to?: number | null; currency: string; due_date?: string | null;
   grand_total: string; subtotal: string; discount_total: string; cgst_total: string; sgst_total: string;
   igst_total: string; template: string; notes?: string | null; terms?: string | null; issued_at?: string | null;
+  tax_context?: { payment_link?: string | null; [key: string]: unknown } | null;
   items?: BillingLineItem[]; customer_snapshot?: Record<string, string | null>; created_at: string;
   converted_to_document_id?: number | null; source_document_id?: number | null;
   client?: { id: number; full_name?: string; company?: string | null } | null;
@@ -96,8 +99,15 @@ export interface BillingReceiptRecord {
 export interface ConsolidatedReceiptRecord {
   id: number; receipt_number: string; client_id: number; represented_total: string; issued_at: string;
   period_start?: string | null; period_end?: string | null;
+  billing_document_id?: number | null; invoice_snapshot?: { currency?: string; document_number?: string; grand_total?: string } | null;
   client?: { id: number; full_name?: string; company?: string | null };
   payments?: Array<{ id: number; deal_payment_id: number; amount_snapshot: string; payment?: DealPaymentRecord }>;
+}
+
+export interface InvoiceReceiptSummary {
+  invoice: BillingDocument;
+  payments: Array<{ deal_payment_id: number; payment_date: string; payment_method: string; reference?: string | null; product_details?: string | null; allocated_amount: string; receipt_number?: string | null }>;
+  total_billed: string; total_received: string; balance_due: string; payment_status: 'unpaid' | 'partially_paid' | 'paid';
 }
 
 export interface BillingOverview {
@@ -140,8 +150,9 @@ export const billingInvoicingApi = {
   reverseAllocation: (allocationId: number, reason: string) => client.post<{ data: PaymentAllocation }>(`/billing-invoicing/allocations/${allocationId}/reverse`, { reason }).then((r) => r.data.data),
   receipts: (params?: Record<string, string | number | undefined>) => client.get<Paginated<BillingReceiptRecord>>('/billing-invoicing/receipts', { params }).then((r) => r.data),
   createReceipt: (paymentId: number) => client.post<{ data: BillingReceiptRecord }>('/billing-invoicing/receipts', { deal_payment_id: paymentId }).then((r) => r.data.data),
+  invoiceReceiptSummary: (documentId: number) => client.get<{ data: InvoiceReceiptSummary }>(`/billing-invoicing/documents/${documentId}/receipt-allocations`).then((r) => r.data.data),
   consolidatedReceipts: (params?: Record<string, string | number | undefined>) => client.get<Paginated<ConsolidatedReceiptRecord>>('/billing-invoicing/consolidated-receipts', { params }).then((r) => r.data),
-  createConsolidatedReceipt: (payload: { client_id: number; payment_ids: number[]; period_start?: string | null; period_end?: string | null }) => client.post<{ data: ConsolidatedReceiptRecord }>('/billing-invoicing/consolidated-receipts', payload).then((r) => r.data.data),
+  createConsolidatedReceipt: (payload: { billing_document_id: number }) => client.post<{ data: ConsolidatedReceiptRecord }>('/billing-invoicing/consolidated-receipts', payload).then((r) => r.data.data),
   pdf: (path: string) => client.get<Blob>(path, { responseType: 'blob' }).then((r) => r.data),
   settings: () => client.get<{ data: BillingProfile }>('/billing-invoicing/settings').then((r) => r.data.data),
   updateSettings: (payload: Partial<BillingProfile>) => client.put<{ data: BillingProfile }>('/billing-invoicing/settings', payload).then((r) => r.data.data),

@@ -49,6 +49,7 @@ class BillingNumberService
 
             $type = $document->document_type === 'proforma' ? 'proforma' : 'invoice';
             $profile = BillingProfile::where('organization_id', $document->organization_id)->first();
+            $this->ensureDefaults($document->organization_id, $actor->id);
             $sequence = BillingDocumentSequence::where('organization_id', $document->organization_id)
                 ->where('document_type', $type)->lockForUpdate()->firstOrFail();
             $periodKey = $this->periodKey($sequence, $date, $profile?->financial_year_start_month ?? 4);
@@ -67,7 +68,7 @@ class BillingNumberService
                     'contact_phone' => $profile->contact_phone, 'website' => $profile->website,
                     'gstin' => $profile->gstin, 'pan' => $profile->pan, 'logo_path' => $profile->logo_path,
                     'signature_path' => $profile->signature_path, 'default_currency' => $profile->default_currency,
-                    'document_footer' => $profile->document_footer,
+                    'document_footer' => $profile->document_footer, 'default_payment_link' => $profile->default_payment_link,
                     'bank_account' => $profile->bankAccounts()->where('is_active', true)->orderByDesc('is_default')->first()?->toArray(),
                 ];
             }
@@ -85,6 +86,7 @@ class BillingNumberService
         }
 
         $profile = BillingProfile::where('organization_id', $organizationId)->first();
+        $this->ensureDefaults($organizationId, $actor->id);
         $sequence = BillingDocumentSequence::where('organization_id', $organizationId)
             ->where('document_type', $type)->lockForUpdate()->firstOrFail();
         $periodKey = $this->periodKey($sequence, $date, $profile?->financial_year_start_month ?? 4);

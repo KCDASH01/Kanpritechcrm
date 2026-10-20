@@ -88,11 +88,17 @@ class BillingDocumentController extends Controller
         $document = DB::transaction(function () use ($request, $data) {
             [$relations, $snapshot, $assigned] = $this->resolveParties($request, $data);
             $calculation = $this->calculate($request, $data['items']);
+            $profile = BillingProfile::where('organization_id', $request->user()->organization_id)->first();
+            $taxContext = $data['tax_context'] ?? [];
+            if (blank($taxContext['payment_link'] ?? null) && filled($profile?->default_payment_link)) {
+                $taxContext['payment_link'] = $profile->default_payment_link;
+            }
             $document = BillingDocument::create(array_merge($relations, $calculation['totals'], [
                 'organization_id' => $request->user()->organization_id, 'document_type' => $data['document_type'], 'status' => 'draft',
-                'currency' => strtoupper($data['currency']), 'customer_snapshot' => $snapshot, 'tax_context' => $data['tax_context'] ?? [],
-                'template' => $data['template'] ?? 'classic', 'due_date' => $data['due_date'] ?? null, 'terms' => $data['terms'] ?? null,
-                'notes' => $data['notes'] ?? null, 'footer' => $data['footer'] ?? null, 'created_by' => $request->user()->id,
+                'currency' => strtoupper($data['currency']), 'customer_snapshot' => $snapshot, 'tax_context' => $taxContext,
+                'template' => $data['template'] ?? 'classic', 'due_date' => $data['due_date'] ?? null,
+                'notes' => $data['notes'] ?? $profile?->default_notes, 'footer' => $data['footer'] ?? $profile?->document_footer,
+                'terms' => $data['terms'] ?? $profile?->default_terms, 'created_by' => $request->user()->id,
                 'assigned_to' => $assigned, 'idempotency_key' => $data['idempotency_key'] ?? null,
             ]));
             $this->replaceItems($document, $data['items'], $calculation['items'], $request);
@@ -109,9 +115,10 @@ class BillingDocumentController extends Controller
         $this->assertEditable($request, $billingDocument);
         $data = $this->validateDocument($request, $billingDocument->document_type);
         DB::transaction(function () use ($request, $data, $billingDocument) {
+            [$relations, $snapshot, $assigned] = $this->resolveParties($request, $data);
             $calculation = $this->calculate($request, $data['items']);
             $before = $billingDocument->toArray();
-            $billingDocument->update(array_merge($calculation['totals'], ['currency' => strtoupper($data['currency']), 'tax_context' => $data['tax_context'] ?? [], 'template' => $data['template'] ?? $billingDocument->template, 'due_date' => $data['due_date'] ?? null, 'terms' => $data['terms'] ?? null, 'notes' => $data['notes'] ?? null, 'footer' => $data['footer'] ?? null]));
+            $billingDocument->update(array_merge($relations, $calculation['totals'], ['currency' => strtoupper($data['currency']), 'customer_snapshot' => $snapshot, 'assigned_to' => $assigned, 'tax_context' => $data['tax_context'] ?? [], 'template' => $data['template'] ?? $billingDocument->template, 'due_date' => $data['due_date'] ?? null, 'terms' => $data['terms'] ?? null, 'notes' => $data['notes'] ?? null, 'footer' => $data['footer'] ?? null]));
             $billingDocument->items()->delete();
             $this->replaceItems($billingDocument, $data['items'], $calculation['items'], $request);
             $this->audit->record($billingDocument->organization_id, $request->user(), 'document.updated', $billingDocument, $before, $billingDocument->fresh()->toArray(), $request);
@@ -153,6 +160,7 @@ class BillingDocumentController extends Controller
         if (! $billingDocument->items()->exists() || (float) $billingDocument->grand_total < 0) {
             throw ValidationException::withMessages(['items' => 'At least one valid line item is required.']);
         }
+        $this->validateIssuanceSnapshots($billingDocument, $profile);
         $path = null;
         try {
             $issued = DB::transaction(function () use ($request, $billingDocument, &$path) {
@@ -243,8 +251,20 @@ class BillingDocumentController extends Controller
     {
         $data = $request->validate([
             'document_type' => [$forcedType ? 'sometimes' : 'required', Rule::in(['proforma', 'invoice'])], 'lead_id' => ['nullable', 'integer'], 'client_id' => ['nullable', 'integer'], 'deal_id' => ['nullable', 'integer'],
-            'currency' => ['required', 'string', 'size:3'], 'due_date' => ['nullable', 'date'], 'template' => ['nullable', Rule::in(BillingPdfService::TEMPLATES)],
+            'currency' => ['required', Rule::in(['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD', 'AUD', 'CAD'])], 'due_date' => ['nullable', 'date'], 'template' => ['nullable', Rule::in(BillingPdfService::TEMPLATES)],
             'terms' => ['nullable', 'string'], 'notes' => ['nullable', 'string'], 'footer' => ['nullable', 'string'], 'tax_context' => ['nullable', 'array'], 'idempotency_key' => ['nullable', 'string', 'max:100'],
+            'customer_snapshot' => ['nullable', 'array'],
+            'customer_snapshot.customer_type' => ['nullable', Rule::in(['individual', 'business'])],
+            'customer_snapshot.contact_name' => ['nullable', 'string', 'max:255'], 'customer_snapshot.company_name' => ['nullable', 'string', 'max:255'],
+            'customer_snapshot.email' => ['nullable', 'email', 'max:255'], 'customer_snapshot.phone' => ['nullable', 'string', 'max:32'],
+            'customer_snapshot.alternative_phone' => ['nullable', 'string', 'max:32'],
+            'customer_snapshot.address' => ['nullable', 'string', 'max:2000'], 'customer_snapshot.address_line1' => ['nullable', 'string', 'max:1000'],
+            'customer_snapshot.address_line2' => ['nullable', 'string', 'max:1000'], 'customer_snapshot.city' => ['nullable', 'string', 'max:120'],
+            'customer_snapshot.district' => ['nullable', 'string', 'max:120'],
+            'customer_snapshot.state' => ['nullable', 'string', 'max:120'], 'customer_snapshot.postal_code' => ['nullable', 'string', 'max:20'],
+            'customer_snapshot.country' => ['nullable', 'string', 'max:120'], 'customer_snapshot.gstin' => ['nullable', 'string', 'max:32'],
+            'customer_snapshot.pan' => ['nullable', 'string', 'max:20'], 'customer_snapshot.website' => ['nullable', 'url', 'max:2048'],
+            'customer_snapshot.billing_contact_person' => ['nullable', 'string', 'max:255'], 'customer_snapshot.notes' => ['nullable', 'string', 'max:2000'],
             'items' => ['required', 'array', 'min:1'], 'items.*.catalogue_item_id' => ['nullable', 'integer'], 'items.*.description' => ['required', 'string', 'max:255'],
             'items.*.hsn_sac' => ['nullable', 'string', 'max:32'], 'items.*.quantity' => ['required', 'numeric', 'gt:0'], 'items.*.unit' => ['nullable', 'string', 'max:32'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'], 'items.*.discount_type' => ['nullable', Rule::in(['fixed', 'percentage'])], 'items.*.discount_value' => ['nullable', 'numeric', 'min:0'], 'items.*.gst_rate' => ['nullable', 'numeric', 'between:0,100'], 'items.*.metadata' => ['nullable', 'array'],
@@ -252,6 +272,12 @@ class BillingDocumentController extends Controller
         $data['document_type'] = $forcedType ?? $data['document_type'];
         if ($data['document_type'] === 'invoice' && (empty($data['client_id']) || empty($data['deal_id']))) {
             throw ValidationException::withMessages(['deal_id' => 'Invoices require an existing Client and Deal.']);
+        }
+        if ($data['document_type'] === 'proforma' && empty($data['lead_id']) && empty($data['client_id']) && empty($data['deal_id'])) {
+            $customer = $data['customer_snapshot'] ?? [];
+            if (blank($customer['contact_name'] ?? null) && blank($customer['company_name'] ?? null)) {
+                throw ValidationException::withMessages(['customer_snapshot.contact_name' => 'Enter a customer name or company, or select an existing Lead.']);
+            }
         }
 
         return $data;
@@ -279,12 +305,18 @@ class BillingDocumentController extends Controller
             $relations['client_id'] ??= $deal->client_id;
             $source ??= $deal->client;
         }
-        if (! $source) {
-            throw ValidationException::withMessages(['customer' => 'Select a Lead or an existing Client and Deal.']);
+        $snapshot = $source ? [
+            'customer_type' => filled($source->company ?? null) ? 'business' : 'individual',
+            'contact_name' => trim(($source->first_name ?? '').' '.($source->last_name ?? '')),
+            'company_name' => $source->company ?? null, 'email' => $source->email ?? null,
+            'phone' => $source->phone ?? null, 'city' => $source->city ?? null,
+            'state' => $source->state ?? null, 'country' => $source->country ?? null,
+        ] : [];
+        foreach (($data['customer_snapshot'] ?? []) as $key => $value) {
+            $snapshot[$key] = is_string($value) ? (trim($value) === '' ? null : trim($value)) : $value;
         }
-        $snapshot = ['contact_name' => trim(($source->first_name ?? '').' '.($source->last_name ?? '')), 'company_name' => $source->company ?? null, 'email' => $source->email ?? null, 'phone' => $source->phone ?? null, 'city' => $source->city ?? null, 'state' => $source->state ?? null, 'country' => $source->country ?? null];
 
-        return [$relations, $snapshot, $source->assigned_to ?? $request->user()->id];
+        return [$relations, $snapshot, $source?->assigned_to ?? $request->user()->id];
     }
 
     private function calculate(Request $request, array $items): array
@@ -337,5 +369,26 @@ class BillingDocumentController extends Controller
         $this->assertVisible($request, $d);
         $this->require($request, 'edit_draft');
         abort_if($d->issued_at || ! in_array($d->status, ['draft', 'pending_approval'], true), 422, 'Only unissued drafts can be edited.');
+    }
+
+    private function validateIssuanceSnapshots(BillingDocument $document, ?BillingProfile $profile): void
+    {
+        $errors = [];
+        if (! $profile || (blank($profile->legal_name) && blank($profile->trade_name))) {
+            $errors['issuer.name'] = 'Complete the Company Profile legal or trade name before issuing.';
+        }
+        if (! $profile || (blank($profile->registered_address) && blank($profile->billing_address))) {
+            $errors['issuer.address'] = 'Complete the Company Profile billing or registered address before issuing.';
+        }
+        $customer = $document->customer_snapshot ?? [];
+        if (blank($customer['contact_name'] ?? null) && blank($customer['company_name'] ?? null)) {
+            $errors['customer.name'] = 'Complete the customer name or company before issuing.';
+        }
+        if (blank($customer['address'] ?? null) && blank($customer['address_line1'] ?? null) && blank($customer['city'] ?? null)) {
+            $errors['customer.address'] = 'Complete the customer address or city before issuing.';
+        }
+        if ($errors) {
+            throw ValidationException::withMessages($errors);
+        }
     }
 }

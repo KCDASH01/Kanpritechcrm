@@ -131,6 +131,7 @@ class BillingFoundationTest extends TestCase
         });
         (require database_path('migrations/2026_10_19_000001_create_billing_foundation.php'))->up();
         (require database_path('migrations/2026_10_20_000001_add_phase3_billing_workflow.php'))->up();
+        (require database_path('migrations/2026_10_20_000002_enhance_billing_documents_and_receipts.php'))->up();
     }
 
     public function test_settings_are_isolated_and_employee_cannot_modify_them(): void
@@ -191,8 +192,66 @@ class BillingFoundationTest extends TestCase
         $client = Client::create(['organization_id' => $owner->organization_id, 'created_by' => $owner->id, 'first_name' => 'Client']);
         $deal = Deal::create(['organization_id' => $owner->organization_id, 'client_id' => $client->id, 'assigned_to' => $owner->id, 'created_by' => $owner->id, 'title' => 'Deal', 'value' => 1000]);
         $this->postJson('/api/billing-invoicing/documents', ['document_type' => 'invoice', 'currency' => 'INR', 'items' => [['description' => 'Service', 'quantity' => 1, 'unit_price' => 1000]]])->assertUnprocessable();
-        $this->postJson('/api/billing-invoicing/documents', ['document_type' => 'invoice', 'client_id' => $client->id, 'deal_id' => $deal->id, 'currency' => 'INR', 'items' => [['description' => 'Service', 'quantity' => 1, 'unit_price' => 1000]]])->assertCreated();
+        $document = $this->postJson('/api/billing-invoicing/documents', ['document_type' => 'invoice', 'client_id' => $client->id, 'deal_id' => $deal->id, 'currency' => 'INR', 'items' => [['description' => 'Service', 'quantity' => 1, 'unit_price' => 1000]]])->assertCreated()->json('data');
+        $replacementClient = Client::create(['organization_id' => $owner->organization_id, 'created_by' => $owner->id, 'first_name' => 'Replacement']);
+        $replacementDeal = Deal::create(['organization_id' => $owner->organization_id, 'client_id' => $replacementClient->id, 'assigned_to' => $owner->id, 'created_by' => $owner->id, 'title' => 'Replacement Deal', 'value' => 2000]);
+        $this->putJson('/api/billing-invoicing/documents/'.$document['id'], ['client_id' => $replacementClient->id, 'deal_id' => $replacementDeal->id, 'currency' => 'USD', 'customer_snapshot' => ['contact_name' => 'Document-specific Customer'], 'items' => [['description' => 'Updated service', 'quantity' => 1, 'unit_price' => 2000]]])
+            ->assertOk()->assertJsonPath('data.client_id', $replacementClient->id)->assertJsonPath('data.deal_id', $replacementDeal->id)->assertJsonPath('data.currency', 'USD')->assertJsonPath('data.customer_snapshot.contact_name', 'Document-specific Customer');
         self::assertSame(0, DealPayment::count());
+    }
+
+    public function test_manual_proforma_snapshots_customer_without_creating_crm_records(): void
+    {
+        [$owner] = $this->users();
+        Sanctum::actingAs($owner);
+        $this->getJson('/api/billing-invoicing/settings')->assertOk();
+
+        $document = $this->postJson('/api/billing-invoicing/documents', [
+            'document_type' => 'proforma', 'currency' => 'EUR',
+            'customer_snapshot' => ['customer_type' => 'business', 'contact_name' => 'Ada Lovelace', 'company_name' => 'Analytical Engines Ltd', 'email' => 'ada@example.test', 'address_line1' => '1 Computing Way', 'city' => 'London', 'country' => 'United Kingdom'],
+            'items' => [['description' => 'Consulting', 'quantity' => 1, 'unit_price' => 750]],
+        ])->assertCreated()->assertJsonPath('data.lead_id', null)->assertJsonPath('data.client_id', null)->assertJsonPath('data.deal_id', null)->json('data');
+
+        self::assertSame('Analytical Engines Ltd', BillingDocument::findOrFail($document['id'])->customer_snapshot['company_name']);
+        self::assertSame(0, DB::table('leads')->count());
+        self::assertSame(0, Client::count());
+        self::assertSame(0, Deal::count());
+    }
+
+    public function test_consolidated_receipt_uses_only_effective_invoice_allocations(): void
+    {
+        Storage::fake('local');
+        [$owner] = $this->users();
+        Sanctum::actingAs($owner);
+        BillingProfile::create(['organization_id' => $owner->organization_id, 'legal_name' => 'Organization A', 'registered_address' => '1 Billing Road', 'default_currency' => 'INR', 'supported_currencies' => ['INR'], 'permissions' => app(BillingPermissionService::class)->defaults()]);
+        app(BillingNumberService::class)->ensureDefaults($owner->organization_id, $owner->id);
+        $client = Client::create(['organization_id' => $owner->organization_id, 'created_by' => $owner->id, 'first_name' => 'Customer', 'city' => 'Bhubaneswar']);
+        $deal = Deal::create(['organization_id' => $owner->organization_id, 'client_id' => $client->id, 'assigned_to' => $owner->id, 'created_by' => $owner->id, 'title' => 'CRM Implementation', 'value' => 1000, 'currency' => 'INR']);
+        $payment = DealPayment::create(['organization_id' => $owner->organization_id, 'deal_id' => $deal->id, 'created_by' => $owner->id, 'amount' => 600, 'payment_date' => '2026-10-20', 'payment_mode' => 'upi']);
+        $invoice = BillingDocument::create(['organization_id' => $owner->organization_id, 'client_id' => $client->id, 'deal_id' => $deal->id, 'assigned_to' => $owner->id, 'document_type' => 'invoice', 'status' => 'draft', 'currency' => 'INR', 'customer_snapshot' => ['contact_name' => 'Customer', 'city' => 'Bhubaneswar'], 'grand_total' => 1000, 'created_by' => $owner->id]);
+        BillingDocumentItem::create(['billing_document_id' => $invoice->id, 'line_number' => 1, 'description' => 'CRM Service', 'quantity' => 1, 'unit_price' => 1000, 'taxable_amount' => 1000, 'line_total' => 1000]);
+        $invoice->forceFill(['document_number' => 'INV-ALLOC-1', 'status' => 'issued', 'issued_at' => now(), 'issued_by' => $owner->id])->save();
+        $allocation = app(PaymentAllocationService::class)->allocate($invoice, $payment, '400.00', $owner);
+        $allocation->update(['reversed_at' => now(), 'reversed_by' => $owner->id, 'reversal_reason' => 'Correction']);
+        app(PaymentAllocationService::class)->allocate($invoice, $payment, '300.00', $owner);
+
+        $summary = $this->getJson("/api/billing-invoicing/documents/{$invoice->id}/receipt-allocations")
+            ->assertOk()->json('data');
+        self::assertSame(300.0, (float) $summary['total_received']);
+        self::assertSame(700.0, (float) $summary['balance_due']);
+        $this->get("/api/billing-invoicing/documents/{$invoice->id}/consolidated-receipt-preview")
+            ->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        $receipt = $this->postJson('/api/billing-invoicing/consolidated-receipts', ['billing_document_id' => $invoice->id])
+            ->assertCreated()->json('data');
+        $sameReceipt = $this->postJson('/api/billing-invoicing/consolidated-receipts', ['billing_document_id' => $invoice->id])
+            ->assertCreated()->json('data');
+
+        self::assertSame(300.0, (float) $receipt['represented_total']);
+        self::assertSame($receipt['id'], $sameReceipt['id'], 'Retrying the same effective allocation set must be idempotent.');
+        self::assertSame(1, BillingConsolidatedReceipt::count());
+        self::assertSame(300.0, (float) BillingConsolidatedReceipt::findOrFail($receipt['id'])->represented_total);
+        self::assertSame(300.0, (float) BillingConsolidatedReceiptPayment::where('billing_consolidated_receipt_id', $receipt['id'])->value('amount_snapshot'));
+        self::assertSame(1, DealPayment::count(), 'Consolidation must not create or duplicate revenue records.');
     }
 
     public function test_issued_lead_proforma_can_be_linked_once_to_its_converted_client_and_deal(): void
@@ -215,7 +274,7 @@ class BillingFoundationTest extends TestCase
 
     public function test_number_assignment_is_unique_resets_by_financial_year_and_is_immutable(): void
     {
-        [$owner] = $this->users();
+        [$owner, , $ownerB] = $this->users();
         $profile = BillingProfile::create(['organization_id' => $owner->organization_id, 'legal_name' => 'Org', 'financial_year_start_month' => 4]);
         $sequence = BillingDocumentSequence::create(['organization_id' => $owner->organization_id, 'document_type' => 'invoice', 'prefix' => '{FY}/INV-', 'starting_number' => 50, 'next_number' => 50, 'padding' => 4, 'numbering_period' => 'financial_year', 'reset_on_period_change' => true]);
         $service = new BillingNumberService(new BillingAuditService);
@@ -312,7 +371,7 @@ class BillingFoundationTest extends TestCase
     public function test_receipt_pdfs_represent_existing_payments_without_creating_revenue(): void
     {
         Storage::fake('local');
-        [$owner] = $this->users();
+        [$owner, , $ownerB] = $this->users();
         BillingProfile::create(['organization_id' => $owner->organization_id, 'legal_name' => 'Organization A', 'permissions' => app(BillingPermissionService::class)->defaults()]);
         $client = Client::create(['organization_id' => $owner->organization_id, 'created_by' => $owner->id, 'first_name' => 'Customer']);
         $deal = Deal::create(['organization_id' => $owner->organization_id, 'client_id' => $client->id, 'assigned_to' => $owner->id, 'created_by' => $owner->id, 'title' => 'CRM Implementation', 'value' => 5000]);
@@ -335,12 +394,18 @@ class BillingFoundationTest extends TestCase
         BillingConsolidatedReceiptPayment::create(['billing_consolidated_receipt_id' => $consolidated->id, 'deal_payment_id' => $payment->id, 'amount_snapshot' => 2500]);
         Sanctum::actingAs($owner);
 
+        $firstIssue = $this->postJson('/api/billing-invoicing/receipts', ['deal_payment_id' => $payment->id])->assertCreated()->json('data');
+        $secondIssue = $this->postJson('/api/billing-invoicing/receipts', ['deal_payment_id' => $payment->id])->assertCreated()->json('data');
+        self::assertSame($firstIssue['id'], $secondIssue['id'], 'A retry must retrieve the existing immutable receipt.');
         $this->get("/api/billing-invoicing/receipts/{$receipt->id}/pdf")->assertOk()->assertHeader('Content-Type', 'application/pdf');
         $this->get("/api/billing-invoicing/consolidated-receipts/{$consolidated->id}/pdf")->assertOk()->assertHeader('Content-Type', 'application/pdf');
 
         self::assertSame(1, DealPayment::count(), 'Receipt generation must never duplicate the CRM payment.');
         self::assertNotNull($receipt->fresh()->pdf_sha256);
         self::assertNotNull($consolidated->fresh()->pdf_sha256);
+
+        Sanctum::actingAs($ownerB);
+        $this->get("/api/billing-invoicing/receipts/{$receipt->id}/pdf")->assertNotFound();
     }
 
     private function users(): array

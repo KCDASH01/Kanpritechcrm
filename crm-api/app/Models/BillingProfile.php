@@ -12,7 +12,7 @@ class BillingProfile extends Model
         'organization_id', 'legal_name', 'trade_name', 'logo_path', 'signature_path',
         'registered_address', 'billing_address', 'city', 'state', 'postal_code', 'country',
         'contact_email', 'contact_phone', 'website', 'gstin', 'pan', 'tax_registrations',
-        'default_currency', 'supported_currencies', 'payment_terms_days', 'approval_required', 'default_notes',
+        'default_currency', 'supported_currencies', 'payment_terms_days', 'approval_required', 'default_notes', 'default_terms', 'default_payment_link',
         'document_footer', 'default_template', 'financial_year_start_month', 'tax_settings',
         'permissions', 'updated_by',
     ];

@@ -176,6 +176,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('allocations/{billingPaymentAllocation}/reverse', [BillingPaymentController::class, 'reverse']);
             Route::get('receipts', [BillingReceiptController::class, 'index']);
             Route::post('receipts', [BillingReceiptController::class, 'store']);
+            Route::get('documents/{billingDocument}/receipt-allocations', [BillingReceiptController::class, 'invoiceAllocations']);
             Route::get('consolidated-receipts', [BillingReceiptController::class, 'consolidatedIndex']);
             Route::post('consolidated-receipts', [BillingReceiptController::class, 'consolidatedStore']);
             Route::get('settings', [BillingSettingsController::class, 'show']);
@@ -195,6 +196,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('templates/{template}/preview', [BillingPdfController::class, 'template']);
             Route::get('documents/{billingDocument}/pdf', [BillingPdfController::class, 'document']);
             Route::get('receipts/{billingReceipt}/pdf', [BillingPdfController::class, 'receipt']);
+            Route::get('documents/{billingDocument}/consolidated-receipt-preview', [BillingPdfController::class, 'consolidatedReceiptPreview']);
             Route::get('consolidated-receipts/{billingConsolidatedReceipt}/pdf', [BillingPdfController::class, 'consolidatedReceipt']);
         });
 

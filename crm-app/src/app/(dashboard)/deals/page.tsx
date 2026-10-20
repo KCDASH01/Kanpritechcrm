@@ -7,14 +7,13 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tansta
 import { motion, AnimatePresence } from 'framer-motion';
 import { dealsApi, type DealPayload } from '@/lib/api/deals';
 import { pipelinesApi } from '@/lib/api/pipelines';
-import { organizationApi } from '@/lib/api/organization';
 import { useAuthStore } from '@/store/authStore';
 import { getLimits } from '@/lib/planLimits';
 import { PlanLimitBar } from '@/components/ui/PlanLimitBar';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { SkeletonTable } from '@/components/ui/Skeleton';
-import MoneyReceipt from '@/components/deals/MoneyReceipt';
+import BillingReceiptModal from '@/components/deals/BillingReceiptModal';
 import type { Deal, DealPayment, PaginatedResponse } from '@/types';
 import { PAYMENT_MODES, paymentModeLabel } from '@/lib/paymentModes';
 import { currencyLabel, currencySymbol, formatDealMoney, normalizeDealCurrency } from '@/lib/currency';
@@ -760,13 +759,6 @@ export default function DealsPage() {
   const [saveError, setSaveError]       = useState('');
   const [openedDeepLinkId, setOpenedDeepLinkId] = useState<number | null>(null);
 
-  // Receipt settings — fetched once, used when opening a receipt
-  const { data: receiptSettings } = useQuery({
-    queryKey: ['receipt-settings'],
-    queryFn: organizationApi.getReceiptSettings,
-    staleTime: 5 * 60_000,
-  });
-
   const assignedToFilter = viewMine ? user?.id : undefined;
 
   const { data, isLoading, isFetching } = useQuery({
@@ -1412,10 +1404,9 @@ export default function DealsPage() {
         maxWidth="max-w-3xl"
       >
         {receiptModal && (
-          <MoneyReceipt
+          <BillingReceiptModal
             payment={receiptModal.payment}
             deal={receiptModal.deal}
-            settings={receiptSettings ?? {}}
             onClose={() => setReceiptModal(null)}
           />
         )}

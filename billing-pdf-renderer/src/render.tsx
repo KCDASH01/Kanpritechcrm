@@ -7,7 +7,7 @@ type Money = number | string | null | undefined;
 
 type Party = {
   name?: string; legal_name?: string; trade_name?: string; company_name?: string;
-  contact_name?: string; address?: string; registered_address?: string; billing_address?: string;
+  contact_name?: string; address?: string; address_line1?: string; address_line2?: string; registered_address?: string; billing_address?: string;
   city?: string; state?: string; postal_code?: string; country?: string; gstin?: string; pan?: string;
   phone?: string; contact_phone?: string; email?: string; contact_email?: string; website?: string;
   logo_data_uri?: string; signature_data_uri?: string;
@@ -24,7 +24,7 @@ type DocumentPayload = {
 };
 type ReceiptEntry = { receipt_number?: string; payment_date?: string; payment_method?: string; reference?: string; product_details?: string; amount?: Money };
 type ReceiptPayload = { kind: 'receipt'; receipt_number?: string; receipt_date?: string; currency?: string; issuer?: Party; customer?: Party; payment?: ReceiptEntry; footer?: string };
-type ConsolidatedPayload = { kind: 'consolidated_receipt'; receipt_number?: string; receipt_date?: string; period_start?: string; period_end?: string; currency?: string; issuer?: Party; customer?: Party; payments?: ReceiptEntry[]; total_billed?: Money; represented_total?: Money; footer?: string };
+type ConsolidatedPayload = { kind: 'consolidated_receipt'; receipt_number?: string; receipt_date?: string; period_start?: string; period_end?: string; currency?: string; issuer?: Party; customer?: Party; payments?: ReceiptEntry[]; total_billed?: Money; represented_total?: Money; invoice_number?: string; payment_status?: string; footer?: string };
 type Payload = DocumentPayload | ReceiptPayload | ConsolidatedPayload;
 
 const n = (value: Money) => Number(value || 0);
@@ -45,7 +45,7 @@ function numberToWords(value: Money, currency = 'INR'): string {
 }
 
 const themes: Record<Template, { primary: string; secondary: string; light: string; text: string; band: boolean; uppercase: boolean }> = {
-  classic: { primary: '#2563EB', secondary: '#334155', light: '#F8FAFC', text: '#0F172A', band: false, uppercase: false },
+  classic: { primary: '#4F46E5', secondary: '#64748B', light: '#F5F3FF', text: '#111827', band: false, uppercase: true },
   modern: { primary: '#4F46E5', secondary: '#6B7280', light: '#F5F3FF', text: '#111827', band: false, uppercase: true },
   minimal: { primary: '#111827', secondary: '#6B7280', light: '#FFFFFF', text: '#111827', band: false, uppercase: true },
   corporate: { primary: '#123B66', secondary: '#2563EB', light: '#EFF6FF', text: '#172033', band: true, uppercase: true },
@@ -75,7 +75,7 @@ const common = StyleSheet.create({
 });
 
 function partyLines(p: Party = {}) {
-  const address = p.billing_address || p.registered_address || p.address;
+  const address = p.billing_address || p.registered_address || p.address || [p.address_line1, p.address_line2].filter(Boolean).join(', ');
   const locality = [p.city, p.state, p.postal_code].filter(Boolean).join(', ');
   return [address, locality, p.country, p.gstin ? `GSTIN: ${p.gstin}` : '', p.pan ? `PAN: ${p.pan}` : '', p.contact_phone || p.phone, p.contact_email || p.email].filter(Boolean) as string[];
 }
@@ -109,7 +109,7 @@ async function DocumentPdf({ data }: { data: DocumentPayload }) {
   const headerBand = template === 'corporate' || template === 'executive';
   return <Document title={`${title} ${data.document_number || 'Draft'}`} author={data.issuer?.legal_name || data.issuer?.name || 'Growneq CRM'}>
     <Page size="A4" style={[common.page, { backgroundColor: headerBand ? '#FAFAFA' : '#FFFFFF' }]}>
-      {template === 'modern' ? <View style={{ height: 6, backgroundColor: theme.primary }} fixed /> : null}
+      {template === 'modern' || template === 'classic' ? <View style={{ height: 6, backgroundColor: theme.primary }} fixed /> : null}
       <View
         wrap={false}
         style={headerBand
@@ -119,7 +119,7 @@ async function DocumentPdf({ data }: { data: DocumentPayload }) {
         <View style={common.between}>
           <View style={{ maxWidth: '65%' }}>
             {headerBand && data.issuer?.logo_data_uri ? <Image src={data.issuer.logo_data_uri} style={common.logo} /> : <Text style={{ fontSize: headerBand ? 20 : 18, color: headerBand ? '#FFFFFF' : theme.primary, fontWeight: 'bold', textTransform: theme.uppercase ? 'uppercase' : 'capitalize' }}>{title}</Text>}
-            {!headerBand ? <View style={{ marginTop: 13 }}><Text style={{ fontSize: 8, color: theme.secondary }}>Document No.</Text><Text style={{ fontWeight: 'bold', color: theme.text }}>{data.document_number || 'DRAFT'}</Text></View> : <Text style={{ marginTop: 8, color: template === 'executive' ? '#A7C4BC' : '#BFDBFE', fontSize: 8 }}>{data.issuer?.trade_name || data.issuer?.legal_name}</Text>}
+            {!headerBand ? <View style={{ marginTop: 13 }}><Text style={{ fontSize: 8, color: theme.secondary }}>{isProforma ? 'Proforma No' : 'Invoice No'}</Text><Text style={{ fontWeight: 'bold', color: theme.text }}>{data.document_number || 'DRAFT'}</Text></View> : <Text style={{ marginTop: 8, color: template === 'executive' ? '#A7C4BC' : '#BFDBFE', fontSize: 8 }}>{data.issuer?.trade_name || data.issuer?.legal_name}</Text>}
           </View>
           <View style={{ alignItems: 'flex-end' }}>
             {!headerBand && data.issuer?.logo_data_uri ? <Image src={data.issuer.logo_data_uri} style={common.logo} /> : null}
@@ -132,12 +132,12 @@ async function DocumentPdf({ data }: { data: DocumentPayload }) {
       </View>
       {headerBand ? <View style={{ height: 3, backgroundColor: theme.secondary }} /> : null}
       <View style={headerBand ? common.content : { paddingHorizontal: 34, paddingTop: 20 }}>
-        <View style={common.partyRow}><PartyBox label={template === 'classic' ? 'Billed By' : 'FROM'} party={data.issuer} theme={theme}/><PartyBox label={template === 'classic' ? 'Billed To' : 'TO'} party={data.customer} theme={theme}/></View>
+        <View style={common.partyRow}><PartyBox label="FROM" party={data.issuer} theme={theme}/><PartyBox label="TO" party={data.customer} theme={theme}/></View>
         <View style={common.table}>
           <View style={[common.tableHead, { backgroundColor: theme.primary }]} fixed>
             <Text style={[common.cNo, { color: '#FFF', fontWeight: 'bold' }]}>#</Text><Text style={{ width: descWidth, color: '#FFF', fontWeight: 'bold' }}>Item & Description</Text>
             {showHsn ? <Text style={[common.cHsn, { color: '#FFF', fontWeight: 'bold' }]}>HSN/SAC</Text> : null}
-            <Text style={[common.cRate, { color: '#FFF', fontWeight: 'bold' }]}>Rate</Text><Text style={[common.cQty, { color: '#FFF', fontWeight: 'bold' }]}>Qty</Text>
+            <Text style={[common.cRate, { color: '#FFF', fontWeight: 'bold' }]}>Rate ({currency})</Text><Text style={[common.cQty, { color: '#FFF', fontWeight: 'bold' }]}>Qty</Text>
             {showDiscount ? <Text style={[common.cDisc, { color: '#FFF', fontWeight: 'bold' }]}>Discount</Text> : null}{showGst ? <Text style={[common.cGst, { color: '#FFF', fontWeight: 'bold' }]}>GST</Text> : null}<Text style={[common.cTotal, { color: '#FFF', fontWeight: 'bold' }]}>Total</Text>
           </View>
           {items.map((item, index) => <View key={index} style={[common.tableRow, index % 2 && template !== 'minimal' ? { backgroundColor: theme.light } : {}]} wrap={false}>
@@ -163,25 +163,27 @@ async function DocumentPdf({ data }: { data: DocumentPayload }) {
 
 function ReceiptPdf({ data }: { data: ReceiptPayload }) {
   const currency = data.currency || 'INR'; const p = data.payment || {};
+  const receiptTheme = { ...themes.classic, primary: '#2E6EF7', light: '#F8FAFC' };
   return <Document title={`Payment Receipt ${data.receipt_number || ''}`}><Page size="A4" style={[common.page, { padding: 40 }]}>
-    <View style={[common.between, { paddingBottom: 15, borderBottomWidth: 1, borderBottomColor: '#D9DEE7' }]}><View><View style={[common.row, { alignItems: 'center' }]}><Text style={{ fontSize: 16, fontWeight: 'bold', color: '#111827' }}>Payment Receipt</Text><Text style={{ marginLeft: 8, backgroundColor: '#F59E0B', color: '#FFF', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 4, fontSize: 8 }}>PAID</Text></View><Text style={{ marginTop: 9 }}>Receipt No.  <Text style={{ fontWeight: 'bold' }}>{data.receipt_number}</Text></Text><Text style={{ marginTop: 3 }}>Receipt Date  <Text style={{ fontWeight: 'bold' }}>{date(data.receipt_date || p.payment_date)}</Text></Text></View>{data.issuer?.logo_data_uri ? <Image src={data.issuer.logo_data_uri} style={common.logo}/> : null}</View>
-    <View style={[common.partyRow, { marginTop: 20 }]}><PartyBox label="Issued by" party={data.issuer} theme={themes.classic}/><PartyBox label="Issued to" party={data.customer} theme={themes.classic}/></View>
-    <Text style={{ fontSize: 12, fontWeight: 'bold', marginBottom: 8 }}>Payment Summary</Text><View style={{ borderWidth: 1, borderColor: '#E2E8F0' }}><View style={[common.tableHead, { backgroundColor: '#F8FAFC' }]}><Text style={{ width: '25%', fontWeight: 'bold' }}>Payment Method</Text><Text style={{ width: '40%', fontWeight: 'bold' }}>Product / Service Details</Text><Text style={{ width: '20%', fontWeight: 'bold' }}>Reference</Text><Text style={{ width: '15%', textAlign: 'right', fontWeight: 'bold' }}>Amount</Text></View><View style={common.tableRow}><Text style={{ width: '25%' }}>{p.payment_method || 'Account Transfer'}</Text><Text style={{ width: '40%' }}>{p.product_details || 'Payment against deal'}</Text><Text style={{ width: '20%' }}>{p.reference || '—'}</Text><Text style={{ width: '15%', textAlign: 'right' }}>{amount(p.amount, currency)}</Text></View></View>
+    <View style={[common.between, { paddingBottom: 15, borderBottomWidth: 1, borderBottomColor: '#D9DEE7' }]}><View><Text style={{ fontSize: 16, fontWeight: 'bold', color: '#111827' }}>Payment Receipt</Text><Text style={{ marginTop: 9 }}>Receipt No.  <Text style={{ fontWeight: 'bold' }}>{data.receipt_number}</Text></Text><Text style={{ marginTop: 3 }}>Receipt Date  <Text style={{ fontWeight: 'bold' }}>{date(data.receipt_date || p.payment_date)}</Text></Text></View>{data.issuer?.logo_data_uri ? <Image src={data.issuer.logo_data_uri} style={common.logo}/> : null}</View>
+    <View style={[common.partyRow, { marginTop: 20 }]}><PartyBox label="Issued by" party={data.issuer} theme={receiptTheme}/><PartyBox label="Issued to" party={data.customer} theme={receiptTheme}/></View>
+    <Text style={{ fontSize: 12, fontWeight: 'bold', marginBottom: 8 }}>Payment Summary</Text><View style={{ borderWidth: 1, borderColor: '#E2E8F0' }}><View style={[common.tableHead, { backgroundColor: '#F8FAFC' }]}><Text style={{ width: '30%', fontWeight: 'bold' }}>Payment Method</Text><Text style={{ width: '48%', fontWeight: 'bold' }}>Product / Service Details</Text><Text style={{ width: '22%', textAlign: 'right', fontWeight: 'bold' }}>Amount Received</Text></View><View style={common.tableRow}><Text style={{ width: '30%' }}>{p.payment_method || 'Account Transfer'}</Text><Text style={{ width: '48%' }}>{p.product_details || 'Payment against deal'}</Text><Text style={{ width: '22%', textAlign: 'right' }}>{amount(p.amount, currency)}</Text></View><View style={[common.tableRow, { backgroundColor: '#F8FAFC' }]}><Text style={{ width: '78%', fontWeight: 'bold' }}>Total</Text><Text style={{ width: '22%', textAlign: 'right', fontWeight: 'bold' }}>{amount(p.amount, currency)}</Text></View></View>
     <View style={[common.between, { marginTop: 20 }]}><View style={{ width: '50%' }}><Text style={{ color: '#6B7280' }}>Total amount (in words)</Text><Text style={{ fontWeight: 'bold', marginTop: 3 }}>{numberToWords(p.amount, currency)}</Text></View><View style={{ width: '42%', borderTopWidth: 1, borderTopColor: '#D1D5DB', paddingTop: 8 }}><View style={common.between}><Text style={{ fontWeight: 'bold', fontSize: 11 }}>Total Amount</Text><Text style={{ fontWeight: 'bold', fontSize: 12 }}>{amount(p.amount, currency)}</Text></View></View></View>
     {data.issuer?.signature_data_uri ? <View style={{ alignItems: 'flex-end', marginTop: 30 }}><Image src={data.issuer.signature_data_uri} style={common.signature}/><Text style={{ fontSize: 7 }}>Authorized Signatory</Text></View> : null}
-    <View style={common.footer} fixed><Text style={common.footerText}>{data.footer || 'This is an electronically generated document; no signature is required.'}</Text></View><Text fixed style={{ position: 'absolute', right: 34, bottom: 38, color: '#64748B', fontSize: 7.2 }} render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`}/>
+    <View style={common.footer} fixed><Text style={common.footerText}>{data.footer || `For any enquiry, reach out via email at ${data.issuer?.contact_email || ''}, call on ${data.issuer?.contact_phone || ''}`}</Text><Text style={[common.footerText, { marginTop: 4 }]}>This is an electronically generated document, no signature is required.</Text></View>
   </Page></Document>;
 }
 
 function ConsolidatedPdf({ data }: { data: ConsolidatedPayload }) {
   const currency = data.currency || 'INR'; const rows = data.payments || []; const received = n(data.represented_total) || rows.reduce((sum, row) => sum + n(row.amount), 0); const billed = n(data.total_billed) || received; const balance = Math.max(0, billed - received);
+  const receiptTheme = { ...themes.classic, primary: '#2E6EF7', light: '#F8FAFC' };
   return <Document title={`Consolidated Receipt ${data.receipt_number || ''}`}><Page size="A4" style={[common.page, { padding: 40 }]}>
     <View style={[common.between, { paddingBottom: 15, borderBottomWidth: 1, borderBottomColor: '#D9DEE7' }]}><View><View style={[common.row, { alignItems: 'center' }]}><Text style={{ fontSize: 16, fontWeight: 'bold' }}>Payment Receipt</Text><Text style={{ marginLeft: 8, backgroundColor: '#F59E0B', color: '#FFF', padding: 4, borderRadius: 7, fontSize: 8 }}>Consolidated</Text>{balance === 0 ? <Text style={{ marginLeft: 6, backgroundColor: '#039855', color: '#FFF', padding: 4, borderRadius: 7, fontSize: 8 }}>Paid in Full</Text> : null}</View><Text style={{ marginTop: 9 }}>Receipt No.  <Text style={{ fontWeight: 'bold' }}>{data.receipt_number}</Text></Text><Text style={{ marginTop: 3 }}>Receipt Date  <Text style={{ fontWeight: 'bold' }}>{date(data.receipt_date)}</Text></Text></View>{data.issuer?.logo_data_uri ? <Image src={data.issuer.logo_data_uri} style={common.logo}/> : null}</View>
-    <View style={[common.partyRow, { marginTop: 20 }]}><PartyBox label="Issued by" party={data.issuer} theme={themes.classic}/><PartyBox label="Issued to" party={data.customer} theme={themes.classic}/></View>
+    <View style={[common.partyRow, { marginTop: 20 }]}><PartyBox label="Issued by" party={data.issuer} theme={receiptTheme}/><PartyBox label="Issued to" party={data.customer} theme={receiptTheme}/></View>
     <Text style={{ fontSize: 11, fontWeight: 'bold', marginBottom: 8 }}>Payment Summary</Text><View style={{ borderWidth: 1, borderColor: '#DDE3EA' }}><View style={[common.tableHead, { backgroundColor: '#F8FAFC' }]} fixed><Text style={{ width: '15%', fontWeight: 'bold' }}>Date</Text><Text style={{ width: '20%', fontWeight: 'bold' }}>Receipt No.</Text><Text style={{ width: '30%', fontWeight: 'bold' }}>Product / Service</Text><Text style={{ width: '17%', fontWeight: 'bold' }}>Method</Text><Text style={{ width: '18%', textAlign: 'right', fontWeight: 'bold' }}>Amount</Text></View>{rows.map((row, index) => <View key={index} style={common.tableRow} wrap={false}><Text style={{ width: '15%' }}>{date(row.payment_date)}</Text><Text style={{ width: '20%' }}>{row.receipt_number || '—'}</Text><Text style={{ width: '30%' }}>{row.product_details || 'Payment against deal'}</Text><Text style={{ width: '17%' }}>{row.payment_method || '—'}</Text><Text style={{ width: '18%', textAlign: 'right' }}>{amount(row.amount, currency)}</Text></View>)}</View>
     <View style={[common.between, { marginTop: 18 }]}><View style={{ width: '46%' }}><Text style={{ color: '#667085' }}>Total amount received (in words)</Text><Text style={{ fontWeight: 'bold', marginTop: 3 }}>{numberToWords(received, currency)}</Text></View><View style={{ width: '46%' }}>{[['Total Billed Amount', billed], ['Total Amount Received', received], ['Balance Due', balance]].map(([label, value]) => <View key={String(label)} style={[common.between, { paddingVertical: 5, borderBottomWidth: 1, borderBottomColor: '#D0D5DD' }]}><Text style={label === 'Balance Due' ? { fontWeight: 'bold', color: balance ? '#D92D20' : '#00875A' } : {}}>{label}</Text><Text style={{ fontWeight: 'bold', color: label === 'Balance Due' ? (balance ? '#D92D20' : '#00875A') : '#182230' }}>{amount(value as Money, currency)}</Text></View>)}</View></View>
-    <Text style={{ marginTop: 20, color: '#667085', fontSize: 8 }}>This consolidated receipt summarizes existing payments only and does not create or recognize additional revenue. Period: {date(data.period_start)} to {date(data.period_end)}.</Text>
-    <View style={common.footer} fixed><Text style={common.footerText}>{data.footer || 'This is an electronically generated document; no signature is required.'}</Text></View><Text fixed style={{ position: 'absolute', right: 34, bottom: 38, color: '#64748B', fontSize: 7.2 }} render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`}/>
+    <Text style={{ marginTop: 20, color: '#667085', fontSize: 8 }}>This consolidated receipt acknowledges all effective payments allocated to invoice {data.invoice_number || '—'}. It summarizes existing payments only and creates no additional revenue. {balance === 0 ? 'The invoice is fully settled with no balance outstanding.' : `A balance of ${amount(balance, currency)} remains outstanding.`}</Text>
+    <View style={common.footer} fixed><Text style={common.footerText}>{data.footer || `For any enquiry, reach out via email at ${data.issuer?.contact_email || ''}, call on ${data.issuer?.contact_phone || ''}`}</Text><Text style={[common.footerText, { marginTop: 4 }]}>This is an electronically generated document, no signature is required.</Text></View>
   </Page></Document>;
 }
 

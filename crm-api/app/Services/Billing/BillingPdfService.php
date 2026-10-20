@@ -68,7 +68,7 @@ class BillingPdfService
             return $bytes;
         }
 
-        $receipt->loadMissing('payments.payment.deal');
+        $receipt->loadMissing('payments.payment.deal', 'document.items');
         $bytes = $this->render($this->consolidatedPayload($receipt));
         $path = "billing/{$receipt->organization_id}/consolidated-receipts/{$receipt->uuid}.pdf";
         $this->store($path, $bytes);
@@ -76,6 +76,35 @@ class BillingPdfService
         BillingConsolidatedReceipt::whereKey($receipt->id)->whereNull('pdf_path')->update(['pdf_path' => $path, 'pdf_sha256' => $hash]);
 
         return $bytes;
+    }
+
+    public function consolidatedReceiptPreview(BillingDocument $document): string
+    {
+        $document->loadMissing('items', 'client');
+        $profile = BillingProfile::where('organization_id', $document->organization_id)->firstOrFail();
+        $issuer = $this->profileIssuer($profile);
+        $issuer['logo_data_uri'] = $this->assetDataUri($profile->logo_path);
+        $allocations = $document->allocations()->whereNull('reversed_at')->with('payment')->get()->groupBy('deal_payment_id');
+        $received = (float) $allocations->sum(fn ($items) => (float) $items->sum('amount'));
+        $customer = $document->customer_snapshot ?: ($document->client ? [
+            'contact_name' => $document->client->full_name, 'company_name' => $document->client->company,
+            'email' => $document->client->email, 'phone' => $document->client->phone,
+            'city' => $document->client->city, 'state' => $document->client->state, 'country' => $document->client->country,
+        ] : []);
+
+        return $this->render([
+            'kind' => 'consolidated_receipt', 'receipt_number' => 'DRAFT PREVIEW', 'receipt_date' => now()->toDateString(),
+            'currency' => $document->currency, 'issuer' => $issuer, 'customer' => $customer,
+            'represented_total' => number_format($received, 2, '.', ''), 'total_billed' => $document->grand_total,
+            'invoice_number' => $document->document_number, 'payment_status' => $received + .00001 >= (float) $document->grand_total ? 'paid' : 'partially_paid',
+            'payments' => $allocations->map(function ($items) use ($document) {
+                $payment = $items->first()->payment;
+                $receipt = BillingReceipt::where('organization_id', $document->organization_id)->where('deal_payment_id', $payment->id)->first();
+
+                return ['receipt_number' => $receipt?->receipt_number, 'payment_date' => $payment->payment_date?->toDateString(), 'payment_method' => $payment->payment_mode, 'reference' => $payment->txn_or_utr_number, 'product_details' => $document->items->pluck('description')->filter()->implode(', '), 'amount' => number_format((float) $items->sum('amount'), 2, '.', '')];
+            })->values()->all(),
+            'footer' => $profile->document_footer,
+        ]);
     }
 
     public function templatePreview(BillingProfile $profile, string $template): string
@@ -163,7 +192,8 @@ class BillingPdfService
         $issuer = $receipt->issuer_snapshot ?: [];
         $issuer['logo_data_uri'] = $this->assetDataUri($issuer['logo_path'] ?? null);
         $issuer['signature_data_uri'] = $this->assetDataUri($issuer['signature_path'] ?? null);
-        $currency = $issuer['default_currency'] ?? 'INR';
+        $invoice = $receipt->invoice_snapshot ?: [];
+        $currency = $invoice['currency'] ?? $issuer['default_currency'] ?? 'INR';
 
         return [
             'kind' => 'consolidated_receipt', 'receipt_number' => $receipt->receipt_number,
@@ -171,13 +201,19 @@ class BillingPdfService
             'period_end' => $receipt->period_end?->toDateString(), 'currency' => $currency,
             'issuer' => $issuer, 'customer' => $receipt->customer_snapshot ?: [],
             'represented_total' => $receipt->represented_total,
-            'payments' => $receipt->payments->map(function ($entry) {
+            'total_billed' => $invoice['grand_total'] ?? $receipt->represented_total,
+            'invoice_number' => $invoice['document_number'] ?? null,
+            'payment_status' => $invoice['payment_status'] ?? null,
+            'payments' => $receipt->payments->map(function ($entry) use ($invoice) {
                 $payment = $entry->payment;
+                $snapshot = $entry->payment_snapshot ?: [];
 
                 return [
-                    'receipt_number' => $payment?->id ? 'PAY-'.$payment->id : null,
-                    'payment_date' => $payment?->payment_date?->toDateString(), 'payment_method' => $payment?->payment_mode,
-                    'reference' => $payment?->txn_or_utr_number, 'product_details' => $payment?->deal?->title,
+                    'receipt_number' => $snapshot['receipt_number'] ?? ($payment?->id ? 'PAY-'.$payment->id : null),
+                    'payment_date' => $snapshot['payment_date'] ?? $payment?->payment_date?->toDateString(),
+                    'payment_method' => $snapshot['payment_method'] ?? $payment?->payment_mode,
+                    'reference' => $snapshot['reference'] ?? $payment?->txn_or_utr_number,
+                    'product_details' => $snapshot['product_details'] ?? $invoice['product_details'] ?? $payment?->deal?->title,
                     'amount' => $entry->amount_snapshot,
                 ];
             })->all(),
@@ -195,7 +231,7 @@ class BillingPdfService
             'contact_phone' => $profile->contact_phone, 'website' => $profile->website,
             'gstin' => $profile->gstin, 'pan' => $profile->pan, 'logo_path' => $profile->logo_path,
             'signature_path' => $profile->signature_path, 'default_currency' => $profile->default_currency,
-            'document_footer' => $profile->document_footer,
+            'document_footer' => $profile->document_footer, 'default_payment_link' => $profile->default_payment_link,
         ];
     }
 

@@ -65,6 +65,19 @@ class BillingPdfController extends Controller
         );
     }
 
+    public function consolidatedReceiptPreview(Request $request, BillingDocument $billingDocument): Response
+    {
+        abort_unless($billingDocument->organization_id === $request->user()->organization_id, 404);
+        Gate::forUser($request->user())->authorize('view', $billingDocument);
+        abort_unless($billingDocument->document_type === 'invoice' && $billingDocument->issued_at !== null && $billingDocument->voided_at === null, 422, 'Select an issued, active Invoice.');
+
+        return $this->pdfResponse(
+            $this->pdf->consolidatedReceiptPreview($billingDocument),
+            'Consolidated-Receipt-Preview-'.$billingDocument->document_number.'.pdf',
+            false,
+        );
+    }
+
     public function consolidatedReceipt(Request $request, BillingConsolidatedReceipt $billingConsolidatedReceipt): Response
     {
         $profile = $this->profile($request);

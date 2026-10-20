@@ -6,7 +6,8 @@
   "scripts": {
     "build": "esbuild src/render.tsx --bundle --packages=external --platform=node --format=esm --target=node20 --outfile=dist/render.mjs",
     "check": "tsc --noEmit",
-    "qa:samples": "node scripts/render-qa-samples.mjs"
+    "qa:samples": "node scripts/render-qa-samples.mjs",
+    "qa:references": "node scripts/render-reference-samples.mjs"
   },
   "dependencies": {
     "@react-pdf/renderer": "4.3.2",

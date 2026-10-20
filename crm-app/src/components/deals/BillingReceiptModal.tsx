@@ -1,0 +1,20 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import type { Deal, DealPayment } from '@/types';
+import { billingInvoicingApi, BillingReceiptRecord } from '@/lib/api/billingInvoicing';
+
+const message = (error: unknown) => { const data = (error as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } })?.response?.data; return (data?.errors && Object.values(data.errors).flat()[0]) || data?.message || 'The receipt could not be prepared.'; };
+
+export default function BillingReceiptModal({ payment, deal, onClose }: { payment: DealPayment; deal: Deal; onClose: () => void }) {
+  const [receipt, setReceipt] = useState<BillingReceiptRecord | null>(null); const [loading, setLoading] = useState(true); const [working, setWorking] = useState(false); const [error, setError] = useState('');
+  useEffect(() => { void billingInvoicingApi.receipts({ deal_payment_id: payment.id, per_page: 1 }).then((rows) => setReceipt(rows.data[0] || null)).catch((problem) => setError(message(problem))).finally(() => setLoading(false)); }, [payment.id]);
+  const path = receipt ? `/billing-invoicing/receipts/${receipt.id}/pdf` : '';
+  const generate = async () => { setWorking(true); setError(''); try { setReceipt(await billingInvoicingApi.createReceipt(payment.id)); } catch (problem) { setError(message(problem)); } finally { setWorking(false); } };
+  const blobUrl = async () => URL.createObjectURL(await billingInvoicingApi.pdf(path));
+  const preview = async () => { const url = await blobUrl(); window.open(url, '_blank', 'noopener,noreferrer'); setTimeout(() => URL.revokeObjectURL(url), 60_000); };
+  const download = async () => { if (!receipt) return; const url = await blobUrl(); const link = document.createElement('a'); link.href = url; link.download = `${receipt.receipt_number}.pdf`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1_000); };
+  const print = async () => { const url = await blobUrl(); const frame = document.createElement('iframe'); frame.style.display = 'none'; frame.src = url; frame.onload = () => { frame.contentWindow?.focus(); frame.contentWindow?.print(); setTimeout(() => { frame.remove(); URL.revokeObjectURL(url); }, 30_000); }; document.body.appendChild(frame); };
+
+  return <div className="space-y-5"><div className="rounded-xl bg-gray-50 p-4 text-sm"><p className="font-semibold">{deal.title}</p><p className="mt-1 text-gray-500">Payment #{payment.id} · {new Date(payment.payment_date).toLocaleDateString('en-IN')} · {deal.currency} {Number(payment.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p></div>{loading ? <div className="h-20 animate-pulse rounded-xl bg-gray-100" /> : receipt ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4"><p className="font-semibold text-emerald-800">Archived receipt: {receipt.receipt_number}</p><p className="mt-1 text-xs text-emerald-700">Preview, download and print always use this same immutable Billing Receipt PDF.</p></div> : <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">No Billing Receipt has been issued for this payment yet.</div>}{error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}<div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={onClose} className="rounded-xl border px-4 py-2 text-sm">Close</button>{!receipt ? <button type="button" disabled={working || loading} onClick={generate} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{working ? 'Generating…' : 'Generate Receipt'}</button> : <><button type="button" onClick={preview} className="rounded-xl border border-indigo-200 px-4 py-2 text-sm font-medium text-indigo-600">Preview</button><button type="button" onClick={download} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">Download</button><button type="button" onClick={print} className="rounded-xl border border-indigo-200 px-4 py-2 text-sm font-medium text-indigo-600">Print</button></>}</div></div>;
+}

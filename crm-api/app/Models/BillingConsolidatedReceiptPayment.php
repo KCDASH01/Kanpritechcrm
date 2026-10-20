@@ -9,12 +9,12 @@ use LogicException;
 class BillingConsolidatedReceiptPayment extends Model
 {
     protected $fillable = [
-        'billing_consolidated_receipt_id', 'deal_payment_id', 'amount_snapshot',
+        'billing_consolidated_receipt_id', 'deal_payment_id', 'amount_snapshot', 'payment_snapshot',
     ];
 
     protected function casts(): array
     {
-        return ['amount_snapshot' => 'decimal:2'];
+        return ['amount_snapshot' => 'decimal:2', 'payment_snapshot' => 'array'];
     }
 
     protected static function booted(): void

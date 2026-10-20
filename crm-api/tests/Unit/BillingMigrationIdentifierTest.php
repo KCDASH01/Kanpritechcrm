@@ -66,6 +66,10 @@ class BillingMigrationIdentifierTest extends TestCase
         $phaseThreeMirror = file_get_contents($root.'/admin-dashboard/database/migrations/2026_10_20_000001_add_phase3_billing_workflow.php');
         self::assertStringContainsString("return require __DIR__.'/../../../crm-api/database/migrations/2026_10_20_000001_add_phase3_billing_workflow.php';", $phaseThreeMirror);
         self::assertStringNotContainsString('Schema::create', $phaseThreeMirror);
+
+        $enhancementMirror = file_get_contents($root.'/admin-dashboard/database/migrations/2026_10_20_000002_enhance_billing_documents_and_receipts.php');
+        self::assertStringContainsString("return require __DIR__.'/../../../crm-api/database/migrations/2026_10_20_000002_enhance_billing_documents_and_receipts.php';", $enhancementMirror);
+        self::assertStringNotContainsString('Schema::table', $enhancementMirror);
     }
 
     public static function billingMigrationProvider(): array
@@ -75,6 +79,7 @@ class BillingMigrationIdentifierTest extends TestCase
         return [
             'phase 1 canonical' => [$root.'/crm-api/database/migrations/2026_10_19_000001_create_billing_foundation.php'],
             'phase 3 canonical' => [$root.'/crm-api/database/migrations/2026_10_20_000001_add_phase3_billing_workflow.php'],
+            'billing enhancement canonical' => [$root.'/crm-api/database/migrations/2026_10_20_000002_enhance_billing_documents_and_receipts.php'],
         ];
     }
 }
