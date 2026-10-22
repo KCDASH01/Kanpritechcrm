@@ -7,6 +7,7 @@ use App\Models\Organization;
 use App\Models\SalesTarget;
 use App\Models\User;
 use App\Services\TargetProgressService;
+use App\Services\LeadConversionRatioService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,7 +18,10 @@ use Illuminate\Validation\ValidationException;
 
 class SalesTargetController extends Controller
 {
-    public function __construct(private readonly TargetProgressService $progress) {}
+    public function __construct(
+        private readonly TargetProgressService $progress,
+        private readonly LeadConversionRatioService $leadConversions,
+    ) {}
 
     private function orgId(Request $request): int
     {
@@ -246,15 +250,24 @@ class SalesTargetController extends Controller
     public function leaderboard(Request $request): JsonResponse
     {
         $data = $request->validate([
+            'metric' => ['nullable', Rule::in(['target_achievement', 'lead_conversion'])],
             'category' => ['nullable', Rule::in(['sales', 'collection', 'overall'])],
             'period_scope' => ['nullable', Rule::in(['active', 'completed'])],
             'department_id' => ['nullable', 'integer'],
             'mode' => ['nullable', Rule::in(['actual', 'pace'])],
+            'conversion_period' => ['nullable', Rule::in(['current_month', 'month', 'custom', 'target', 'all_time'])],
+            'conversion_month' => ['nullable', 'date_format:Y-m'],
+            'conversion_start' => ['nullable', 'date'],
+            'conversion_end' => ['nullable', 'date', 'after_or_equal:conversion_start'],
+            'conversion_target_id' => ['nullable', 'integer'],
         ]);
         $settings = $this->leaderboardSettings($request->user()->organization);
         $canManage = $this->canManage($request);
         if ($settings['visibility'] === 'disabled' || (!$canManage && $settings['visibility'] !== 'everyone')) {
             return response()->json(['message' => 'Leaderboard is not available.'], 403);
+        }
+        if (($data['metric'] ?? 'target_achievement') === 'lead_conversion') {
+            return $this->conversionLeaderboard($request, $data, $settings, $canManage);
         }
 
         $now = $this->organizationNow($request)->startOfDay();
@@ -368,7 +381,9 @@ class SalesTargetController extends Controller
                 $row['rank'] = null;
                 return $row;
             }
-            if ($previousScore === null || $row['ranking_score'] !== $previousScore) $rank = $position;
+            if ($previousScore === null || $row['ranking_score'] !== $previousScore) {
+                $rank = $position;
+            }
             $row['rank'] = $rank;
             if ($rank === 1) $row['badges'][] = 'Top Performer';
             $previousScore = $row['ranking_score'];
@@ -378,9 +393,90 @@ class SalesTargetController extends Controller
         $own = $rows->firstWhere('user_id', $request->user()->id);
         return response()->json(['data' => [
             'rows' => $rows,
+            'metric' => 'target_achievement',
             'category' => $category,
             'mode' => $mode,
             'period_scope' => $scope,
+            'settings' => $settings,
+            'own_rank' => $own,
+        ]]);
+    }
+
+    /** @param array<string, mixed> $data @param array<string, mixed> $settings */
+    private function conversionLeaderboard(Request $request, array $data, array $settings, bool $canManage): JsonResponse
+    {
+        $members = User::query()
+            ->where('organization_id', $this->orgId($request))
+            ->where('is_active', true)
+            ->where('role', '!=', 'owner')
+            ->with('departments:id,name')
+            ->when($data['department_id'] ?? null, fn (Builder $member) => $member->whereHas('departments', fn (Builder $department) => $department->where('departments.id', $data['department_id'])))
+            ->when(is_array($settings['selected_user_ids']), function (Builder $query) use ($settings) {
+                $settings['selected_user_ids'] === []
+                    ? $query->whereRaw('1 = 0')
+                    : $query->whereIn('id', $settings['selected_user_ids']);
+            })
+            ->orderBy('name')->orderBy('id')->get();
+        $period = $this->leadConversions->resolvePeriod($request->user(), $data);
+        $calculated = $this->leadConversions->calculate($this->orgId($request), $members, $period);
+        $privacy = $canManage ? 'amounts' : $settings['data_visibility'];
+
+        $rows = $members->map(function (User $member) use ($calculated, $period, $privacy) {
+            $result = $calculated['members'][(int) $member->id];
+
+            return [
+                'target_id' => null,
+                'user_id' => (int) $member->id,
+                'employee_name' => $privacy === 'anonymous' ? null : $member->name,
+                'department' => $member->departments->pluck('name')->join(', ') ?: null,
+                'sales_percentage' => null,
+                'collection_percentage' => null,
+                'overall_score' => null,
+                'ranking_score' => $result['ratio'],
+                'conversion_ratio' => $result['ratio'],
+                'assigned_leads' => $result['assigned_leads'],
+                'converted_leads' => $result['converted_leads'],
+                'expected_progress' => 0,
+                'target_amount' => null,
+                'receivable_amount' => null,
+                'period_start' => $period['start_date'],
+                'period_end' => $period['end_date'],
+                'period_label' => $period['label'],
+                'period_status' => 'selected',
+                'badges' => [],
+            ];
+        })->sort(function (array $a, array $b) {
+            return ($b['ranking_score'] <=> $a['ranking_score'])
+                ?: ($b['converted_leads'] <=> $a['converted_leads'])
+                ?: ($b['assigned_leads'] <=> $a['assigned_leads'])
+                ?: ($a['user_id'] <=> $b['user_id']);
+        })->values();
+
+        $rank = 0;
+        $position = 0;
+        $previousScore = null;
+        $rows = $rows->map(function (array $row) use (&$rank, &$position, &$previousScore) {
+            $position++;
+            if ($previousScore === null || $row['ranking_score'] !== $previousScore) $rank = $position;
+            $row['rank'] = $rank;
+            if ($rank === 1) $row['badges'][] = 'Top Converter';
+            $previousScore = $row['ranking_score'];
+
+            return $row;
+        });
+        $own = $rows->firstWhere('user_id', $request->user()->id);
+
+        return response()->json(['data' => [
+            'rows' => $rows,
+            'metric' => 'lead_conversion',
+            'category' => 'overall',
+            'mode' => 'actual',
+            'period_scope' => $period['mode'],
+            'period' => [
+                'mode' => $period['mode'], 'start_date' => $period['start_date'],
+                'end_date' => $period['end_date'], 'label' => $period['label'], 'target_id' => $period['target_id'],
+            ],
+            'target_periods' => $this->leadConversions->targetPeriods($request->user()),
             'settings' => $settings,
             'own_rank' => $own,
         ]]);

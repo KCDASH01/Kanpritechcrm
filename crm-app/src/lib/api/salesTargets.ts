@@ -30,7 +30,7 @@ export const salesTargetsApi = {
   details: (targetId: number) =>
     client.get<{ data: SalesTargetRow & { deals: Record<string, unknown>[]; payments: Record<string, unknown>[] } }>(`/sales-targets/${targetId}/details`).then((r) => r.data.data),
 
-  leaderboard: (params?: { category?: string; period_scope?: string; department_id?: number; mode?: string }) =>
+  leaderboard: (params?: { metric?: string; category?: string; period_scope?: string; department_id?: number; mode?: string; conversion_period?: string; conversion_month?: string; conversion_start?: string; conversion_end?: string; conversion_target_id?: number }) =>
     client.get<{ data: LeaderboardData }>('/sales-targets/leaderboard', { params }).then((r) => r.data.data),
 
   leaderboardSettings: () =>

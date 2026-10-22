@@ -403,17 +403,58 @@ export interface LeaderboardRow {
   period_start: string | null;
   period_end: string | null;
   period_label: string;
-  period_status: 'active' | 'completed' | 'upcoming';
+  period_status: 'active' | 'completed' | 'upcoming' | 'selected';
   badges: string[];
+  conversion_ratio?: number;
+  assigned_leads?: number;
+  converted_leads?: number;
 }
 
 export interface LeaderboardData {
   rows: LeaderboardRow[];
+  metric: 'target_achievement' | 'lead_conversion';
   category: 'sales' | 'collection' | 'overall';
   mode: 'actual' | 'pace';
-  period_scope: 'active' | 'completed';
+  period_scope: 'active' | 'completed' | ConversionPeriodMode;
   settings: LeaderboardSettings;
   own_rank: LeaderboardRow | null;
+  period?: ConversionPeriod;
+  target_periods?: ConversionTargetPeriod[];
+}
+
+export type ConversionPeriodMode = 'current_month' | 'month' | 'custom' | 'target' | 'all_time';
+
+export interface ConversionPeriod {
+  mode: ConversionPeriodMode;
+  start_date: string | null;
+  end_date: string | null;
+  label: string;
+  target_id: number | null;
+}
+
+export interface ConversionTargetPeriod {
+  id: number;
+  label: string;
+  start_date: string;
+  end_date: string;
+}
+
+export interface LeadConversionRatio {
+  assigned_leads: number;
+  converted_leads: number;
+  ratio: number;
+  scope: 'team' | 'member';
+  user_id: number | null;
+  period: ConversionPeriod;
+  target_periods: ConversionTargetPeriod[];
+}
+
+export interface ConversionPeriodSelection {
+  mode: ConversionPeriodMode;
+  month: string;
+  start: string;
+  end: string;
+  targetId: string;
 }
 
 export interface DashboardPerformance {
@@ -832,4 +873,5 @@ export interface DashboardData {
   charts:              DashboardCharts;
   target_progress?:    TargetProgress;
   performance:         DashboardPerformance;
+  lead_conversion:     LeadConversionRatio;
 }

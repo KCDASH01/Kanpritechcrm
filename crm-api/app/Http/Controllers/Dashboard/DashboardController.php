@@ -12,10 +12,12 @@ use App\Models\DealPayment;
 use App\Models\Lead;
 use App\Models\User;
 use App\Services\RevenueRecognitionService;
+use App\Services\LeadConversionRatioService;
 use App\Services\TargetProgressService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\Rule;
 
 class DashboardController extends Controller
 {
@@ -25,6 +27,7 @@ class DashboardController extends Controller
     public function __construct(
         private readonly RevenueRecognitionService $revenue,
         private readonly TargetProgressService $targets,
+        private readonly LeadConversionRatioService $leadConversions,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -33,6 +36,11 @@ class DashboardController extends Controller
             'assigned_to' => ['nullable', 'integer'],
             'month' => ['nullable', 'date_format:Y-m'],
             'page' => ['nullable', 'integer', 'min:1'],
+            'conversion_period' => ['nullable', Rule::in(['current_month', 'month', 'custom', 'target', 'all_time'])],
+            'conversion_month' => ['nullable', 'date_format:Y-m'],
+            'conversion_start' => ['nullable', 'date'],
+            'conversion_end' => ['nullable', 'date', 'after_or_equal:conversion_start'],
+            'conversion_target_id' => ['nullable', 'integer'],
         ]);
         $orgId = (int) $request->user()->organization_id;
         $assignedTo = $this->resolveAssignedTo($request);
@@ -174,6 +182,16 @@ class DashboardController extends Controller
             ? User::query()->where('organization_id', $orgId)->where('is_active', true)->where('role', '!=', 'owner')
                 ->orderBy('name')->get(['id', 'name'])->map(fn (User $member) => ['id' => $member->id, 'name' => $member->name])->values()
             : collect();
+        $conversionPeriod = $this->leadConversions->resolvePeriod($request->user(), $request->all());
+        $conversionMembers = User::query()->where('organization_id', $orgId)->where('is_active', true)->where('role', '!=', 'owner')
+            ->when($assignedTo, fn ($query) => $query->whereKey($assignedTo))->get(['id', 'name']);
+        $conversionResults = $this->leadConversions->calculate($orgId, $conversionMembers, $conversionPeriod);
+        $conversionRatio = $assignedTo
+            ? ($conversionResults['members'][(int) $assignedTo] ?? $conversionResults['team'])
+            : $conversionResults['team'];
+        $conversionRatio['scope'] = $assignedTo ? 'member' : 'team';
+        $conversionRatio['user_id'] = $assignedTo;
+        $conversionRatio['target_periods'] = $this->leadConversions->targetPeriods($request->user());
 
         return response()->json([
             'data' => [
@@ -199,6 +217,7 @@ class DashboardController extends Controller
                     'revenue' => $collectionSummary,
                     'team_members' => $teamMembers,
                 ],
+                'lead_conversion' => $conversionRatio,
                 'charts' => [
                     'leads_trend'    => $leadsTrend,
                     'deals_by_stage' => $dealsByStage,
