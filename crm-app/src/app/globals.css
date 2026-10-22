@@ -78,6 +78,20 @@
   0%   { transform: scale(1);   opacity: .5; }
   100% { transform: scale(1.6); opacity: 0;  }
 }
+@keyframes conversionRatioZoom {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+.conversion-ratio-zoom {
+  animation: conversionRatioZoom 3.6s ease-in-out infinite;
+  transform-origin: center;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversion-ratio-zoom { animation: none; }
+}
 
 .mkt-li-1 { animation: liUp 0.65s cubic-bezier(.22,1,.36,1) 0.05s both; }
 .mkt-li-2 { animation: liUp 0.65s cubic-bezier(.22,1,.36,1) 0.18s both; }

@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/Badge';
 import { RemindersCard } from '@/components/dashboard/RemindersCard';
 import { PerformanceLeaderboard } from '@/components/dashboard/PerformanceLeaderboard';
 import { ConversionPeriodSelector } from '@/components/dashboard/ConversionPeriodSelector';
+import { DynamicTargetSummary } from '@/components/dashboard/DynamicTargetSummary';
 
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
 const cardItem  = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { type: 'spring' as const, damping: 24, stiffness: 300 } } };
@@ -256,14 +257,6 @@ export default function DashboardPage() {
       icon:     'M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z',
     },
     {
-      label:    'Lead-to-Conversion Ratio',
-      value:    `${Number(data?.lead_conversion.ratio ?? 0).toFixed(1)}%`,
-      sub:      `${data?.lead_conversion.converted_leads ?? 0} converted / ${data?.lead_conversion.assigned_leads ?? 0} assigned`,
-      gradient: 'from-cyan-500 to-blue-600',
-      shadow:   'shadow-cyan-500/25',
-      icon:     'M7 17l4-4 3 3 5-6M17 10h2v2M5 5h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z',
-    },
-    {
       label:    'Total Revenue',
       value:    `₹${Number(stats?.total_revenue ?? 0).toLocaleString('en-IN')}`,
       sub:      `One-time ₹${Number(stats?.one_time_revenue ?? 0).toLocaleString('en-IN')} · Recurring ₹${Number(stats?.recurring_revenue ?? 0).toLocaleString('en-IN')}`,
@@ -298,8 +291,9 @@ export default function DashboardPage() {
           <div className="skeleton h-8 w-64 rounded-xl" />
           <div className="skeleton h-4 w-40 rounded-lg" />
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7 gap-3">
-          {[...Array(7)].map((_, i) => <SkeletonCard key={i} />)}
+        <div className="skeleton h-32 rounded-2xl" />
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+          {[...Array(6)].map((_, i) => <SkeletonCard key={i} />)}
         </div>
         {/* Reminders skeleton */}
         <div className="skeleton h-28 rounded-2xl" />
@@ -358,32 +352,39 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* Greeting */}
-      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
-        <h1 className="text-2xl font-bold text-gray-900">
-          {getGreeting()}, {user?.name?.split(' ')[0]} 👋
-        </h1>
-        <p className="text-sm text-gray-400 mt-0.5">
-          {getDate()} ·{' '}
-          <span className={planClass}>{planLabel}</span>
-          {!canManage && (
-            <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-semibold rounded-md uppercase tracking-wide">
-              My Data
-            </span>
-          )}
-        </p>
+      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+        <div className="shrink-0 pt-1">
+          <h1 className="text-2xl font-bold text-gray-900">
+            {getGreeting()}, {user?.name?.split(' ')[0]} 👋
+          </h1>
+          <p className="text-sm text-gray-400 mt-0.5">
+            {getDate()} ·{' '}
+            <span className={planClass}>{planLabel}</span>
+            {!canManage && (
+              <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-semibold rounded-md uppercase tracking-wide">
+                My Data
+              </span>
+            )}
+          </p>
+        </div>
+        <div className="flex min-w-0 flex-col gap-3 rounded-2xl border border-indigo-100 bg-gradient-to-r from-white via-indigo-50/60 to-cyan-50/60 p-4 shadow-sm lg:flex-row lg:items-end xl:max-w-[980px] xl:justify-end">
+          <div className="min-w-[220px] lg:mr-2">
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-indigo-500">Lead-to-Conversion Ratio</p>
+            <div className="mt-1 flex items-end gap-3">
+              <p className="conversion-ratio-zoom inline-block text-[40px] font-black leading-none text-indigo-700 sm:text-5xl">{Number(data.lead_conversion.ratio).toFixed(1)}%</p>
+              <p className="pb-1 text-xs font-medium text-gray-500">{data.lead_conversion.converted_leads} converted<br />{data.lead_conversion.assigned_leads} assigned</p>
+            </div>
+            <p className="mt-2 truncate text-[11px] text-gray-500" title={data.lead_conversion.period.label}>{data.lead_conversion.period.label}</p>
+          </div>
+          {canManage && <label className="min-w-44 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Employee
+            <select aria-label="Lead conversion employee" value={selectedMember} onChange={(event) => setSelectedMember(event.target.value)} className="mt-1 min-h-10 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium normal-case text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"><option value="">Overall Team</option>{data.performance.team_members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select>
+          </label>}
+          <div className="min-w-0 flex-1"><ConversionPeriodSelector value={conversionPeriod} onChange={setConversionPeriod} targetPeriods={data.lead_conversion.target_periods} compact /></div>
+        </div>
       </motion.div>
 
       {/* Stat cards */}
-      <div className="flex flex-col gap-3 rounded-2xl border border-gray-100 bg-white p-3 shadow-sm xl:flex-row xl:items-end xl:justify-between">
-        <div><p className="text-sm font-bold text-gray-900">Lead-to-Conversion reporting</p><p className="mt-0.5 text-xs text-gray-500">{data.lead_conversion.period.label} · Unique converted leads / unique assigned leads</p></div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-          {canManage && <label className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Employee
-            <select aria-label="Lead conversion employee" value={selectedMember} onChange={(event) => setSelectedMember(event.target.value)} className="mt-1 min-h-10 min-w-48 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"><option value="">Overall Team</option>{data.performance.team_members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select>
-          </label>}
-          <ConversionPeriodSelector value={conversionPeriod} onChange={setConversionPeriod} targetPeriods={data.lead_conversion.target_periods} compact />
-        </div>
-      </div>
-      <motion.div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7" variants={container} initial="hidden" animate="show">
+      <motion.div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6" variants={container} initial="hidden" animate="show">
         {STAT_CARDS.map((card) => {
           return (
             <motion.div key={card.label} variants={cardItem}>
@@ -419,6 +420,8 @@ export default function DashboardPage() {
       />}
 
       <PerformanceLeaderboard canManage={canManage} currentUserId={user?.id} conversionPeriod={conversionPeriod} onConversionPeriodChange={setConversionPeriod} targetPeriods={data.lead_conversion.target_periods} />
+
+      <DynamicTargetSummary selectedUserId={assignedFilter} />
 
       {/* Quick actions */}
       <motion.div className="flex gap-2.5 flex-wrap" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.35 }}>

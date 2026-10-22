@@ -15,6 +15,7 @@ function LoginPageContent() {
     params.get('error') === 'sso_failed' ? 'SSO login failed. Please try again or sign in with your password.' : ''
   );
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,12 +74,28 @@ function LoginPageContent() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
-              <input
-                type="password" required autoComplete="current-password"
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'} required autoComplete="current-password"
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  className="w-full border border-gray-300 rounded-xl py-2.5 pl-3 pr-11 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <button
+                  type="button"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  aria-pressed={showPassword}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => setShowPassword((visible) => !visible)}
+                  className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-xl text-gray-400 transition-colors hover:text-indigo-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500"
+                >
+                  {showPassword ? (
+                    <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 3l18 18M10.6 10.7a2 2 0 002.7 2.7M9.9 4.2A10.6 10.6 0 0112 4c5.5 0 9 5 9 5a17 17 0 01-2.1 2.6M6.6 6.6C4.3 8.1 3 10 3 10s3.5 5 9 5c1.1 0 2.1-.2 3-.5" /></svg>
+                  ) : (
+                    <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 12s3.5-5 9-5 9 5 9 5-3.5 5-9 5-9-5-9-5z" /><circle cx="12" cy="12" r="2.5" /></svg>
+                  )}
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center justify-end">

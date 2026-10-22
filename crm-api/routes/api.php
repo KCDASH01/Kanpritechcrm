@@ -35,6 +35,7 @@ use App\Http\Controllers\Proposal\ProposalController;
 use App\Http\Controllers\RecurringBusiness\RecurringBusinessController;
 use App\Http\Controllers\Reports\ReportsController;
 use App\Http\Controllers\SalesTarget\SalesTargetController;
+use App\Http\Controllers\SalesTarget\DynamicTargetController;
 use App\Http\Controllers\Subscription\PaymentHistoryController;
 use App\Http\Controllers\Subscription\SeatController;
 use App\Http\Controllers\Subscription\SubscriptionController;
@@ -218,6 +219,17 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/{user}/progress', [SalesTargetController::class, 'userProgress']);
             Route::get('/{salesTarget}/details', [SalesTargetController::class, 'details']);
             Route::patch('/{salesTarget}/received', [SalesTargetController::class, 'updateReceived']);
+        });
+
+        // Additive multi-target management. Legacy sales-target routes above remain unchanged.
+        Route::prefix('performance-targets')->group(function () {
+            Route::get('/definitions', [DynamicTargetController::class, 'definitions']);
+            Route::post('/definitions', [DynamicTargetController::class, 'storeDefinition']);
+            Route::put('/definitions/{targetDefinition}', [DynamicTargetController::class, 'updateDefinition']);
+            Route::get('/assignments', [DynamicTargetController::class, 'assignments']);
+            Route::post('/assignments', [DynamicTargetController::class, 'storeAssignments']);
+            Route::put('/assignments/{targetAssignment}', [DynamicTargetController::class, 'updateAssignment']);
+            Route::post('/assignments/{targetAssignment}/manual-entries', [DynamicTargetController::class, 'storeManualEntry']);
         });
 
         // WhatsApp Templates (read-only for all users; managed by super admin)

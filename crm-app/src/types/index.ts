@@ -457,6 +457,46 @@ export interface ConversionPeriodSelection {
   targetId: string;
 }
 
+export type DynamicTargetUnit = 'currency' | 'number' | 'percentage' | 'leads' | 'deals' | 'calls' | 'meetings' | 'projects' | 'hours' | 'days' | 'custom';
+export type DynamicTargetMetricSource = 'manual' | 'revenue_generated' | 'collections_received' | 'deals_closed' | 'leads_assigned' | 'lead_conversion_ratio';
+
+export interface DynamicTargetDefinition {
+  id: number;
+  code: string;
+  name: string;
+  description?: string | null;
+  unit_type: DynamicTargetUnit;
+  unit_label?: string | null;
+  metric_source: DynamicTargetMetricSource;
+  direction: 'higher' | 'lower';
+  is_active: boolean;
+  departments: { id: number; name: string }[];
+}
+
+export interface DynamicTargetProgress {
+  id: number;
+  definition_id: number;
+  target_name: string;
+  target_code: string;
+  scope_type: 'employee' | 'department_shared';
+  user: { id: number; name: string } | null;
+  department: { id: number; name: string } | null;
+  period_type: 'monthly' | 'quarterly' | 'yearly' | 'custom';
+  period_start: string;
+  period_end: string;
+  target_value: number;
+  actual_value: number;
+  achievement_percentage: number | null;
+  remaining_value: number;
+  unit_type: DynamicTargetUnit;
+  unit_label?: string | null;
+  metric_source: DynamicTargetMetricSource;
+  direction: 'higher' | 'lower';
+  status: 'upcoming' | 'active' | 'completed' | 'archived';
+  assignment_status: 'active' | 'archived';
+  manual_entries: { id: number; entry_date: string; actual_value: number; notes?: string | null; user?: { id: number; name: string } | null }[];
+}
+
 export interface DashboardPerformance {
   period_start: string;
   period_label: string;

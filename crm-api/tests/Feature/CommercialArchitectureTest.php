@@ -115,6 +115,16 @@ class CommercialArchitectureTest extends TestCase
             $t->timestamps();
             $t->softDeletes();
         });
+        Schema::create('lead_timeline', function (Blueprint $t) {
+            $t->id();
+            $t->unsignedBigInteger('lead_id');
+            $t->unsignedBigInteger('organization_id');
+            $t->unsignedBigInteger('user_id')->nullable();
+            $t->string('action');
+            $t->string('description')->nullable();
+            $t->json('meta')->nullable();
+            $t->timestamps();
+        });
         Schema::create('deals', function (Blueprint $t) {
             $t->id();
             $t->unsignedBigInteger('organization_id');

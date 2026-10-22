@@ -10,6 +10,7 @@ import { departmentsApi } from '@/lib/api/departments';
 import { useAuthStore } from '@/store/authStore';
 import { AccessDenied } from '@/components/ui/AccessDenied';
 import { Modal } from '@/components/ui/Modal';
+import { DynamicTargetsPanel } from '@/components/targets/DynamicTargetsPanel';
 import type { MyTargetProgress, SalesTargetRow, SalesTargetType, SalesTargetUpsertPayload } from '@/types';
 
 function fmtAmount(value: number) {
@@ -302,6 +303,7 @@ function TeamMemberView() {
 export default function TargetsPage() {
   const { isOwner, isAdmin, isPaidPlan } = useAuthStore();
   const canManage = isOwner() || isAdmin();
+  const [targetMode, setTargetMode] = useState<'legacy' | 'dynamic'>('legacy');
   if (!isPaidPlan()) return <AccessDenied reason="Sales targets are available on paid plans." upgradeHref="/plans" />;
-  return <div className="space-y-6"><motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}><h1 className="text-xl font-bold text-gray-900">{canManage ? 'Sales Targets' : 'My Targets'}</h1><p className="mt-0.5 text-xs text-gray-400">{canManage ? 'Set and track monthly or custom-date-range targets for your team' : 'Your sales and collection progress for each assigned period'}</p></motion.div>{canManage ? <ManagerView /> : <TeamMemberView />}</div>;
+  return <div className="space-y-6"><motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><h1 className="text-xl font-bold text-gray-900">{canManage ? 'Target Management' : 'My Targets'}</h1><p className="mt-0.5 text-xs text-gray-400">{canManage ? 'Manage legacy sales and collection targets alongside configurable department and employee goals' : 'Review your sales, collection and assigned performance targets'}</p></div><div className="inline-flex w-fit rounded-xl bg-gray-100 p-1"><button onClick={() => setTargetMode('legacy')} className={`rounded-lg px-4 py-2 text-xs font-semibold ${targetMode === 'legacy' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500'}`}>Sales & Collection</button><button onClick={() => setTargetMode('dynamic')} className={`rounded-lg px-4 py-2 text-xs font-semibold ${targetMode === 'dynamic' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500'}`}>Dynamic Targets</button></div></motion.div>{targetMode === 'legacy' ? (canManage ? <ManagerView /> : <TeamMemberView />) : <DynamicTargetsPanel canManage={canManage} />}</div>;
 }

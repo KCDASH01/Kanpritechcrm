@@ -106,8 +106,10 @@ class LeadConversionRatioServiceTest extends TestCase
 
     public function test_current_month_counts_unique_assigned_and_converted_leads_at_inclusive_boundaries(): void
     {
-        $lead = $this->lead($this->firstEmployee, '2026-09-30 18:30:00'); // 1 Oct 00:00 IST
-        $this->timeline($lead, 'deal_created', '2026-10-31 18:29:59'); // 31 Oct 23:59:59 IST
+        // Test timestamps are stored in the application's configured storage timezone
+        // (Asia/Kolkata), so use the actual inclusive local-period boundaries.
+        $lead = $this->lead($this->firstEmployee, '2026-10-01 00:00:00');
+        $this->timeline($lead, 'deal_created', '2026-10-31 23:59:59');
         DB::table('deals')->insert([
             ['organization_id' => $this->organization->id, 'lead_id' => $lead->id, 'created_at' => '2026-10-10 00:00:00', 'updated_at' => '2026-10-10 00:00:00'],
             ['organization_id' => $this->organization->id, 'lead_id' => $lead->id, 'created_at' => '2026-10-11 00:00:00', 'updated_at' => '2026-10-11 00:00:00'],

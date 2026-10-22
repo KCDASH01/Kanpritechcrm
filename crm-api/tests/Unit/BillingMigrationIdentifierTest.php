@@ -41,7 +41,7 @@ class BillingMigrationIdentifierTest extends TestCase
 
         preg_match_all("/'([^']+)'\s*\);/", $source, $quotedNames);
         foreach ($quotedNames[1] as $name) {
-            if (preg_match('/^(bill_|billing_).*(?:_idx|_unique|_fk)$/', $name)) {
+            if (preg_match('/^(?:bill_|billing_|tdef_|tassign_|mtentry_|tm_).*(?:_idx|_uq|_unique|_fk)$/', $name)) {
                 $identifiers[] = $name;
             }
         }
@@ -70,6 +70,10 @@ class BillingMigrationIdentifierTest extends TestCase
         $enhancementMirror = file_get_contents($root.'/admin-dashboard/database/migrations/2026_10_20_000002_enhance_billing_documents_and_receipts.php');
         self::assertStringContainsString("return require __DIR__.'/../../../crm-api/database/migrations/2026_10_20_000002_enhance_billing_documents_and_receipts.php';", $enhancementMirror);
         self::assertStringNotContainsString('Schema::table', $enhancementMirror);
+
+        $targetMirror = file_get_contents($root.'/admin-dashboard/database/migrations/2026_10_23_000001_create_dynamic_target_management.php');
+        self::assertStringContainsString("return require __DIR__.'/../../../crm-api/database/migrations/2026_10_23_000001_create_dynamic_target_management.php';", $targetMirror);
+        self::assertStringNotContainsString('Schema::create', $targetMirror);
     }
 
     public static function billingMigrationProvider(): array
@@ -80,6 +84,7 @@ class BillingMigrationIdentifierTest extends TestCase
             'phase 1 canonical' => [$root.'/crm-api/database/migrations/2026_10_19_000001_create_billing_foundation.php'],
             'phase 3 canonical' => [$root.'/crm-api/database/migrations/2026_10_20_000001_add_phase3_billing_workflow.php'],
             'billing enhancement canonical' => [$root.'/crm-api/database/migrations/2026_10_20_000002_enhance_billing_documents_and_receipts.php'],
+            'dynamic targets canonical' => [$root.'/crm-api/database/migrations/2026_10_23_000001_create_dynamic_target_management.php'],
         ];
     }
 }
