@@ -26,6 +26,7 @@ use App\Http\Controllers\Lead\LeadController;
 use App\Http\Controllers\LeadIntegration\LeadIntegrationController;
 use App\Http\Controllers\LeadIntegration\OAuthController as LeadIntegrationOAuthController;
 use App\Http\Controllers\LeadIntegration\WebhookController as LeadIntegrationWebhookController;
+use App\Http\Controllers\LeadIntegration\WhatsAppEmbeddedSignupController;
 use App\Http\Controllers\Meeting\MeetingController;
 use App\Http\Controllers\Note\NoteController;
 use App\Http\Controllers\Notification\NotificationController;
@@ -286,6 +287,8 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::put('lead-integrations/connections/{connection}/assets', [LeadIntegrationController::class, 'selectAssets']);
             Route::post('lead-integrations/connections/{connection}/meta-history', [LeadIntegrationController::class, 'syncMetaHistory']);
             Route::get('lead-integrations/oauth/{provider}', [LeadIntegrationOAuthController::class, 'authorizeProvider']);
+            Route::post('lead-integrations/whatsapp/embedded-signup/start', [WhatsAppEmbeddedSignupController::class, 'start']);
+            Route::post('lead-integrations/whatsapp/embedded-signup/complete', [WhatsAppEmbeddedSignupController::class, 'complete']);
             Route::post('lead-integrations/campaigns', [LeadIntegrationController::class, 'storeCampaign']);
             Route::put('lead-integrations/campaigns/{campaign}', [LeadIntegrationController::class, 'updateCampaign']);
             Route::delete('lead-integrations/campaigns/{campaign}', [LeadIntegrationController::class, 'destroyCampaign']);

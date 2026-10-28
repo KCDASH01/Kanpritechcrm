@@ -39,7 +39,8 @@ class LeadIntegrationController extends Controller
                 (bool) (config('services.meta.app_id') && config('services.meta.app_secret') && config('services.meta.redirect_uri')),
                 'Meta business verification, App Review and Page Lead Access may be required.'),
             $this->provider('whatsapp', 'WhatsApp Business', 'embedded_signup', ['incoming_messages', 'click_to_whatsapp'],
-                (bool) (config('services.meta.app_id') && config('services.meta.whatsapp_config_id')),
+                (bool) (config('services.meta.app_id') && config('services.meta.app_secret')
+                    && config('services.meta.graph_version') && config('services.meta.whatsapp_config_id')),
                 'Meta Tech Provider/Embedded Signup eligibility, business verification and an eligible number are required.'),
             $this->provider('google', 'Gmail / Google Workspace', 'oauth', ['mailbox_sync', 'reply_attribution'],
                 (bool) (config('services.google.client_id') && config('services.google.client_secret') && config('services.google.redirect_uri')),
@@ -120,8 +121,7 @@ class LeadIntegrationController extends Controller
                 'google' => (bool) (config('services.google.client_id') && config('services.google.client_secret') && config('services.google.redirect_uri')),
                 'microsoft' => (bool) (config('services.microsoft.client_id') && config('services.microsoft.client_secret') && config('services.microsoft.redirect_uri')),
                 'whatsapp' => (bool) (config('services.meta.app_id') && config('services.meta.app_secret')
-                    && config('services.meta.graph_version') && config('services.meta.whatsapp_config_id')
-                    && config('services.meta.whatsapp_redirect_uri')),
+                    && config('services.meta.graph_version') && config('services.meta.whatsapp_config_id')),
             ],
         ]]);
     }
@@ -354,9 +354,19 @@ class LeadIntegrationController extends Controller
         $data = $request->validate(['asset_ids' => ['required', 'array'], 'asset_ids.*' => ['integer']]);
         $ownedIds = $connection->assets()->whereIn('id', $data['asset_ids'])->pluck('id');
         abort_if($ownedIds->count() !== count(array_unique($data['asset_ids'])), 422, 'One or more assets are not available to this connection.');
+        $webhookHealthy = ! $ownedIds->isEmpty();
+        $settings = $connection->settings ?? [];
+        if ($connection->provider === 'whatsapp') {
+            abort_unless(data_get($settings, 'embedded_signup_completed') === true, 422,
+                'Reconnect this account through WhatsApp Embedded Signup before selecting assets.');
+            $selectedPhone = $connection->assets()->whereIn('id', $ownedIds)->where('asset_type', 'phone_number')->first();
+            $selectedWaba = $connection->assets()->whereIn('id', $ownedIds)->where('asset_type', 'whatsapp_business_account')->first();
+            abort_unless($selectedPhone && $selectedWaba && $selectedPhone->parent_external_id === $selectedWaba->external_id, 422,
+                'Select the verified WhatsApp Business Account and its matching phone number.');
+            $webhookHealthy = in_array($connection->webhook_status, ['subscribed', 'healthy'], true);
+        }
         $connection->assets()->update(['is_selected' => false]);
         $connection->assets()->whereIn('id', $ownedIds)->update(['is_selected' => true, 'last_verified_at' => now()]);
-        $webhookHealthy = ! $ownedIds->isEmpty();
         if ($connection->provider === 'meta' && $webhookHealthy) {
             $version = config('services.meta.graph_version');
             foreach ($connection->assets()->whereIn('id', $ownedIds)->where('asset_type', 'page')->get() as $page) {
@@ -364,10 +374,6 @@ class LeadIntegrationController extends Controller
                     ->post("https://graph.facebook.com/{$version}/{$page->external_id}/subscribed_apps", ['subscribed_fields' => 'leadgen']);
                 $webhookHealthy = $webhookHealthy && $response->successful();
             }
-        }
-        $settings = $connection->settings ?? [];
-        if ($connection->provider === 'whatsapp' && $connection->assets()->whereIn('id', $ownedIds)->where('asset_type', 'phone_number')->exists()) {
-            $settings['eligibility_verified'] = true;
         }
         $connection->update([
             'status' => $ownedIds->isEmpty() ? 'setup_required' : 'active',

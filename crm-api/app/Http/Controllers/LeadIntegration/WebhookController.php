@@ -94,6 +94,11 @@ class WebhookController extends Controller
                         'phone' => $message['from'] ?? null,
                         'name' => data_get($value, 'contacts.0.profile.name'),
                         'ad_id' => $referral['source_id'] ?? null,
+                        'referral_source_type' => $referral['source_type'] ?? null,
+                        'referral_source_url' => $referral['source_url'] ?? null,
+                        'referral_headline' => $referral['headline'] ?? null,
+                        'referral_body' => $referral['body'] ?? null,
+                        'ctwa_click_id' => $referral['ctwa_clid'] ?? null,
                         'notes' => data_get($message, 'text.body'),
                         'captured_at' => isset($message['timestamp']) ? date(DATE_ATOM, (int) $message['timestamp']) : now()->toISOString(),
                     ];

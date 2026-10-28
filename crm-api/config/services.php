@@ -48,6 +48,9 @@ return [
         'redirect_uri' => env('META_REDIRECT_URI'),
         'whatsapp_config_id' => env('WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID'),
         'whatsapp_redirect_uri' => env('WHATSAPP_REDIRECT_URI'),
+        'whatsapp_feature_type' => env('WHATSAPP_EMBEDDED_SIGNUP_FEATURE', 'whatsapp_business_app_onboarding'),
+        'whatsapp_signup_version' => env('WHATSAPP_EMBEDDED_SIGNUP_VERSION', 'v4'),
+        'whatsapp_session_info_version' => env('WHATSAPP_SESSION_INFO_VERSION', '3'),
     ],
 
     'google' => [

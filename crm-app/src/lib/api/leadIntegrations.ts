@@ -13,6 +13,8 @@ export interface IntegrationEvent { id: number; provider: IntegrationProvider; e
 export interface ReviewItem { id: number; reason: string; status: string; source_summary?: Record<string, unknown>; extracted_data?: Record<string, unknown>; created_at: string; event?: { id: number; provider: string; event_type: string; status: string } | null }
 export interface IntegrationSettings { default_owner_id?: number | null; meta_enabled: boolean; whatsapp_enabled: boolean; email_enabled: boolean; auto_import_enabled: boolean; review_unmatched: boolean; raw_content_retention_days: number; field_mappings?: Record<string, unknown> | null }
 export interface IntegrationOverview { summary: { total_leads: number; qualified_leads: number; meta_leads: number; email_leads: number; campaign_replies: number; interested_replies: number; review_required: number; assigned: number; deals_created: number; deals_won: number; conversion_rate: number; revenue_collected: Record<string, string | number> }; source_performance: Array<{ provider: string; leads: number }>; connections: IntegrationConnection[]; campaigns: IntegrationCampaign[]; routing_rules: RoutingRule[]; settings: IntegrationSettings | null; provider_readiness: Record<string, boolean> }
+export interface WhatsAppEmbeddedSignupStart { session_id: string; app_id: string; config_id: string; feature_type: string; signup_version: string; session_info_version: string; expires_in: number }
+export interface WhatsAppEmbeddedSignupComplete { session_id: string; code: string; waba_id: string; phone_number_id: string }
 
 export const leadIntegrationsApi = {
   overview: (params?: Record<string, string | number | undefined>) => client.get<{ data: IntegrationOverview }>('/lead-integrations', { params }).then((r) => r.data.data),
@@ -22,6 +24,8 @@ export const leadIntegrationsApi = {
   exportHistory: () => client.get('/lead-integrations/history/export', { responseType: 'blob' }).then((r) => r.data as Blob),
   reviewQueue: () => client.get<{ data: ReviewItem[] }>('/lead-integrations/review-queue').then((r) => r.data.data),
   oauthUrl: (provider: 'meta' | 'whatsapp' | 'google' | 'microsoft') => client.get<{ data: { authorization_url: string } }>(`/lead-integrations/oauth/${provider}`).then((r) => r.data.data),
+  startWhatsAppEmbeddedSignup: () => client.post<{ data: WhatsAppEmbeddedSignupStart }>('/lead-integrations/whatsapp/embedded-signup/start').then((r) => r.data.data),
+  completeWhatsAppEmbeddedSignup: (payload: WhatsAppEmbeddedSignupComplete) => client.post('/lead-integrations/whatsapp/embedded-signup/complete', payload).then((r) => r.data.data),
   createInboundEmail: (payload: Record<string, unknown>) => client.post('/lead-integrations/connections', payload).then((r) => r.data.data),
   disconnect: (id: number) => client.delete(`/lead-integrations/connections/${id}`),
   pause: (id: number) => client.post(`/lead-integrations/connections/${id}/pause`).then((r) => r.data.data),
