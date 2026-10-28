@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { authApi } from '@/lib/api/auth';
+import { AuthBrand } from '@/components/brand/GrowneqLogo';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -29,6 +30,7 @@ export default function ForgotPasswordPage() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
+          <AuthBrand />
           <h1 className="text-2xl font-bold text-gray-900">Reset your password</h1>
           <p className="text-gray-500 text-sm mt-1">We&apos;ll send a reset link to your email</p>
         </div>

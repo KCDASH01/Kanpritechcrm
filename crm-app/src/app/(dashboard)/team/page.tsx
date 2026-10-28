@@ -152,7 +152,7 @@ export default function TeamPage() {
         key:         order.key,
         amount:      order.amount,
         currency:    order.currency,
-        name:        'LeadBase CRM',
+        name:        'Growneq CRM',
         description: `${seatQty} extra team seat${seatQty > 1 ? 's' : ''}`,
         order_id:    order.order_id,
         prefill:     { name: user?.name, email: user?.email },

@@ -6,6 +6,7 @@ import { subscriptionApi } from '@/lib/api/subscription';
 import { useAuthStore } from '@/store/authStore';
 import { AccessDenied } from '@/components/ui/AccessDenied';
 import { PaymentSuccessModal } from '@/components/ui/PaymentSuccessModal';
+import { GrowneqLogo } from '@/components/brand/GrowneqLogo';
 
 // Extend Window for Razorpay
 declare global {
@@ -134,7 +135,7 @@ export default function BillingPage() {
         key:         order.key,
         amount:      order.amount,
         currency:    order.currency,
-        name:        'LeadBase CRM',
+        name:        'Growneq CRM',
         description: `${qty} extra team seat${qty > 1 ? 's' : ''}`,
         order_id:    order.order_id,
         prefill: { name: user?.name, email: user?.email },
@@ -489,7 +490,7 @@ function PaymentHistorySection({
               </div>
             ) : (
               <div className="px-6 py-5 space-y-5">
-                <p className="text-lg font-bold text-gray-900">LeadBase CRM</p>
+                <GrowneqLogo className="h-auto w-36" />
 
                 <div className="grid grid-cols-2 gap-1 text-sm">
                   {receipt.organization && (

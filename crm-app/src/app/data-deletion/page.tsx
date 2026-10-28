@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import LegalPage, { LegalContact, LegalList, LegalSection } from '@/components/public/LegalPage';
 
 export const metadata: Metadata = {
-  title: 'Data Deletion Policy and Instructions | Growneq CRM',
+  title: 'Data Deletion Policy and Instructions',
   description: 'How to request deletion of eligible Growneq CRM account, CRM, and connected integration data.',
   alternates: { canonical: '/data-deletion' },
   openGraph: { title: 'Data Deletion Policy and Instructions | Growneq CRM', description: 'Growneq CRM data deletion policy and request instructions.', url: '/data-deletion', type: 'website' },

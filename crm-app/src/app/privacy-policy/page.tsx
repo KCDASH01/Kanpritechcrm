@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import LegalPage, { LegalContact, LegalList, LegalSection } from '@/components/public/LegalPage';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy | Growneq CRM',
+  title: 'Privacy Policy',
   description: 'Learn how Growneq CRM, operated by Kanpri Technologies LLP, collects, uses, shares, retains, and protects information.',
   alternates: { canonical: '/privacy-policy' },
   openGraph: { title: 'Privacy Policy | Growneq CRM', description: 'Growneq CRM Privacy Policy.', url: '/privacy-policy', type: 'website' },

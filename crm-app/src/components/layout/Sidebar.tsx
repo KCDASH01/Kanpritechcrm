@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { GrowneqLogo } from '@/components/brand/GrowneqLogo';
 import { usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { billingInvoicingApi, type BillingPermission } from '@/lib/api/billingInvoicing';
@@ -183,9 +184,9 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
     <>
       <button type="button" aria-label="Close navigation" className={`fixed inset-0 z-40 bg-gray-950/55 backdrop-blur-[1px] transition-opacity motion-reduce:transition-none lg:hidden ${open ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'}`} onClick={onClose} />
       <aside aria-label="Main navigation" className={`fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(18rem,86vw)] min-h-0 shrink-0 flex-col overflow-hidden border-r border-white/5 bg-gray-950 transition-transform duration-200 ease-out motion-reduce:transition-none lg:static lg:z-auto lg:h-full lg:w-64 lg:translate-x-0 ${open ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}>
-        <div className="flex shrink-0 items-center gap-3 border-b border-white/5 px-5 py-5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-500/30"><NavIcon d={ICONS.targets} /></div>
-          <span className="text-base font-bold tracking-tight text-white">CRM</span>
+        <div className="flex shrink-0 items-center gap-2.5 border-b border-white/5 px-4 py-4">
+          <GrowneqLogo variant="dark-icon" className="h-9 w-9 shrink-0 rounded-xl" priority />
+          <span className="min-w-0 text-sm font-bold tracking-tight text-white">Growneq <span className="text-violet-300">CRM</span></span>
           {isEnterprisePlan() ? <span className="ml-auto whitespace-nowrap rounded-full border border-violet-500/30 bg-violet-500/20 px-2 py-0.5 text-[10px] font-semibold text-violet-300">Enterprise</span> : isBusinessPlan() ? <span className="ml-auto whitespace-nowrap rounded-full border border-indigo-500/30 bg-indigo-500/20 px-2 py-0.5 text-[10px] font-semibold text-indigo-300">Business</span> : <span className="ml-auto whitespace-nowrap rounded-full border border-gray-500/30 bg-gray-500/20 px-2 py-0.5 text-[10px] font-semibold text-gray-400">Free</span>}
           <button type="button" aria-label="Close navigation" onClick={onClose} className="ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 lg:hidden"><svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
         </div>

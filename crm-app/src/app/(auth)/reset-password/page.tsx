@@ -4,6 +4,7 @@ import { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { authApi } from '@/lib/api/auth';
+import { AuthBrand } from '@/components/brand/GrowneqLogo';
 
 function ResetPasswordForm() {
   const router = useRouter();
@@ -71,6 +72,7 @@ export default function ResetPasswordPage() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
+          <AuthBrand />
           <h1 className="text-2xl font-bold text-gray-900">Set new password</h1>
           <p className="text-gray-500 text-sm mt-1">Enter your new password below</p>
         </div>

@@ -4,6 +4,7 @@ import { Suspense, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { authApi } from '@/lib/api/auth';
 import { useAuthStore } from '@/store/authStore';
+import { GrowneqLogo } from '@/components/brand/GrowneqLogo';
 
 function SSOPageContent() {
   const router       = useRouter();
@@ -37,9 +38,10 @@ function SSOPageContent() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
       <div className="flex flex-col items-center gap-4">
+        <GrowneqLogo className="mb-3 h-auto w-44" priority />
         {/* Spinner */}
         <div className="w-12 h-12 rounded-full border-4 border-indigo-200 border-t-indigo-600 animate-spin" />
-        <p className="text-sm font-medium text-gray-500">Signing you into CRM…</p>
+        <p className="text-sm font-medium text-gray-500">Signing you into Growneq CRM…</p>
       </div>
     </div>
   );
