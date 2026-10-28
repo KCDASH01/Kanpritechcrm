@@ -6,8 +6,20 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'CRM — Manage Your Leads & Deals',
-  description: 'A powerful CRM for managing leads, deals, and your sales pipeline.',
+  metadataBase: new URL('https://growneq.com'),
+  title: {
+    default: 'Growneq CRM — Leads, Sales Pipeline and Team Performance',
+    template: '%s',
+  },
+  description: 'Bring your leads, sales pipeline, customer conversations, and team performance together with Growneq CRM.',
+  applicationName: 'Growneq CRM',
+  openGraph: {
+    title: 'Growneq CRM — Leads, Sales Pipeline and Team Performance',
+    description: 'Bring your leads, sales pipeline, customer conversations, and team performance together with Growneq CRM.',
+    url: '/',
+    siteName: 'Growneq CRM',
+    type: 'website',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -1,16 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { useAuthStore } from '@/store/authStore';
+import PublicFooter from '@/components/public/PublicFooter';
+import PublicHeader from '@/components/public/PublicHeader';
 
 /* ─── SVG Icons ────────────────────────────────────────────────────────────── */
-function IconChart() {
-  return (
-    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.5l5-5 4 4 5-6 4 3" />
-    </svg>
-  );
-}
 function IconArrow() {
   return (
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -109,7 +103,7 @@ const PLANS = [
       'SSO access',
       'Priority support',
     ],
-    cta: 'Start free trial',
+    cta: 'Choose Business',
     ctaStyle: 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-200',
   },
   {
@@ -127,61 +121,20 @@ const PLANS = [
       'Extra seats at ₹299/mo',
       'Dedicated support',
     ],
-    cta: 'Start free trial',
+    cta: 'Choose Enterprise',
     ctaStyle: 'bg-gray-900 text-white hover:bg-gray-800',
   },
 ];
 
 /* ─── Page ─────────────────────────────────────────────────────────────────── */
 export default function MarketingHome() {
-  const { user } = useAuthStore();
-  const isLoggedIn = !!user;
-
   return (
     <div className="min-h-screen flex flex-col bg-white overflow-x-hidden">
 
         {/* ══════════════════════════════════════════════════════════════ */}
         {/* HEADER                                                        */}
         {/* ══════════════════════════════════════════════════════════════ */}
-        <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-gray-100 shadow-sm shadow-gray-100/60">
-          <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
-            <Link href="/" className="flex items-center gap-2.5 shrink-0">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-sm shadow-indigo-300/40">
-                <IconChart />
-              </div>
-              <span className="text-lg font-black text-gray-900 tracking-tight">
-                LeadBase <span className="text-indigo-600">CRM</span>
-              </span>
-            </Link>
-            <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-gray-500">
-              <Link href="/"         className="hover:text-gray-900 transition-colors">Home</Link>
-              <Link href="#features" className="hover:text-gray-900 transition-colors">Features</Link>
-              <Link href="#pricing"  className="hover:text-gray-900 transition-colors">Pricing</Link>
-              <Link href="/contact"  className="hover:text-gray-900 transition-colors">Contact Us</Link>
-              <Link href="/blog"     className="hover:text-gray-900 transition-colors">Blog</Link>
-            </nav>
-            <div className="flex items-center gap-3 shrink-0">
-              {isLoggedIn ? (
-                <Link href="/dashboard"
-                  className="mkt-btn-primary inline-flex items-center gap-2 text-sm font-semibold px-5 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm">
-                  Go to Dashboard
-                  <IconArrow />
-                </Link>
-              ) : (
-                <>
-                  <Link href="/login"
-                    className="hidden sm:block text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors">
-                    Sign in
-                  </Link>
-                  <Link href="/register"
-                    className="mkt-btn-primary text-sm font-semibold px-4 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm">
-                    Get started
-                  </Link>
-                </>
-              )}
-            </div>
-          </div>
-        </header>
+        <PublicHeader />
 
         <main className="flex-1">
 
@@ -223,7 +176,7 @@ export default function MarketingHome() {
 
               {/* Sub */}
               <p className="mkt-li-3 mt-6 text-base sm:text-lg text-gray-500 max-w-xl mx-auto leading-relaxed">
-                LeadBase CRM brings your leads, deals, pipelines, and team into one beautiful workspace.
+                Growneq CRM brings your leads, sales pipeline, customer conversations, and team performance into one workspace.
                 Start free — upgrade when you grow.
               </p>
 
@@ -242,7 +195,7 @@ export default function MarketingHome() {
 
               {/* Trust */}
               <p className="mkt-li-5 mt-6 text-xs text-gray-400 tracking-wide">
-                No credit card required &nbsp;·&nbsp; Free plan available &nbsp;·&nbsp; Cancel anytime
+                Free plan available &nbsp;·&nbsp; No credit card required for Free registration
               </p>
             </div>
 
@@ -384,7 +337,7 @@ export default function MarketingHome() {
                   Everything your sales team needs
                 </h2>
                 <p className="mt-3 text-gray-500 max-w-lg mx-auto text-sm sm:text-base">
-                  From first contact to closed deal — LeadBase CRM has every stage covered.
+                  From first contact to closed deal — Growneq CRM helps your team manage every stage.
                 </p>
               </div>
 
@@ -421,7 +374,7 @@ export default function MarketingHome() {
                   style={{ left: 'calc(16.67% + 32px)', right: 'calc(16.67% + 32px)' }} />
 
                 {[
-                  { n: '1', emoji: '✍️', title: 'Create your account', desc: 'Sign up free in 30 seconds. No credit card. No setup fees.' },
+                  { n: '1', emoji: '✍️', title: 'Create your account', desc: 'Create a Free plan account without entering card details.' },
                   { n: '2', emoji: '🗂️', title: 'Add leads & build pipeline', desc: 'Import leads, set up your pipeline stages, and invite your team.' },
                   { n: '3', emoji: '🏆', title: 'Track & close deals', desc: 'Move deals through your pipeline, log activities, and celebrate wins.' },
                 ].map((s) => (
@@ -524,7 +477,7 @@ export default function MarketingHome() {
                     Ready to grow your<br />sales pipeline?
                   </h2>
                   <p className="mt-5 text-indigo-200 text-base sm:text-lg max-w-xl mx-auto leading-relaxed">
-                    Join sales teams using LeadBase CRM to organise their pipeline and close more deals — faster.
+                    Bring your leads, sales pipeline, customer conversations, and team performance together with Growneq CRM.
                   </p>
                   <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
                     <Link href="/register"
@@ -538,7 +491,7 @@ export default function MarketingHome() {
                     </Link>
                   </div>
                   <p className="mt-6 text-xs text-indigo-300 tracking-wide">
-                    No credit card required &nbsp;·&nbsp; Free plan included &nbsp;·&nbsp; Cancel anytime
+                    Free plan available &nbsp;·&nbsp; No credit card required for Free registration &nbsp;·&nbsp; Paid plans can be cancelled from billing
                   </p>
                 </div>
               </div>
@@ -550,23 +503,7 @@ export default function MarketingHome() {
         {/* ══════════════════════════════════════════════════════════════ */}
         {/* FOOTER                                                        */}
         {/* ══════════════════════════════════════════════════════════════ */}
-        <footer className="border-t border-gray-100 py-10">
-          <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-5">
-            <Link href="/" className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center">
-                <IconChart />
-              </div>
-              <span className="text-sm font-black text-gray-800">
-                LeadBase <span className="text-indigo-600">CRM</span>
-              </span>
-            </Link>
-            <p className="text-xs text-gray-400">© {new Date().getFullYear()} LeadBase CRM. All rights reserved.</p>
-            <div className="flex gap-6 text-xs text-gray-400">
-              <a href="#" className="hover:text-gray-700 transition-colors">Privacy</a>
-              <a href="#" className="hover:text-gray-700 transition-colors">Terms</a>
-            </div>
-          </div>
-        </footer>
+        <PublicFooter />
 
       </div>
   );
