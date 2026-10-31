@@ -10,7 +10,7 @@ class ExpireSubscriptions extends Command
     protected $signature = 'subscriptions:expire
                             {--dry-run : Preview which organizations would be downgraded without making changes}';
 
-    protected $description = 'Downgrade expired Business subscriptions to Free automatically';
+    protected $description = 'Expire recurring subscriptions and preserve the legacy downgrade policy';
 
     public function __construct(private readonly SubscriptionService $subscriptionService)
     {
@@ -30,7 +30,7 @@ class ExpireSubscriptions extends Command
         if ($count === 0) {
             $this->info('No expired subscriptions found. Nothing to do.');
         } else {
-            $this->info("Done. {$count} organization(s) downgraded to Free.");
+            $this->info("Done. {$count} subscription record(s) processed.");
         }
 
         return self::SUCCESS;

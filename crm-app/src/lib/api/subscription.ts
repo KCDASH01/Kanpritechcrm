@@ -27,6 +27,19 @@ export interface SubscribeOrderPayload {
   bill_to_country:     string;
 }
 
+export interface TrialAuthorization {
+  subscription_id: string;
+  key: string;
+  plan: 'growth' | 'business';
+  billing_cycle: 'monthly' | 'yearly';
+  amount_minor: number;
+  amount: number;
+  currency: 'INR' | 'USD';
+  tax_exclusive: true;
+  first_billing_at: string;
+  authorization_disclosure: string;
+}
+
 export interface SeatVerifyPayload {
   razorpay_order_id: string;
   razorpay_payment_id: string;
@@ -65,6 +78,21 @@ export const subscriptionApi = {
 
   cancel: () =>
     client.post<ApiResponse<Subscription>>('/subscription/cancel').then((r) => r.data.data),
+
+  authorizeTrial: () =>
+    client.post<ApiResponse<TrialAuthorization>>('/subscription/trial/authorize').then((r) => r.data.data),
+
+  selectTrial: (payload: { plan: 'growth' | 'business'; billing_cycle: 'monthly' | 'yearly'; currency: 'INR' }) =>
+    client.post<ApiResponse<Subscription>>('/subscription/trial/select', payload).then((r) => r.data.data),
+
+  verifyTrial: (payload: {
+    razorpay_subscription_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+  }) => client.post<ApiResponse<Subscription>>('/subscription/trial/verify', payload).then((r) => r.data.data),
+
+  getTransactions: () =>
+    client.get<{ data: unknown[] }>('/subscription/transactions').then((r) => r.data.data),
 
   // ── Non-SSO plan subscription ───────────────────────────────────────────────
 

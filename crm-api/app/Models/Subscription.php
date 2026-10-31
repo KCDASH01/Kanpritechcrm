@@ -12,8 +12,14 @@ class Subscription extends Model
 
     protected $fillable = [
         'organization_id', 'user_id', 'plan', 'subscription_source',
+        'billing_cycle', 'provider_status',
         'start_date', 'end_date', 'is_active', 'status',
         'gateway', 'gateway_subscription_id', 'amount', 'currency',
+        'gateway_plan_id', 'gateway_customer_id',
+        'authorized_at', 'trial_started_at', 'trial_ends_at',
+        'current_period_start', 'current_period_end', 'next_charge_at',
+        'grace_ends_at', 'cancel_requested_at', 'cancelled_at', 'access_until',
+        'cancel_at_period_end', 'last_payment_failed_at',
         'external_metadata', 'extra_members_purchased',
     ];
 
@@ -22,6 +28,18 @@ class Subscription extends Model
         return [
             'start_date'        => 'datetime',
             'end_date'          => 'datetime',
+            'authorized_at'     => 'datetime',
+            'trial_started_at'  => 'datetime',
+            'trial_ends_at'     => 'datetime',
+            'current_period_start' => 'datetime',
+            'current_period_end' => 'datetime',
+            'next_charge_at'    => 'datetime',
+            'grace_ends_at'     => 'datetime',
+            'cancel_requested_at' => 'datetime',
+            'cancelled_at'      => 'datetime',
+            'access_until'      => 'datetime',
+            'last_payment_failed_at' => 'datetime',
+            'cancel_at_period_end' => 'boolean',
             'is_active'         => 'boolean',
             'amount'            => 'decimal:2',
             'external_metadata' => 'array',
@@ -47,6 +65,11 @@ class Subscription extends Model
         return $this->plan === 'business';
     }
 
+    public function isGrowth(): bool
+    {
+        return $this->plan === 'growth';
+    }
+
     public function isEnterprise(): bool
     {
         return $this->plan === 'enterprise';
@@ -54,7 +77,7 @@ class Subscription extends Model
 
     public function isPaid(): bool
     {
-        return in_array($this->plan, ['business', 'enterprise']);
+        return in_array($this->plan, ['growth', 'business', 'enterprise']);
     }
 
     public function isExternal(): bool
@@ -64,7 +87,23 @@ class Subscription extends Model
 
     public function isExpired(): bool
     {
-        return $this->end_date && $this->end_date->isPast();
+        $boundary = $this->access_until ?? $this->end_date;
+
+        return $boundary && $boundary->isPast();
+    }
+
+    public function isReadOnly(): bool
+    {
+        if (! $this->billing_cycle) {
+            return false;
+        }
+
+        if (! $this->is_active || in_array($this->status, ['expired', 'cancelled'], true)) {
+            return true;
+        }
+
+        return (bool) $this->access_until?->isPast()
+            && ! (bool) $this->grace_ends_at?->isFuture();
     }
 
     public function scopeActive($query)

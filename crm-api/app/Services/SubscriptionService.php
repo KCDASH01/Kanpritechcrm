@@ -90,16 +90,38 @@ class SubscriptionService
      */
     public function downgradeExpired(): int
     {
+        // New recurring subscriptions become read-only after their paid/trial
+        // access (including any grace period) ends. Never create a Free row.
+        $modernExpired = Subscription::where('is_active', true)
+            ->whereNotNull('billing_cycle')
+            ->where(function ($query) {
+                $query->where(function ($query) {
+                    $query->whereNotNull('access_until')->where('access_until', '<', now());
+                })->orWhere(function ($query) {
+                    $query->whereNull('access_until')->whereNotNull('end_date')->where('end_date', '<', now());
+                });
+            })
+            ->where(function ($query) {
+                $query->whereNull('grace_ends_at')->orWhere('grace_ends_at', '<', now());
+            })
+            ->get();
+
+        foreach ($modernExpired as $subscription) {
+            $subscription->update(['is_active' => false, 'status' => 'expired']);
+            Log::info("ExpireSubscriptions: recurring subscription #{$subscription->id} marked read-only.");
+        }
+
         // Collect distinct organizations that have an expired active paid (Business or Enterprise) sub
         $orgIds = Subscription::where('is_active', true)
             ->whereIn('plan', ['business', 'enterprise'])
+            ->whereNull('billing_cycle')
             ->whereNotNull('end_date')
             ->where('end_date', '<', now())
             ->distinct()
             ->pluck('organization_id');
 
         if ($orgIds->isEmpty()) {
-            return 0;
+            return $modernExpired->count();
         }
 
         $count = 0;
@@ -130,7 +152,7 @@ class SubscriptionService
             $count++;
         }
 
-        return $count;
+        return $count + $modernExpired->count();
     }
 
     /**

@@ -195,8 +195,8 @@ export default function DashboardPage() {
   const [conversionPeriod, setConversionPeriod] = useState<ConversionPeriodSelection>({ mode: 'current_month', month: currentMonth, start: '', end: '', targetId: '' });
 
   const canManage      = isOwner() || isAdmin();
-  const planLabel      = isEnterprisePlan() ? 'Enterprise Plan' : isBusinessPlan() ? 'Business Plan' : 'Free Plan';
-  const planClass      = isEnterprisePlan() ? 'text-violet-600 font-medium' : isBusinessPlan() ? 'text-indigo-600 font-medium' : 'text-gray-500';
+  const planLabel      = isEnterprisePlan() ? 'Enterprise Plan' : isBusinessPlan() ? 'Business Plan' : user?.subscription?.plan === 'growth' ? 'Growth Plan' : 'Free Plan';
+  const planClass      = isEnterprisePlan() ? 'text-violet-600 font-medium' : isBusinessPlan() ? 'text-indigo-600 font-medium' : user?.subscription?.plan === 'growth' ? 'text-emerald-600 font-medium' : 'text-gray-500';
   // Employees are always forced to their own ID by the API. Managers may select a team member.
   const assignedFilter = canManage ? (selectedMember ? Number(selectedMember) : undefined) : user?.id;
 

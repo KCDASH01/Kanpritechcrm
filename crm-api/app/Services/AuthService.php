@@ -13,14 +13,15 @@ use Illuminate\Support\Str;
 class AuthService
 {
     public function __construct(
-        private readonly SubscriptionService $subscriptionService
+        private readonly SubscriptionService $subscriptionService,
+        private readonly SubscriptionLifecycleService $subscriptionLifecycle,
     ) {}
 
     /**
      * Register a new direct user:
      * 1. Create Organization
      * 2. Create owner User
-     * 3. Assign free Subscription
+     * 3. Create a pending paid-plan trial (no CRM entitlement yet)
      * 4. Create default Pipeline
      * 5. Return Sanctum token
      */
@@ -46,8 +47,15 @@ class AuthService
                 'email_verified_at' => now(),
             ]);
 
-            // 3. Free subscription
-            $this->subscriptionService->assignFree($org, $user);
+            // 3. New direct signups no longer receive a permanent Free plan.
+            // Existing subscriptions are not modified by this registration path.
+            $this->subscriptionLifecycle->createPending(
+                $org,
+                $user,
+                $data['plan'] ?? 'growth',
+                $data['billing_cycle'] ?? 'monthly',
+                $data['currency'] ?? 'INR',
+            );
 
             // 4. Default pipeline
             $this->subscriptionService->createDefaultPipeline($org);

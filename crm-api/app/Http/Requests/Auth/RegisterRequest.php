@@ -16,6 +16,9 @@ class RegisterRequest extends FormRequest
             'password'          => ['required', 'string', 'min:8', 'confirmed'],
             'organization_name' => ['nullable', 'string', 'max:191'],
             'timezone'          => ['nullable', 'string', 'max:64'],
+            'plan'              => ['nullable', 'in:growth,business'],
+            'billing_cycle'     => ['nullable', 'in:monthly,yearly'],
+            'currency'          => ['nullable', 'in:INR,USD'],
         ];
     }
 }

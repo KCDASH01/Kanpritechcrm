@@ -16,6 +16,9 @@ export default function RegisterPage() {
     organization_name: '',
     password: '',
     password_confirmation: '',
+    plan: 'growth' as 'growth' | 'business',
+    billing_cycle: 'monthly' as 'monthly' | 'yearly',
+    currency: 'INR' as 'INR' | 'USD',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -27,7 +30,7 @@ export default function RegisterPage() {
     try {
       const { token, user } = await authApi.register(form);
       setAuth(user, token);
-      router.push('/dashboard');
+      router.push('/start-trial');
     } catch (err: unknown) {
       const data = (err as { response?: { data?: { errors?: Record<string, string[]>; message?: string } } })?.response?.data;
       if (data?.errors) {
@@ -80,11 +83,31 @@ export default function RegisterPage() {
             {field('password', 'Password', 'password')}
             {field('password_confirmation', 'Confirm Password', 'password')}
 
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Plan</label>
+                <select value={form.plan} onChange={(e) => setForm({ ...form, plan: e.target.value as 'growth' | 'business' })} className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm">
+                  <option value="growth">Growth</option>
+                  <option value="business">Business</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Billing</label>
+                <select value={form.billing_cycle} onChange={(e) => setForm({ ...form, billing_cycle: e.target.value as 'monthly' | 'yearly' })} className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm">
+                  <option value="monthly">Monthly</option>
+                  <option value="yearly">Yearly</option>
+                </select>
+              </div>
+            </div>
+            <p className="rounded-xl bg-indigo-50 px-3 py-2 text-xs leading-5 text-indigo-800">
+              Start your 7-day free trial. Payment method required. Cancel anytime before your trial ends to avoid the subscription charge. Prices exclude applicable taxes.
+            </p>
+
             <button
               type="submit" disabled={loading}
               className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold py-2.5 px-4 rounded-xl text-sm transition-colors mt-2"
             >
-              {loading ? 'Creating account…' : 'Create account'}
+              {loading ? 'Creating account…' : 'Continue to secure authorization'}
             </button>
           </form>
 

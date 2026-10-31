@@ -24,6 +24,7 @@ export default function BillingPage() {
   const [seatQty, setSeatQty]               = useState(1);
   const [seatLoading, setSeatLoading]         = useState(false);
   const [removeLoading, setRemoveLoading]     = useState(false);
+  const [cancelLoading, setCancelLoading]     = useState(false);
   const [seatError, setSeatError]             = useState<string | null>(null);
   const [receiptId, setReceiptId]             = useState<number | null>(null);
   const [successModal, setSuccessModal]       = useState<{ message: string; subMessage?: string } | null>(null);
@@ -104,16 +105,18 @@ export default function BillingPage() {
 
   // ── Owner view ────────────────────────────────────────────────────────────
   const isPaid        = isPaidPlan();
-  const planLabel     = sub?.plan === 'enterprise' ? 'Enterprise' : sub?.plan === 'business' ? 'Business' : 'Free';
+  const planLabel     = sub?.plan === 'enterprise' ? 'Enterprise' : sub?.plan === 'business' ? 'Business' : sub?.plan === 'growth' ? 'Growth' : 'Free';
   const planColor     = sub?.plan === 'enterprise'
     ? 'bg-violet-600 text-white'
     : sub?.plan === 'business'
       ? 'bg-indigo-600 text-white'
-      : 'bg-gray-100 text-gray-700';
+      : sub?.plan === 'growth'
+        ? 'bg-emerald-600 text-white'
+        : 'bg-gray-100 text-gray-700';
 
   const extraPurchased  = sub?.extra_members_purchased ?? 0;
   const totalTeamLimit  = sub?.total_team_limit ?? 0;
-  const basePlanSeats   = sub?.plan === 'enterprise' ? 10 : sub?.plan === 'business' ? 3 : 0;
+  const basePlanSeats   = sub?.plan === 'enterprise' ? 10 : sub?.plan === 'business' ? (sub.billing_cycle ? 10 : 3) : sub?.plan === 'growth' ? 3 : 0;
   const seatUnitPrice   = sub?.extra_member_price ?? 299;
   const remainingMonths = (() => {
     if (!sub?.end_date) return 1;
@@ -192,6 +195,29 @@ export default function BillingPage() {
     }
   }
 
+  async function handleCancelSubscription() {
+    const trial = sub?.status === 'trialing';
+    const wording = trial
+      ? 'Cancel the trial? No subscription fee will be charged, and access remains available until the original trial expiry.'
+      : 'Cancel renewal? Your paid access remains available until the end of the current billing period.';
+    if (!confirm(wording)) return;
+    setCancelLoading(true);
+    setSeatError(null);
+    try {
+      await subscriptionApi.cancel();
+      await queryClient.invalidateQueries({ queryKey: ['subscription'] });
+      setSuccessModal({
+        message: trial ? 'Trial cancelled' : 'Cancellation scheduled',
+        subMessage: trial ? 'The first subscription charge has been prevented.' : 'Your access continues until the current paid billing period ends.',
+      });
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { data?: { message?: string } } };
+      setSeatError(apiErr.response?.data?.message ?? 'Unable to cancel the subscription.');
+    } finally {
+      setCancelLoading(false);
+    }
+  }
+
   return (
     <div className="max-w-2xl space-y-6">
       <h1 className="text-xl font-bold text-gray-900">Billing &amp; Subscription</h1>
@@ -218,7 +244,17 @@ export default function BillingPage() {
               {sub.amount && (
                 <p>Amount: <span className="text-gray-900 font-medium">{sub.currency} {Number(sub.amount).toLocaleString('en-IN')}</span></p>
               )}
+              {sub.next_charge_at && !sub.cancel_requested_at && (
+                <p>Next billing: <span className="text-gray-900 font-medium">{new Date(sub.next_charge_at).toLocaleString('en-IN')}</span></p>
+              )}
+              {sub.grace_ends_at && <p className="text-amber-700">Payment grace ends {new Date(sub.grace_ends_at).toLocaleString('en-IN')}</p>}
+              {sub.cancel_requested_at && <p className="text-amber-700">Cancellation requested · access until {sub.access_until ? new Date(sub.access_until).toLocaleString('en-IN') : 'the current period end'}</p>}
             </div>
+            {!sub.cancel_requested_at && sub.plan !== 'free' && (
+              <button onClick={handleCancelSubscription} disabled={cancelLoading} className="ml-auto rounded-xl border border-red-200 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50">
+                {cancelLoading ? 'Cancelling…' : 'Cancel Subscription'}
+              </button>
+            )}
           </div>
         ) : (
           <p className="text-gray-400 text-sm">No active subscription.</p>

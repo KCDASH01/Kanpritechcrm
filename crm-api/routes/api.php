@@ -40,6 +40,8 @@ use App\Http\Controllers\SalesTarget\DynamicTargetController;
 use App\Http\Controllers\Subscription\PaymentHistoryController;
 use App\Http\Controllers\Subscription\SeatController;
 use App\Http\Controllers\Subscription\SubscriptionController;
+use App\Http\Controllers\Subscription\TrialSubscriptionController;
+use App\Http\Controllers\Subscription\RazorpayWebhookController;
 use App\Models\WhatsAppTemplate;
 use Illuminate\Support\Facades\Route;
 
@@ -58,6 +60,9 @@ Route::get('webhooks/meta', [LeadIntegrationWebhookController::class, 'verifyMet
 Route::post('webhooks/meta', [LeadIntegrationWebhookController::class, 'meta']);
 Route::post('webhooks/whatsapp', [LeadIntegrationWebhookController::class, 'whatsapp']);
 Route::post('webhooks/email/inbound', [LeadIntegrationWebhookController::class, 'inboundEmail']);
+Route::post('webhooks/razorpay', RazorpayWebhookController::class);
+Route::get('subscription/pricing', [TrialSubscriptionController::class, 'pricing']);
+Route::post('subscription/quote', [TrialSubscriptionController::class, 'quote']);
 Route::post('webhooks/google/gmail', [LeadIntegrationWebhookController::class, 'gmail']);
 Route::match(['get', 'post'], 'webhooks/microsoft/mail', [LeadIntegrationWebhookController::class, 'microsoft']);
 Route::get('lead-integrations/oauth/{provider}/callback', [LeadIntegrationOAuthController::class, 'callback']);
@@ -81,11 +86,17 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Subscription (no plan gate — anyone can view their sub)
     Route::get('subscription', [SubscriptionController::class, 'show']);
-    Route::post('subscription/upgrade', [SubscriptionController::class, 'upgrade']);
-    Route::post('subscription/upgrade/order', [SubscriptionController::class, 'createUpgradeOrder']);
-    Route::post('subscription/subscribe/order', [SubscriptionController::class, 'subscribeOrder']);
-    Route::post('subscription/subscribe/verify', [SubscriptionController::class, 'subscribeVerify']);
-    Route::post('subscription/cancel', [SubscriptionController::class, 'cancel']);
+    Route::middleware('role:owner,admin')->group(function () {
+        Route::post('subscription/upgrade', [SubscriptionController::class, 'upgrade']);
+        Route::post('subscription/upgrade/order', [SubscriptionController::class, 'createUpgradeOrder']);
+        Route::post('subscription/subscribe/order', [SubscriptionController::class, 'subscribeOrder']);
+        Route::post('subscription/subscribe/verify', [SubscriptionController::class, 'subscribeVerify']);
+        Route::post('subscription/trial/authorize', [TrialSubscriptionController::class, 'authorizePaymentMethod']);
+        Route::post('subscription/trial/select', [TrialSubscriptionController::class, 'select']);
+        Route::post('subscription/trial/verify', [TrialSubscriptionController::class, 'verify']);
+        Route::post('subscription/cancel', [SubscriptionController::class, 'cancel']);
+    });
+    Route::get('subscription/transactions', [TrialSubscriptionController::class, 'transactions']);
 
     // Payment history (all authenticated users — read-only)
     Route::get('subscription/payments', [PaymentHistoryController::class, 'index']);
@@ -223,7 +234,7 @@ Route::middleware('auth:sanctum')->group(function () {
         });
 
         // Additive multi-target management. Legacy sales-target routes above remain unchanged.
-        Route::prefix('performance-targets')->group(function () {
+        Route::middleware('business.only')->prefix('performance-targets')->group(function () {
             Route::get('/definitions', [DynamicTargetController::class, 'definitions']);
             Route::post('/definitions', [DynamicTargetController::class, 'storeDefinition']);
             Route::put('/definitions/{targetDefinition}', [DynamicTargetController::class, 'updateDefinition']);
@@ -240,11 +251,12 @@ Route::middleware('auth:sanctum')->group(function () {
                 ->get(['id', 'name', 'message']),
         ]));
 
+        // Growth includes team management (up to the plan seat limit).
+        Route::apiResource('employees', EmployeeController::class);
+        Route::apiResource('departments', DepartmentController::class);
+
         // ── Business-plan only ───────────────────────────────────────────────
         Route::middleware('business.only')->group(function () {
-            Route::apiResource('employees', EmployeeController::class);
-            Route::apiResource('departments', DepartmentController::class);
-
             // Advanced reports (Business plan feature)
             Route::get('reports', [ReportsController::class, 'index']);
             Route::get('reports/leads', [ReportsController::class, 'leadReport']);
@@ -313,19 +325,6 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('proposals/{proposal}', [ProposalController::class, 'show']);
             Route::put('proposals/{proposal}', [ProposalController::class, 'update']);
             Route::delete('proposals/{proposal}', [ProposalController::class, 'destroy']);
-
-            // Sales Targets (Business/Enterprise only)
-            Route::prefix('sales-targets')->group(function () {
-                Route::get('/', [SalesTargetController::class, 'index']);
-                Route::get('/my-progress', [SalesTargetController::class, 'myProgress']);
-                Route::get('/leaderboard', [SalesTargetController::class, 'leaderboard']);
-                Route::get('/leaderboard-settings', [SalesTargetController::class, 'getLeaderboardSettings']);
-                Route::put('/leaderboard-settings', [SalesTargetController::class, 'updateLeaderboardSettings']);
-                Route::post('/', [SalesTargetController::class, 'upsert']);
-                Route::get('/{user}/progress', [SalesTargetController::class, 'userProgress']);
-                Route::get('/{salesTarget}/details', [SalesTargetController::class, 'details']);
-                Route::patch('/{salesTarget}/received', [SalesTargetController::class, 'updateReceived']);
-            });
 
             // Email Templates (Business/Enterprise only)
             Route::apiResource('email-templates', EmailTemplateController::class);

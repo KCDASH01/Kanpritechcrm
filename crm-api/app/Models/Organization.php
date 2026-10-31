@@ -86,13 +86,13 @@ class Organization extends Model
 
     public function activeSubscription(): ?Subscription
     {
-        // Order by plan priority (enterprise > business > free) first, then by recency.
+        // Order by plan priority (enterprise > business > growth > free) first, then by recency.
         // This ensures an internal CRM-paid Enterprise subscription always wins over
         // an external SSO-synced Business subscription, regardless of creation time.
         return $this->subscriptions()
             ->where('is_active', true)
             ->whereIn('status', ['active', 'trialing'])
-            ->orderByRaw("FIELD(plan, 'enterprise', 'business', 'free')")
+            ->orderByRaw("FIELD(plan, 'enterprise', 'business', 'growth', 'free')")
             ->orderByDesc('created_at')
             ->first();
     }
@@ -111,6 +111,13 @@ class Organization extends Model
         return ! $sub->isExpired();
     }
 
+    public function isGrowthPlan(): bool
+    {
+        $sub = $this->activeSubscription();
+
+        return $sub?->plan === 'growth' && ! $sub->isExpired();
+    }
+
     public function isEnterprisePlan(): bool
     {
         $sub = $this->activeSubscription();
@@ -127,7 +134,7 @@ class Organization extends Model
      */
     public function isPaidPlan(): bool
     {
-        return $this->isBusinessPlan() || $this->isEnterprisePlan();
+        return $this->isGrowthPlan() || $this->isBusinessPlan() || $this->isEnterprisePlan();
     }
 
     /**
@@ -144,7 +151,8 @@ class Organization extends Model
 
         $base = match ($sub->plan) {
             'enterprise' => 10,
-            'business'   => 3,
+            'business'   => $sub->billing_cycle ? 10 : 3,
+            'growth'     => 3,
             default      => 0,
         };
 

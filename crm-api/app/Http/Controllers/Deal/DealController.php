@@ -12,6 +12,7 @@ use App\Models\Stage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Services\PlanEntitlementService;
 
 class DealController extends Controller
 {
@@ -93,24 +94,12 @@ class DealController extends Controller
 
         // Plan deal limits
         $org = $user->organization;
-        if ($org?->isEnterprisePlan()) {
-            // Enterprise: unlimited — no check
-        } elseif ($org?->isBusinessPlan()) {
-            $count = Deal::where('organization_id', $this->orgId($request))->count();
-            if ($count >= 2000) {
-                return response()->json([
-                    'message' => 'You have reached the 2,000-deal limit on the Business plan. Upgrade to Enterprise for unlimited deals.',
-                    'code'    => 'LIMIT_REACHED',
-                ], 403);
-            }
-        } else {
-            $count = Deal::where('organization_id', $this->orgId($request))->count();
-            if ($count >= 50) {
-                return response()->json([
-                    'message' => 'You have reached the 50-deal limit on the Free plan. Upgrade to Business or Enterprise.',
-                    'code'    => 'LIMIT_REACHED',
-                ], 403);
-            }
+        $limit = app(PlanEntitlementService::class)->limits($org)['deals'];
+        if ($limit !== null && Deal::where('organization_id', $this->orgId($request))->count() >= $limit) {
+            return response()->json([
+                'message' => "You have reached the {$limit}-deal limit for your current plan.",
+                'code' => 'LIMIT_REACHED',
+            ], 403);
         }
 
         $deal = Deal::create(array_merge($request->validated(), [

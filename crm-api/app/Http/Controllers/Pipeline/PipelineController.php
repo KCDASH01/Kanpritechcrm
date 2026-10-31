@@ -8,6 +8,7 @@ use App\Http\Resources\PipelineResource;
 use App\Models\Pipeline;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use App\Services\PlanEntitlementService;
 
 class PipelineController extends Controller
 {
@@ -34,24 +35,12 @@ class PipelineController extends Controller
     {
         // Plan pipeline limits
         $org = $request->user()->organization;
-        if ($org?->isEnterprisePlan()) {
-            // Enterprise: unlimited — no check
-        } elseif ($org?->isBusinessPlan()) {
-            $count = Pipeline::where('organization_id', $this->orgId($request))->count();
-            if ($count >= 30) {
-                return response()->json([
-                    'message' => 'You have reached the 30-pipeline limit on the Business plan. Upgrade to Enterprise for unlimited pipelines.',
-                    'code'    => 'LIMIT_REACHED',
-                ], 403);
-            }
-        } else {
-            $count = Pipeline::where('organization_id', $this->orgId($request))->count();
-            if ($count >= 1) {
-                return response()->json([
-                    'message' => 'Free plan allows only 1 pipeline. Upgrade to Business or Enterprise.',
-                    'code'    => 'LIMIT_REACHED',
-                ], 403);
-            }
+        $limit = app(PlanEntitlementService::class)->limits($org)['pipelines'];
+        if ($limit !== null && Pipeline::where('organization_id', $this->orgId($request))->count() >= $limit) {
+            return response()->json([
+                'message' => "You have reached the {$limit}-pipeline limit for your current plan.",
+                'code' => 'LIMIT_REACHED',
+            ], 403);
         }
 
         $validated = $request->validated();

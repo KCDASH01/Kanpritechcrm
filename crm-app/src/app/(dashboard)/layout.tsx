@@ -179,7 +179,7 @@ export default function DashboardGroupLayout({ children }: { children: React.Rea
 
   // ── Subscription status ────────────────────────────────────────────────────
   const subReady    = !subLoading;
-  const isPaidPlan  = liveSub?.plan === 'business' || liveSub?.plan === 'enterprise';
+  const isPaidPlan  = liveSub?.plan === 'growth' || liveSub?.plan === 'business' || liveSub?.plan === 'enterprise';
   const isExpired   = liveSub?.is_expired === true;
   const noActiveSub = subReady && liveSub === null;
 

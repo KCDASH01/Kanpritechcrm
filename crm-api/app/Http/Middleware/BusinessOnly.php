@@ -20,7 +20,7 @@ class BusinessOnly
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 
-        if (! $user->organization?->isPaidPlan()) {
+        if (! ($user->organization?->isBusinessPlan() || $user->organization?->isEnterprisePlan())) {
             return response()->json([
                 'message' => 'This feature requires a Business or Enterprise plan. Please upgrade.',
                 'code'    => 'UPGRADE_REQUIRED',

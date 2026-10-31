@@ -38,6 +38,24 @@ return [
     'razorpay' => [
         'key_id'     => env('RAZORPAY_KEY_ID'),
         'key_secret' => env('RAZORPAY_KEY_SECRET'),
+        'webhook_secret' => env('RAZORPAY_WEBHOOK_SECRET'),
+        'test_mode' => env('RAZORPAY_TEST_MODE', true),
+        'live_subscriptions_enabled' => env('RAZORPAY_LIVE_SUBSCRIPTIONS_ENABLED', false),
+        'usd_recurring_enabled' => env('RAZORPAY_USD_RECURRING_ENABLED', false),
+        'subscription_total_count' => [
+            'monthly' => (int) env('RAZORPAY_SUBSCRIPTION_MONTHLY_COUNT', 120),
+            'yearly' => (int) env('RAZORPAY_SUBSCRIPTION_YEARLY_COUNT', 10),
+        ],
+        'plans' => [
+            'growth' => [
+                'monthly' => ['INR' => env('RAZORPAY_PLAN_GROWTH_MONTHLY_INR'), 'USD' => env('RAZORPAY_PLAN_GROWTH_MONTHLY_USD')],
+                'yearly' => ['INR' => env('RAZORPAY_PLAN_GROWTH_YEARLY_INR'), 'USD' => env('RAZORPAY_PLAN_GROWTH_YEARLY_USD')],
+            ],
+            'business' => [
+                'monthly' => ['INR' => env('RAZORPAY_PLAN_BUSINESS_MONTHLY_INR'), 'USD' => env('RAZORPAY_PLAN_BUSINESS_MONTHLY_USD')],
+                'yearly' => ['INR' => env('RAZORPAY_PLAN_BUSINESS_YEARLY_INR'), 'USD' => env('RAZORPAY_PLAN_BUSINESS_YEARLY_USD')],
+            ],
+        ],
     ],
 
     'meta' => [

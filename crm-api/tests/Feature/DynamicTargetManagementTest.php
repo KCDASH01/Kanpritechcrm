@@ -17,6 +17,11 @@ class DynamicTargetManagementTest extends TestCase
     {
         parent::setUp();
         $this->withoutMiddleware(CheckSubscription::class);
+        DB::connection()->getPdo()->sqliteCreateFunction('FIELD', function ($value, ...$choices) {
+            $position = array_search($value, $choices, true);
+
+            return $position === false ? 0 : $position + 1;
+        });
 
         Schema::create('organizations', function (Blueprint $table) {
             $table->id();
@@ -34,6 +39,22 @@ class DynamicTargetManagementTest extends TestCase
             $table->string('password')->nullable();
             $table->string('role')->default('employee');
             $table->boolean('is_active')->default(true);
+            $table->timestamps();
+            $table->softDeletes();
+        });
+        Schema::create('subscriptions', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('organization_id');
+            $table->unsignedBigInteger('user_id')->nullable();
+            $table->string('plan');
+            $table->string('billing_cycle')->nullable();
+            $table->string('subscription_source')->default('internal');
+            $table->dateTime('start_date')->nullable();
+            $table->dateTime('end_date')->nullable();
+            $table->dateTime('access_until')->nullable();
+            $table->boolean('is_active')->default(true);
+            $table->string('status')->default('active');
+            $table->unsignedInteger('extra_members_purchased')->default(0);
             $table->timestamps();
             $table->softDeletes();
         });
@@ -151,6 +172,17 @@ class DynamicTargetManagementTest extends TestCase
         $employee = User::forceCreate(['organization_id' => $organization->id, 'name' => "{$slug} employee", 'email' => "employee-{$slug}@example.com", 'password' => 'password', 'role' => 'employee']);
         $department = DB::table('departments')->insertGetId(['organization_id' => $organization->id, 'name' => 'Sales', 'created_at' => now(), 'updated_at' => now()]);
         DB::table('department_user')->insert(['department_id' => $department, 'user_id' => $employee->id, 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('subscriptions')->insert([
+            'organization_id' => $organization->id,
+            'user_id' => $owner->id,
+            'plan' => 'business',
+            'billing_cycle' => 'monthly',
+            'subscription_source' => 'internal',
+            'is_active' => true,
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         return [$owner, $employee, $department];
     }

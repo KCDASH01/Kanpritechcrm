@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
 import PublicFooter from '@/components/public/PublicFooter';
 import PublicHeader from '@/components/public/PublicHeader';
 
@@ -69,65 +70,69 @@ const PILLARS = [
 
 const PLANS = [
   {
-    name: 'Free',
-    price: 0,
-    yearlyPrice: 0,
+    name: 'Growth',
+    price: 799,
+    yearlyPrice: 7990,
+    usdPrice: 15,
+    usdYearlyPrice: 150,
     color: 'border-gray-200',
     badge: null,
-    desc: 'Get started at no cost. Perfect for solo reps and small teams exploring the CRM.',
+    desc: 'For growing sales teams that need the CRM essentials.',
     features: [
-      '100 leads',
-      '50 deals',
-      '1 pipeline',
-      'Activity tracking',
-      'Basic notes & tasks',
-      'Community support',
+      '3 users and 5,000 leads',
+      '5 pipelines',
+      'Standard reporting',
+      'Basic sales targets',
+      'Fixed lead assignment',
     ],
-    cta: 'Get started free',
+    cta: 'Start 7-day trial',
     ctaStyle: 'border border-gray-300 text-gray-700 hover:bg-gray-50',
   },
   {
     name: 'Business',
-    price: 999,
-    yearlyPrice: 9999,
+    price: 1999,
+    yearlyPrice: 19990,
+    usdPrice: 39,
+    usdYearlyPrice: 390,
     color: 'border-indigo-500 ring-1 ring-indigo-500',
     badge: 'Most popular',
     desc: 'For growing teams that need advanced pipelines, reports, and collaboration.',
     features: [
-      '5,000 leads',
-      '2,000 deals',
-      '30 custom pipelines',
-      '3 team seats included',
-      'Advanced reports & targets',
-      'Bulk lead import',
-      'SSO access',
+      '10 users and 25,000 leads',
+      'Unlimited pipelines',
+      'Advanced reporting',
+      'Dynamic department-wise targets',
+      'Round Robin lead assignment',
+      'Advanced integrations',
       'Priority support',
     ],
-    cta: 'Choose Business',
+    cta: 'Start 7-day trial',
     ctaStyle: 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-200',
   },
   {
     name: 'Enterprise',
-    price: 1999,
-    yearlyPrice: 19999,
+    price: 0,
+    yearlyPrice: 0,
+    usdPrice: 0,
+    usdYearlyPrice: 0,
     color: 'border-gray-200',
     badge: null,
-    desc: 'Maximum capacity for high-volume sales teams with unlimited everything.',
+    desc: 'Custom pricing and entitlements for larger organizations.',
     features: [
-      'Unlimited leads & deals',
-      'Unlimited pipelines',
-      '10 team seats included',
-      'All Business features',
-      'Extra seats at ₹299/mo',
-      'Dedicated support',
+      'Custom users, leads, and pipelines',
+      'Custom reporting and controls',
+      'Implementation planning',
+      'Contact us for a tailored proposal',
     ],
-    cta: 'Choose Enterprise',
+    cta: 'Contact sales',
     ctaStyle: 'bg-gray-900 text-white hover:bg-gray-800',
   },
 ];
 
 /* ─── Page ─────────────────────────────────────────────────────────────────── */
 export default function MarketingHome() {
+  const [pricingCurrency, setPricingCurrency] = useState<'INR' | 'USD'>('INR');
+
   return (
     <div className="min-h-screen flex flex-col bg-white overflow-x-hidden">
 
@@ -177,14 +182,14 @@ export default function MarketingHome() {
               {/* Sub */}
               <p className="mkt-li-3 mt-6 text-base sm:text-lg text-gray-500 max-w-xl mx-auto leading-relaxed">
                 Growneq CRM brings your leads, sales pipeline, customer conversations, and team performance into one workspace.
-                Start free — upgrade when you grow.
+                Start with a 7-day trial after secure payment-method authorization.
               </p>
 
               {/* CTAs */}
               <div className="mkt-li-4 mt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
                 <Link href="/register"
                   className="mkt-btn-primary group inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-indigo-600 text-white font-bold text-base shadow-lg shadow-indigo-300/50">
-                  Start for free
+                  Start Your 7-Day Free Trial
                   <span className="group-hover:translate-x-1 transition-transform"><IconArrow /></span>
                 </Link>
                 <Link href="#pricing"
@@ -195,7 +200,7 @@ export default function MarketingHome() {
 
               {/* Trust */}
               <p className="mkt-li-5 mt-6 text-xs text-gray-400 tracking-wide">
-                Free plan available &nbsp;·&nbsp; No credit card required for Free registration
+                Payment method required &nbsp;·&nbsp; Cancel before trial end to avoid the subscription charge
               </p>
             </div>
 
@@ -374,7 +379,7 @@ export default function MarketingHome() {
                   style={{ left: 'calc(16.67% + 32px)', right: 'calc(16.67% + 32px)' }} />
 
                 {[
-                  { n: '1', emoji: '✍️', title: 'Create your account', desc: 'Create a Free plan account without entering card details.' },
+                  { n: '1', emoji: '✍️', title: 'Create your account', desc: 'Choose Growth or Business and review your exact first billing date.' },
                   { n: '2', emoji: '🗂️', title: 'Add leads & build pipeline', desc: 'Import leads, set up your pipeline stages, and invite your team.' },
                   { n: '3', emoji: '🏆', title: 'Track & close deals', desc: 'Move deals through your pipeline, log activities, and celebrate wins.' },
                 ].map((s) => (
@@ -406,8 +411,20 @@ export default function MarketingHome() {
                   Simple, transparent pricing
                 </h2>
                 <p className="mt-3 text-gray-500 max-w-lg mx-auto">
-                  Start free. Upgrade as you grow. No hidden fees.
+                  Start with a 7-day trial. Prices exclude applicable taxes.
                 </p>
+                <div className="mt-6 inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1" aria-label="Pricing currency">
+                  {(['INR', 'USD'] as const).map((currency) => (
+                    <button
+                      key={currency}
+                      type="button"
+                      onClick={() => setPricingCurrency(currency)}
+                      className={`rounded-lg px-5 py-2 text-sm font-semibold transition ${pricingCurrency === currency ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500'}`}
+                    >
+                      {currency}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
@@ -422,13 +439,19 @@ export default function MarketingHome() {
                     <h3 className="text-xl font-bold text-gray-900">{plan.name}</h3>
                     <div className="mt-4 flex items-end gap-1">
                       <span className="text-4xl font-extrabold text-gray-900">
-                        {plan.price === 0 ? '₹0' : `₹${plan.price.toLocaleString('en-IN')}`}
+                        {plan.name === 'Enterprise'
+                          ? 'Custom'
+                          : pricingCurrency === 'INR'
+                            ? `₹${plan.price.toLocaleString('en-IN')}`
+                            : `$${plan.usdPrice.toLocaleString('en-US')}`}
                       </span>
                       <span className="text-gray-500 pb-1">/mo</span>
                     </div>
-                    {plan.price > 0 && (
+                    {plan.name !== 'Enterprise' && (
                       <p className="text-xs text-gray-400 mt-1">
-                        ₹{plan.yearlyPrice.toLocaleString('en-IN')}/yr · save 17%
+                        {pricingCurrency === 'INR'
+                          ? `₹${plan.yearlyPrice.toLocaleString('en-IN')}`
+                          : `$${plan.usdYearlyPrice.toLocaleString('en-US')}`}/yr · save 17%
                       </p>
                     )}
                     <p className="mt-3 text-sm text-gray-500 leading-relaxed">{plan.desc}</p>
@@ -442,16 +465,22 @@ export default function MarketingHome() {
                       ))}
                     </ul>
 
-                    <Link href="/register"
-                      className={`mt-8 block text-center py-3 px-6 rounded-xl font-semibold text-sm transition-colors ${plan.ctaStyle}`}>
-                      {plan.cta}
-                    </Link>
+                    {pricingCurrency === 'USD' && plan.name !== 'Enterprise' ? (
+                      <span className="mt-8 block cursor-not-allowed rounded-xl border border-gray-200 bg-gray-100 px-6 py-3 text-center text-sm font-semibold text-gray-500" aria-disabled="true">
+                        USD checkout pending eligibility
+                      </span>
+                    ) : (
+                      <Link href={plan.name === 'Enterprise' ? 'mailto:contact@kanpritech.com?subject=Growneq%20CRM%20Enterprise' : '/register'}
+                        className={`mt-8 block text-center py-3 px-6 rounded-xl font-semibold text-sm transition-colors ${plan.ctaStyle}`}>
+                        {plan.cta}
+                      </Link>
+                    )}
                   </div>
                 ))}
               </div>
 
               <p className="mt-8 text-center text-sm text-gray-400">
-                Extra team seats available on paid plans at ₹299/seat/month
+                Growth and Business trials require payment-method authorization. USD recurring checkout remains disabled until merchant eligibility is confirmed.
               </p>
             </div>
           </section>
@@ -482,7 +511,7 @@ export default function MarketingHome() {
                   <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
                     <Link href="/register"
                       className="mkt-btn-primary group inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-white text-indigo-700 font-bold text-base shadow-lg">
-                      Get started free
+                      Start Your 7-Day Free Trial
                       <span className="group-hover:translate-x-1 transition-transform"><IconArrow /></span>
                     </Link>
                     <Link href="#pricing"
@@ -491,7 +520,7 @@ export default function MarketingHome() {
                     </Link>
                   </div>
                   <p className="mt-6 text-xs text-indigo-300 tracking-wide">
-                    Free plan available &nbsp;·&nbsp; No credit card required for Free registration &nbsp;·&nbsp; Paid plans can be cancelled from billing
+                    Payment method required &nbsp;·&nbsp; Cancel anytime before trial end to avoid the subscription charge &nbsp;·&nbsp; Prices exclude applicable taxes
                   </p>
                 </div>
               </div>

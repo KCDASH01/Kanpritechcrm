@@ -24,6 +24,11 @@ Schedule::command('subscriptions:expire')
     ->withoutOverlapping()
     ->runInBackground();
 
+Schedule::command('subscriptions:trial-reminders')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 Schedule::command('customer-growth:process')
     ->dailyAt('01:10')
     ->withoutOverlapping()

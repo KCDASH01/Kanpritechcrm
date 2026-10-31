@@ -17,16 +17,28 @@ export interface Organization {
 // ── Subscription ──────────────────────────────────────────────────────────────
 export interface Subscription {
   id: number;
-  plan: 'free' | 'business' | 'enterprise';
+  plan: 'free' | 'growth' | 'business' | 'enterprise';
   subscription_source: 'internal' | 'external';
   status: 'active' | 'cancelled' | 'expired' | 'trialing';
   is_active: boolean;
+  is_read_only?: boolean;
+  provider_status?: string | null;
+  billing_cycle?: 'monthly' | 'yearly' | null;
   start_date: string | null;
   end_date: string | null;
   is_expired: boolean;
   gateway?: string;
   amount?: number;
   currency?: string;
+  authorized_at?: string | null;
+  trial_started_at?: string | null;
+  trial_ends_at?: string | null;
+  current_period_end?: string | null;
+  next_charge_at?: string | null;
+  grace_ends_at?: string | null;
+  cancel_requested_at?: string | null;
+  cancel_at_period_end?: boolean;
+  access_until?: string | null;
   // Seat billing fields
   extra_members_purchased?: number;
   total_team_limit?: number;

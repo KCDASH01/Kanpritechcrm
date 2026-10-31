@@ -6,14 +6,17 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\SubscriptionResource;
 use App\Models\SubscriptionPayment;
 use App\Models\User;
+use App\Services\RazorpaySubscriptionGateway;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
+use Throwable;
 
 class SeatController extends Controller
 {
     private const SEAT_PRICE_MONTHLY = 299;   // ₹299 per seat per month
     private const MAX_SEATS_PER_PURCHASE = 10;
+
+    public function __construct(private readonly RazorpaySubscriptionGateway $razorpay) {}
 
     // ── POST /api/subscription/seats/add ─────────────────────────────────────
 
@@ -47,12 +50,9 @@ class SeatController extends Controller
         $amountPaise = $amount * 100; // Razorpay uses paise
 
         // Create Razorpay order
-        $razorpayKeyId     = config('services.razorpay.key_id');
-        $razorpayKeySecret = config('services.razorpay.key_secret');
-
-        $response = Http::withBasicAuth($razorpayKeyId, $razorpayKeySecret)
-            ->withoutVerifying()
-            ->post('https://api.razorpay.com/v1/orders', [
+        $razorpayKeyId = $this->razorpay->keyId();
+        try {
+            $order = $this->razorpay->createOrder([
                 'amount'          => (int) $amountPaise,
                 'currency'        => 'INR',
                 'receipt'         => 'seats_' . $org->id . '_' . time(),
@@ -63,14 +63,11 @@ class SeatController extends Controller
                     'remaining_months' => $remainingMonths,
                 ],
             ]);
-
-        if (! $response->successful()) {
+        } catch (Throwable) {
             return response()->json([
                 'message' => 'Failed to create payment order. Please try again.',
             ], 502);
         }
-
-        $order = $response->json();
 
         // Create a pending payment record so the transaction is traceable even
         // if the user closes Razorpay without completing payment.
@@ -117,14 +114,25 @@ class SeatController extends Controller
         ]);
 
         // Verify HMAC-SHA256 signature
-        $expected = hash_hmac(
-            'sha256',
-            $data['razorpay_order_id'] . '|' . $data['razorpay_payment_id'],
-            config('services.razorpay.key_secret')
-        );
-
-        if (! hash_equals($expected, $data['razorpay_signature'])) {
+        if (! $this->razorpay->verifyOrderSignature(
+            $data['razorpay_order_id'],
+            $data['razorpay_payment_id'],
+            $data['razorpay_signature']
+        )) {
             return response()->json(['message' => 'Payment verification failed. Invalid signature.'], 422);
+        }
+
+        $pending = SubscriptionPayment::where('gateway_order_id', $data['razorpay_order_id'])
+            ->where('organization_id', $org->id)
+            ->where('status', 'pending')
+            ->first();
+        $payment = $this->razorpay->fetchPayment($data['razorpay_payment_id']);
+        if (! $pending
+            || ($payment['order_id'] ?? null) !== $data['razorpay_order_id']
+            || ($payment['status'] ?? null) !== 'captured'
+            || (int) ($payment['amount'] ?? 0) !== (int) round(((float) $pending->amount) * 100)
+            || (int) $pending->quantity !== (int) $data['quantity']) {
+            return response()->json(['message' => 'Razorpay did not confirm a captured seat payment matching this order.'], 422);
         }
 
         $sub = $org->activeSubscription();
@@ -137,12 +145,10 @@ class SeatController extends Controller
         $sub->increment('extra_members_purchased', $data['quantity']);
 
         // Mark the matching pending payment as completed
-        SubscriptionPayment::where('gateway_order_id', $data['razorpay_order_id'])
-            ->where('organization_id', $org->id)
-            ->update([
+        $pending->update([
                 'status'             => 'completed',
                 'gateway_payment_id' => $data['razorpay_payment_id'],
-            ]);
+        ]);
 
         return response()->json([
             'data'    => new SubscriptionResource($sub->fresh()),

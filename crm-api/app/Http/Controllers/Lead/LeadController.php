@@ -25,6 +25,7 @@ use App\Support\PhoneNormalizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use App\Services\PlanEntitlementService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
@@ -202,24 +203,12 @@ class LeadController extends Controller
 
         // Plan lead limits
         $org = $user->organization;
-        if ($org?->isEnterprisePlan()) {
-            // Enterprise: unlimited — no check
-        } elseif ($org?->isBusinessPlan()) {
-            $count = Lead::where('organization_id', $this->orgId($request))->count();
-            if ($count >= 5000) {
-                return response()->json([
-                    'message' => 'You have reached the 5,000-lead limit on the Business plan. Upgrade to Enterprise for unlimited leads.',
-                    'code'    => 'LIMIT_REACHED',
-                ], 403);
-            }
-        } else {
-            $count = Lead::where('organization_id', $this->orgId($request))->count();
-            if ($count >= 100) {
-                return response()->json([
-                    'message' => 'You have reached the 100-lead limit on the Free plan. Upgrade to Business or Enterprise.',
-                    'code'    => 'LIMIT_REACHED',
-                ], 403);
-            }
+        $limit = app(PlanEntitlementService::class)->limits($org)['leads'];
+        if ($limit !== null && Lead::where('organization_id', $this->orgId($request))->count() >= $limit) {
+            return response()->json([
+                'message' => "You have reached the {$limit}-lead limit for your current plan.",
+                'code' => 'LIMIT_REACHED',
+            ], 403);
         }
 
         $payload = $this->leadAuth->attributesForCreate($user, $request->validated());

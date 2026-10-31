@@ -383,6 +383,7 @@ export default function PlansPage() {
   const queryClient = useQueryClient();
   const { user, isBusinessPlan, isEnterprisePlan, canManageBilling, isSsoUser } = useAuthStore();
   const [cycle, setCycle] = useState<'monthly' | 'yearly'>('monthly');
+  const [displayCurrency, setDisplayCurrency] = useState<'INR' | 'USD'>('INR');
 
   // SSO Enterprise upgrade state
   const [upgradeLoading, setUpgradeLoading] = useState(false);
@@ -572,6 +573,74 @@ export default function PlansPage() {
 
   const businessCta   = getBusinessCta();
   const enterpriseCta = getEnterpriseCta();
+
+  async function startTrial(plan: 'growth' | 'business') {
+    setUpgradeLoading(true);
+    setUpgradeError(null);
+    try {
+      await subscriptionApi.selectTrial({ plan, billing_cycle: cycle, currency: 'INR' });
+      router.push('/start-trial');
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { data?: { message?: string } } };
+      setUpgradeError(apiErr.response?.data?.message ?? 'Unable to prepare the trial.');
+      setUpgradeLoading(false);
+    }
+  }
+
+  // Direct Growneq customers use recurring subscriptions. The legacy page
+  // remains below for SSO-managed subscriptions, whose behavior is unchanged.
+  if (!ssoUser) {
+    const directPlans = [
+      { key: 'growth' as const, name: 'Growth', INR: { monthly: 799, yearly: 7990 }, USD: { monthly: 15, yearly: 150 }, features: ['3 users', '5,000 leads', '5 pipelines', 'Standard reporting', 'Basic sales targets', 'Fixed lead assignment'] },
+      { key: 'business' as const, name: 'Business', INR: { monthly: 1999, yearly: 19990 }, USD: { monthly: 39, yearly: 390 }, features: ['10 users', '25,000 leads', 'Unlimited pipelines', 'Advanced reporting', 'Dynamic targets', 'Round Robin assignment', 'Advanced integrations'] },
+    ];
+    return (
+      <div className="max-w-5xl space-y-7">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Plans &amp; Pricing</h1>
+          <p className="mt-1 text-sm text-gray-500">Start Your 7-Day Free Trial. Payment method required. Cancel before trial end to avoid the subscription charge.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <div className="flex rounded-xl border border-gray-200 bg-white p-1">
+            <button onClick={() => setCycle('monthly')} className={`rounded-lg px-4 py-2 ${cycle === 'monthly' ? 'bg-indigo-600 text-white' : 'text-gray-600'}`}>Monthly</button>
+            <button onClick={() => setCycle('yearly')} className={`rounded-lg px-4 py-2 ${cycle === 'yearly' ? 'bg-indigo-600 text-white' : 'text-gray-600'}`}>Yearly</button>
+          </div>
+          <div className="flex rounded-xl border border-gray-200 bg-white p-1" aria-label="Pricing currency">
+            {(['INR', 'USD'] as const).map((currency) => (
+              <button key={currency} onClick={() => setDisplayCurrency(currency)} className={`rounded-lg px-4 py-2 ${displayCurrency === currency ? 'bg-gray-900 text-white' : 'text-gray-600'}`}>{currency}</button>
+            ))}
+          </div>
+          <span className="text-gray-500">Prices exclude applicable taxes.</span>
+        </div>
+        {upgradeError && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{upgradeError}</p>}
+        <div className="grid gap-5 md:grid-cols-3">
+          {directPlans.map((plan) => {
+            const active = sub?.plan === plan.key && sub.is_active;
+            const price = plan[displayCurrency][cycle];
+            return (
+              <div key={plan.key} className={`flex flex-col rounded-2xl border bg-white p-6 ${plan.key === 'business' ? 'border-indigo-400 ring-1 ring-indigo-300' : 'border-gray-200'}`}>
+                <h2 className="text-xl font-bold text-gray-900">{plan.name}</h2>
+                <p className="mt-3 text-3xl font-extrabold">{displayCurrency === 'INR' ? '₹' : '$'}{price.toLocaleString(displayCurrency === 'INR' ? 'en-IN' : 'en-US')}<span className="text-sm font-normal text-gray-500">/{cycle === 'monthly' ? 'mo' : 'yr'}</span></p>
+                <ul className="my-6 flex-1 space-y-2 text-sm text-gray-600">{plan.features.map((feature) => <li key={feature}>✓ {feature}</li>)}</ul>
+                {active || (sub?.plan !== 'free' && sub?.is_active) ? (
+                  <button onClick={() => router.push('/billing')} className="rounded-xl border border-gray-300 px-4 py-3 text-sm font-semibold">Manage current subscription</button>
+                ) : (
+                  <button onClick={() => startTrial(plan.key)} disabled={!canUpgrade || upgradeLoading || displayCurrency === 'USD'} className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{displayCurrency === 'USD' ? 'USD checkout pending eligibility' : 'Start 7-day trial'}</button>
+                )}
+              </div>
+            );
+          })}
+          <div className="flex flex-col rounded-2xl border border-gray-200 bg-white p-6">
+            <h2 className="text-xl font-bold text-gray-900">Enterprise</h2>
+            <p className="mt-3 text-3xl font-extrabold">Custom</p>
+            <ul className="my-6 flex-1 space-y-2 text-sm text-gray-600"><li>✓ Custom entitlements</li><li>✓ Custom pricing</li><li>✓ Implementation planning</li></ul>
+            <a href="mailto:contact@kanpritech.com?subject=Growneq%20CRM%20Enterprise" className="rounded-xl bg-gray-900 px-4 py-3 text-center text-sm font-semibold text-white">Contact sales</a>
+          </div>
+        </div>
+        <p className="text-xs text-gray-500">The exact first billing date and amount are shown before secure authorization. Razorpay or the issuing bank may show an authorization charge or temporary hold. USD recurring payments remain disabled pending merchant eligibility.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl space-y-8">

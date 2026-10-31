@@ -13,6 +13,9 @@ export interface RegisterPayload {
   password_confirmation: string;
   organization_name?: string;
   timezone?: string;
+  plan?: 'growth' | 'business';
+  billing_cycle?: 'monthly' | 'yearly';
+  currency?: 'INR' | 'USD';
 }
 
 export interface AuthResponse {

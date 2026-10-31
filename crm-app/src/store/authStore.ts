@@ -24,6 +24,7 @@ interface AuthState {
   isAdmin: () => boolean;
   isEmployee: () => boolean;
   isBusinessPlan: () => boolean;
+  isGrowthPlan: () => boolean;
   isEnterprisePlan: () => boolean;
   isPaidPlan: () => boolean;
   isSsoUser: () => boolean;
@@ -79,6 +80,13 @@ export const useAuthStore = create<AuthState>()(
         return true;
       },
 
+      isGrowthPlan: () => {
+        const sub = get().user?.subscription;
+        if (!sub || sub.plan !== 'growth' || sub.is_read_only) return false;
+        if (sub.access_until && new Date(sub.access_until) < new Date()) return false;
+        return true;
+      },
+
       isEnterprisePlan: () => {
         const sub = get().user?.subscription;
         if (!sub || sub.plan !== 'enterprise') return false;
@@ -87,17 +95,17 @@ export const useAuthStore = create<AuthState>()(
       },
 
       isPaidPlan: () => {
-        return get().isBusinessPlan() || get().isEnterprisePlan();
+        return get().isGrowthPlan() || get().isBusinessPlan() || get().isEnterprisePlan();
       },
 
       isSsoUser: () => get().user?.is_sso_user === true,
 
-      canManageBilling: () => !get().user?.is_sso_user && get().user?.role === 'owner',
+      canManageBilling: () => !get().user?.is_sso_user && ['owner', 'admin'].includes(get().user?.role ?? ''),
 
       canManageTeam: () => {
         const sub = get().user?.subscription;
         const isActivePaid =
-          ['business', 'enterprise'].includes(sub?.plan ?? '') &&
+          ['growth', 'business', 'enterprise'].includes(sub?.plan ?? '') &&
           !(sub?.end_date && new Date(sub.end_date) < new Date());
         return isActivePaid && ['owner', 'admin'].includes(get().user?.role ?? '');
       },
