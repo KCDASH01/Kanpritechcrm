@@ -351,14 +351,14 @@ export default function BillingPage() {
       {/* ── Upgrade CTA (free plan only) ── */}
       {(!sub || sub.plan === 'free') && (
         <div className="bg-gradient-to-br from-indigo-600 to-violet-600 rounded-2xl p-6 text-white">
-          <h2 className="text-lg font-bold mb-1">Upgrade to Business or Enterprise</h2>
+          <h2 className="text-lg font-bold mb-1">Start with Growth or Business</h2>
           <p className="text-indigo-100 text-sm mb-4">
             Unlock team management, departments, advanced analytics, and more.
           </p>
           <ul className="space-y-1 text-sm text-indigo-100 mb-6">
-            <li>✓ Business: 5,000 leads, 3 team seats — ₹999/mo</li>
-            <li>✓ Enterprise: Unlimited everything, 10 team seats — ₹1,999/mo</li>
-            <li>✓ Extra seats available at ₹299/seat/month on both plans</li>
+            <li>✓ Growth: 5,000 leads, 3 users — ₹799/month</li>
+            <li>✓ Business: 25,000 leads, 10 users — ₹1,999/month</li>
+            <li>✓ Enterprise: Custom entitlements and pricing</li>
           </ul>
           <a
             href="/plans"

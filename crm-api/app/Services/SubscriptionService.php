@@ -7,6 +7,8 @@ use App\Models\Pipeline;
 use App\Models\Subscription;
 use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\Log;
 
 class SubscriptionService
@@ -17,28 +19,23 @@ class SubscriptionService
     public function assignFree(Organization $org, User $user): Subscription
     {
         return Subscription::create([
-            'organization_id'     => $org->id,
-            'user_id'             => $user->id,
-            'plan'                => 'free',
+            'organization_id' => $org->id,
+            'user_id' => $user->id,
+            'plan' => 'free',
             'subscription_source' => 'internal',
-            'start_date'          => now(),
-            'end_date'            => null,
-            'is_active'           => true,
-            'status'              => 'active',
+            'start_date' => now(),
+            'end_date' => null,
+            'is_active' => true,
+            'status' => 'active',
         ]);
     }
 
     /**
      * Upgrade (or downgrade) an organization's internal subscription.
      *
-     * @param  Organization  $org
-     * @param  string        $plan        'free' | 'business'
-     * @param  string|null   $gateway     e.g. 'razorpay'
-     * @param  string|null   $gatewayId   Gateway subscription / payment ID
-     * @param  float|null    $amount
-     * @param  string        $currency
-     * @param  Carbon|null   $startDate
-     * @param  Carbon|null   $endDate
+     * @param  string  $plan  'free' | 'business'
+     * @param  string|null  $gateway  e.g. 'razorpay'
+     * @param  string|null  $gatewayId  Gateway subscription / payment ID
      */
     public function changePlan(
         Organization $org,
@@ -52,9 +49,9 @@ class SubscriptionService
     ): Subscription {
         // Carry over purchased extra seats to the new plan.
         // Reset to 0 only when downgrading to free (seats have no value on free plan).
-        $existingSub    = Subscription::where('organization_id', $org->id)
-                            ->where('is_active', true)
-                            ->first();
+        $existingSub = Subscription::where('organization_id', $org->id)
+            ->where('is_active', true)
+            ->first();
         $carryOverSeats = ($plan !== 'free')
                             ? (int) ($existingSub?->extra_members_purchased ?? 0)
                             : 0;
@@ -65,19 +62,19 @@ class SubscriptionService
             ->update(['is_active' => false, 'status' => 'cancelled']);
 
         return Subscription::create([
-            'organization_id'        => $org->id,
-            'user_id'                => $org->owner?->id ?? $org->users()->value('id'),
-            'plan'                   => $plan,
-            'subscription_source'    => 'internal',
-            'start_date'             => $startDate ?? now(),
-            'end_date'               => $endDate,
-            'is_active'              => true,
-            'status'                 => 'active',
-            'gateway'                => $gateway,
-            'gateway_subscription_id'=> $gatewayId,
-            'amount'                 => $amount,
-            'currency'               => $currency,
-            'extra_members_purchased'=> $carryOverSeats,
+            'organization_id' => $org->id,
+            'user_id' => $org->owner?->id ?? $org->users()->value('id'),
+            'plan' => $plan,
+            'subscription_source' => 'internal',
+            'start_date' => $startDate ?? now(),
+            'end_date' => $endDate,
+            'is_active' => true,
+            'status' => 'active',
+            'gateway' => $gateway,
+            'gateway_subscription_id' => $gatewayId,
+            'amount' => $amount,
+            'currency' => $currency,
+            'extra_members_purchased' => $carryOverSeats,
         ]);
     }
 
@@ -92,19 +89,7 @@ class SubscriptionService
     {
         // New recurring subscriptions become read-only after their paid/trial
         // access (including any grace period) ends. Never create a Free row.
-        $modernExpired = Subscription::where('is_active', true)
-            ->whereNotNull('billing_cycle')
-            ->where(function ($query) {
-                $query->where(function ($query) {
-                    $query->whereNotNull('access_until')->where('access_until', '<', now());
-                })->orWhere(function ($query) {
-                    $query->whereNull('access_until')->whereNotNull('end_date')->where('end_date', '<', now());
-                });
-            })
-            ->where(function ($query) {
-                $query->whereNull('grace_ends_at')->orWhere('grace_ends_at', '<', now());
-            })
-            ->get();
+        $modernExpired = $this->recurringSubscriptionsDueForExpiry();
 
         foreach ($modernExpired as $subscription) {
             $subscription->update(['is_active' => false, 'status' => 'expired']);
@@ -112,13 +97,7 @@ class SubscriptionService
         }
 
         // Collect distinct organizations that have an expired active paid (Business or Enterprise) sub
-        $orgIds = Subscription::where('is_active', true)
-            ->whereIn('plan', ['business', 'enterprise'])
-            ->whereNull('billing_cycle')
-            ->whereNotNull('end_date')
-            ->where('end_date', '<', now())
-            ->distinct()
-            ->pluck('organization_id');
+        $orgIds = $this->legacyOrganizationIdsDueForDowngrade();
 
         if ($orgIds->isEmpty()) {
             return $modernExpired->count();
@@ -143,6 +122,7 @@ class SubscriptionService
             $owner = $org->owner ?? $org->users()->first();
             if (! $owner) {
                 Log::warning("ExpireSubscriptions: no owner found for org #{$org->id} ({$org->name}), skipping.");
+
                 continue;
             }
 
@@ -153,6 +133,46 @@ class SubscriptionService
         }
 
         return $count + $modernExpired->count();
+    }
+
+    /**
+     * Return modern recurring rows that the expiry command will mark expired.
+     * Kept public so --dry-run and execution share exactly the same selection.
+     *
+     * @return Collection<int, Subscription>
+     */
+    public function recurringSubscriptionsDueForExpiry(): Collection
+    {
+        return Subscription::where('is_active', true)
+            ->whereNotNull('billing_cycle')
+            ->where(function ($query) {
+                $query->where(function ($query) {
+                    $query->whereNotNull('access_until')->where('access_until', '<', now());
+                })->orWhere(function ($query) {
+                    $query->whereNull('access_until')->whereNotNull('end_date')->where('end_date', '<', now());
+                });
+            })
+            ->where(function ($query) {
+                $query->whereNull('grace_ends_at')->orWhere('grace_ends_at', '<', now());
+            })
+            ->with('organization')
+            ->get();
+    }
+
+    /**
+     * Return legacy organization IDs that execution will downgrade to Free.
+     *
+     * @return SupportCollection<int, int>
+     */
+    public function legacyOrganizationIdsDueForDowngrade(): SupportCollection
+    {
+        return Subscription::where('is_active', true)
+            ->whereIn('plan', ['business', 'enterprise'])
+            ->whereNull('billing_cycle')
+            ->whereNotNull('end_date')
+            ->where('end_date', '<', now())
+            ->distinct()
+            ->pluck('organization_id');
     }
 
     /**
@@ -175,10 +195,10 @@ class SubscriptionService
     {
         $pipeline = Pipeline::create([
             'organization_id' => $org->id,
-            'name'            => 'Sales Pipeline',
-            'description'     => 'Default sales pipeline',
-            'is_default'      => true,
-            'sort_order'      => 0,
+            'name' => 'Sales Pipeline',
+            'description' => 'Default sales pipeline',
+            'is_default' => true,
+            'sort_order' => 0,
         ]);
 
         $stages = [

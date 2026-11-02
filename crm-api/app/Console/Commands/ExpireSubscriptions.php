@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Organization;
+use App\Models\Subscription;
 use App\Services\SubscriptionService;
 use Illuminate\Console\Command;
 
@@ -42,25 +44,46 @@ class ExpireSubscriptions extends Command
     {
         $this->warn('[DRY-RUN] No changes will be made.');
 
-        $rows = \App\Models\Subscription::where('is_active', true)
-            ->where('plan', 'business')
-            ->whereNotNull('end_date')
-            ->where('end_date', '<', now())
-            ->with('organization')
-            ->get()
-            ->map(fn ($sub) => [
-                $sub->organization?->name ?? "Org #{$sub->organization_id}",
-                $sub->end_date->toDateString(),
-                $sub->subscription_source,
-            ]);
+        $modern = $this->subscriptionService->recurringSubscriptionsDueForExpiry();
+        $legacyOrgIds = $this->subscriptionService->legacyOrganizationIdsDueForDowngrade();
 
-        if ($rows->isEmpty()) {
+        if ($modern->isEmpty() && $legacyOrgIds->isEmpty()) {
             $this->info('No expired subscriptions found.');
+
             return self::SUCCESS;
         }
 
-        $this->table(['Organization', 'Expired On', 'Source'], $rows);
-        $this->warn("Would downgrade {$rows->count()} organization(s) to Free.");
+        if ($modern->isNotEmpty()) {
+            $this->info('Modern recurring subscriptions:');
+            $this->table(
+                ['Subscription', 'Organization', 'Plan', 'Access Ended', 'Action'],
+                $modern->map(fn (Subscription $subscription) => [
+                    "#{$subscription->id}",
+                    $subscription->organization?->name ?? "Org #{$subscription->organization_id}",
+                    ucfirst($subscription->plan),
+                    ($subscription->access_until ?? $subscription->end_date)?->toDateTimeString() ?? 'Unknown',
+                    'Mark expired; retain read-only access',
+                ])
+            );
+        }
+
+        if ($legacyOrgIds->isNotEmpty()) {
+            $organizations = Organization::with('owner')->whereIn('id', $legacyOrgIds)->get()->keyBy('id');
+            $legacyRows = $legacyOrgIds->map(function (int $organizationId) use ($organizations) {
+                $organization = $organizations->get($organizationId);
+                $hasFallbackOwner = $organization?->owner || $organization?->users()->exists();
+
+                return [
+                    $organization?->name ?? "Org #{$organizationId}",
+                    $hasFallbackOwner ? 'Expire paid rows; assign Free' : 'Expire paid rows; cannot assign Free (no owner)',
+                ];
+            });
+
+            $this->info('Legacy subscriptions:');
+            $this->table(['Organization', 'Action'], $legacyRows);
+        }
+
+        $this->warn("Would expire {$modern->count()} recurring subscription(s) and process {$legacyOrgIds->count()} legacy organization(s).");
 
         return self::SUCCESS;
     }

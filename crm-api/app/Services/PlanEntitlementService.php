@@ -10,6 +10,10 @@ class PlanEntitlementService
     {
         $subscription = $organization->activeSubscription();
 
+        if ($subscription?->billing_cycle && $subscription->isReadOnly()) {
+            return ['users' => 0, 'leads' => 0, 'deals' => 0, 'pipelines' => 0];
+        }
+
         // Rows created before recurring billing keep their historical limits.
         if ($subscription && ! $subscription->billing_cycle) {
             return match ($subscription->plan) {
@@ -31,6 +35,10 @@ class PlanEntitlementService
     {
         $subscription = $organization->activeSubscription();
         if (! $subscription) {
+            return false;
+        }
+
+        if ($subscription->billing_cycle && $subscription->isReadOnly()) {
             return false;
         }
 

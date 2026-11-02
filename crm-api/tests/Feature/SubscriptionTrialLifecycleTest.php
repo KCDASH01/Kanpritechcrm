@@ -7,6 +7,7 @@ use App\Models\Organization;
 use App\Models\Subscription;
 use App\Models\SubscriptionGatewayEvent;
 use App\Models\User;
+use App\Services\PlanEntitlementService;
 use App\Services\SubscriptionLifecycleService;
 use App\Services\SubscriptionWebhookService;
 use Illuminate\Database\Schema\Blueprint;
@@ -39,6 +40,7 @@ class SubscriptionTrialLifecycleTest extends TestCase
         config()->set('services.razorpay.test_mode', true);
         config()->set('services.razorpay.subscription_total_count.monthly', 120);
         config()->set('services.razorpay.plans.growth.monthly.INR', 'plan_growth_test');
+        config()->set('services.razorpay.plans.business.monthly.INR', 'plan_business_test');
 
         Schema::create('organizations', function (Blueprint $table) {
             $table->id();
@@ -186,6 +188,44 @@ class SubscriptionTrialLifecycleTest extends TestCase
         } finally {
             self::assertFalse((bool) Subscription::firstOrFail()->is_active);
         }
+    }
+
+    public function test_business_trial_starts_only_after_verified_razorpay_authorization(): void
+    {
+        $service = app(SubscriptionLifecycleService::class);
+        $pending = $service->createPending($this->organization, $this->owner, 'business', 'monthly', 'INR');
+        $startAt = now()->addDays(7)->timestamp;
+        Http::fake(function (Request $request) use ($startAt) {
+            if ($request->method() === 'POST') {
+                return Http::response(['id' => 'sub_business_trial', 'status' => 'created', 'start_at' => $startAt, 'charge_at' => $startAt]);
+            }
+
+            return Http::response([
+                'id' => 'sub_business_trial', 'status' => 'authenticated',
+                'plan_id' => 'plan_business_test', 'customer_id' => 'cust_business',
+                'start_at' => $startAt, 'charge_at' => $startAt,
+            ]);
+        });
+
+        $authorization = $service->startAuthorization($this->organization, $this->owner);
+        self::assertFalse($pending->fresh()->is_active);
+        self::assertSame('sub_business_trial', $authorization['subscription_id']);
+        self::assertSame('1999.00', $authorization['amount']);
+
+        $paymentId = 'pay_business_auth';
+        $signature = hash_hmac('sha256', $paymentId.'|sub_business_trial', 'test_secret');
+        $active = $service->verifyAuthorization(
+            $this->organization,
+            $this->owner,
+            'sub_business_trial',
+            $paymentId,
+            $signature
+        );
+
+        self::assertTrue($active->is_active);
+        self::assertSame('business', $active->plan);
+        self::assertSame('trialing', $active->status);
+        self::assertTrue($active->trial_ends_at->equalTo($active->access_until));
     }
 
     public function test_trial_cancellation_prevents_renewal_but_preserves_original_trial_access(): void
@@ -418,5 +458,82 @@ class SubscriptionTrialLifecycleTest extends TestCase
         self::assertSame(200, $readResponse->getStatusCode());
         self::assertSame(403, $writeResponse->getStatusCode());
         self::assertDatabaseHas('subscriptions', ['gateway_subscription_id' => 'sub_expired_read_only', 'status' => 'expired', 'is_active' => false]);
+    }
+
+    public function test_expired_modern_subscription_loses_feature_entitlements_before_expiry_job_runs(): void
+    {
+        Subscription::create([
+            'organization_id' => $this->organization->id, 'user_id' => $this->owner->id,
+            'plan' => 'business', 'billing_cycle' => 'monthly', 'subscription_source' => 'internal',
+            'status' => 'active', 'provider_status' => 'pending', 'is_active' => true,
+            'gateway' => 'razorpay', 'gateway_subscription_id' => 'sub_expired_entitlements',
+            'authorized_at' => now()->subMonth(), 'last_payment_failed_at' => now()->subDays(4),
+            'grace_ends_at' => now()->subDay(), 'access_until' => now()->subDay(),
+            'end_date' => now()->subDay(), 'amount' => 1999, 'currency' => 'INR',
+        ]);
+
+        $entitlements = app(PlanEntitlementService::class);
+
+        self::assertFalse($entitlements->has($this->organization, 'advanced_reporting'));
+        self::assertSame(
+            ['users' => 0, 'leads' => 0, 'deals' => 0, 'pipelines' => 0],
+            $entitlements->limits($this->organization)
+        );
+    }
+
+    public function test_expiry_dry_run_matches_modern_and_legacy_execution_without_writing(): void
+    {
+        $modern = Subscription::create([
+            'organization_id' => $this->organization->id, 'user_id' => $this->owner->id,
+            'plan' => 'growth', 'billing_cycle' => 'monthly', 'subscription_source' => 'internal',
+            'status' => 'active', 'provider_status' => 'pending', 'is_active' => true,
+            'gateway' => 'razorpay', 'gateway_subscription_id' => 'sub_dry_run_modern',
+            'authorized_at' => now()->subMonth(), 'grace_ends_at' => now()->subDay(),
+            'access_until' => now()->subDay(), 'end_date' => now()->subDay(),
+            'amount' => 799, 'currency' => 'INR',
+        ]);
+        $legacyOrganization = Organization::create(['name' => 'Legacy Org', 'slug' => 'legacy-org']);
+        $legacyOwner = User::forceCreate([
+            'organization_id' => $legacyOrganization->id,
+            'name' => 'Legacy Owner', 'email' => 'legacy@example.com', 'role' => 'owner', 'is_active' => true,
+        ]);
+        $legacy = Subscription::create([
+            'organization_id' => $legacyOrganization->id, 'user_id' => $legacyOwner->id,
+            'plan' => 'enterprise', 'billing_cycle' => null, 'subscription_source' => 'external',
+            'status' => 'active', 'is_active' => true, 'end_date' => now()->subDay(),
+        ]);
+        $inGrace = Subscription::create([
+            'organization_id' => $this->organization->id, 'user_id' => $this->owner->id,
+            'plan' => 'business', 'billing_cycle' => 'monthly', 'subscription_source' => 'internal',
+            'status' => 'active', 'provider_status' => 'pending', 'is_active' => true,
+            'gateway' => 'razorpay', 'gateway_subscription_id' => 'sub_still_in_grace',
+            'access_until' => now()->subHour(), 'end_date' => now()->subHour(),
+            'grace_ends_at' => now()->addDay(), 'amount' => 1999, 'currency' => 'INR',
+        ]);
+
+        $this->artisan('subscriptions:expire', ['--dry-run' => true])
+            ->expectsOutputToContain('Modern recurring subscriptions:')
+            ->expectsOutputToContain('Legacy subscriptions:')
+            ->expectsOutputToContain('Would expire 1 recurring subscription(s) and process 1 legacy organization(s).')
+            ->assertSuccessful();
+
+        self::assertTrue($modern->fresh()->is_active);
+        self::assertTrue($legacy->fresh()->is_active);
+        self::assertTrue($inGrace->fresh()->is_active);
+        self::assertDatabaseMissing('subscriptions', [
+            'organization_id' => $legacyOrganization->id,
+            'plan' => 'free',
+        ]);
+
+        $this->artisan('subscriptions:expire')->assertSuccessful();
+
+        self::assertFalse($modern->fresh()->is_active);
+        self::assertFalse($legacy->fresh()->is_active);
+        self::assertTrue($inGrace->fresh()->is_active);
+        self::assertDatabaseHas('subscriptions', [
+            'organization_id' => $legacyOrganization->id,
+            'plan' => 'free',
+            'is_active' => true,
+        ]);
     }
 }
