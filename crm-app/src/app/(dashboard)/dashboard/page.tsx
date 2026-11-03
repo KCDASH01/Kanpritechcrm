@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -239,6 +240,7 @@ export default function DashboardPage() {
       gradient: 'from-indigo-500 to-violet-600',
       shadow:   'shadow-indigo-500/25',
       icon:     'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z',
+      href:     '/leads',
     },
     {
       label:    canManage ? 'Open Deals'   : 'My Open Deals',
@@ -247,6 +249,7 @@ export default function DashboardPage() {
       gradient: 'from-emerald-500 to-teal-600',
       shadow:   'shadow-emerald-500/25',
       icon:     'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+      href:     '/deals',
     },
     {
       label:    canManage ? 'Deals Won'    : 'My Deals Won',
@@ -255,6 +258,7 @@ export default function DashboardPage() {
       gradient: 'from-blue-500 to-sky-600',
       shadow:   'shadow-blue-500/25',
       icon:     'M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z',
+      href:     '/deals',
     },
     {
       label:    'Total Revenue',
@@ -263,6 +267,7 @@ export default function DashboardPage() {
       gradient: 'from-violet-500 to-purple-600',
       shadow:   'shadow-violet-500/25',
       icon:     'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V5m0 11v3',
+      href:     '/reports',
     },
     {
       label:    canManage ? 'Due Today'    : 'My Due Today',
@@ -387,17 +392,17 @@ export default function DashboardPage() {
       <motion.div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6" variants={container} initial="hidden" animate="show">
         {STAT_CARDS.map((card) => {
           return (
-            <motion.div key={card.label} variants={cardItem}>
-              <div
-                role={card.href ? 'link' : undefined}
-                tabIndex={card.href ? 0 : undefined}
-                onClick={() => card.href && router.push(card.href)}
-                onKeyDown={(e) => card.href && (e.key === 'Enter' || e.key === ' ') && router.push(card.href!)}
-                className={`relative bg-gradient-to-br ${card.gradient} rounded-2xl p-4 overflow-hidden shadow-lg ${card.shadow} text-white
-                  ${card.href ? 'cursor-pointer hover:brightness-105 active:scale-[0.98] transition-all' : ''}`}
+            <motion.div key={card.label} variants={cardItem} className="h-full">
+              <Link
+                href={card.href}
+                aria-label={`Open ${card.label}`}
+                className={`group relative block h-full overflow-hidden rounded-2xl bg-gradient-to-br ${card.gradient} p-4 text-white shadow-lg ${card.shadow}
+                  cursor-pointer transition-all duration-300 ease-out hover:-translate-y-2 hover:scale-[1.025] hover:brightness-105 hover:shadow-2xl
+                  focus-visible:-translate-y-1 focus-visible:scale-[1.015] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/80 focus-visible:ring-offset-2
+                  active:translate-y-0 active:scale-[0.98]`}
               >
                 <div className="absolute -right-4 -top-4 w-20 h-20 bg-white/10 rounded-full" />
-                <div className="absolute -right-1 top-1 w-11 h-11 bg-white/10 rounded-full flex items-center justify-center">
+                <div className="absolute -right-1 top-1 flex h-11 w-11 items-center justify-center rounded-full bg-white/10 transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-6">
                   <svg className="w-5 h-5 text-white/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={card.icon} />
                   </svg>
@@ -405,7 +410,8 @@ export default function DashboardPage() {
                 <p className="text-white/70 text-[10px] font-semibold uppercase tracking-wider mb-1.5 pr-8">{card.label}</p>
                 <p className="text-2xl font-bold leading-none">{card.value.toLocaleString()}</p>
                 <p className="text-white/60 text-[11px] mt-1">{card.sub}</p>
-              </div>
+                <span aria-hidden="true" className="absolute bottom-3 right-3 translate-x-1 text-sm text-white/0 transition-all duration-300 group-hover:translate-x-0 group-hover:text-white/80">→</span>
+              </Link>
             </motion.div>
           );
         })}
