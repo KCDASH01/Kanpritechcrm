@@ -75,7 +75,43 @@ class LeadRequest extends FormRequest
             'first_name' => [$isUpdate ? 'sometimes' : Rule::requiredIf($this->input('client_type', 'NEW') === 'NEW'), 'string', 'max:191'],
             'last_name' => ['nullable', 'string', 'max:191'],
             'email' => ['nullable', 'email', 'max:191'],
-            'phone' => ['nullable', 'string', 'max:30'],
+            'phone' => [
+                'nullable',
+                'string',
+                'max:30',
+                function ($attribute, $value, $fail) use ($lead) {
+                    if ($value === null || $value === '') {
+                        return;
+                    }
+
+                    // Preserve an unchanged legacy number during editing.
+                    if ($lead && $value === $lead->phone) {
+                        return;
+                    }
+
+                    // Existing-client leads inherit the selected client's
+                    // stored phone number, which may use a legacy format.
+                    if ($this->input('client_type') === 'EXISTING'
+                        && $this->filled('client_id')) {
+                        $client = \App\Models\Client::query()
+                            ->where('organization_id', $this->user()?->organization_id)
+                            ->where('id', $this->input('client_id'))
+                            ->whereNull('deleted_at')
+                            ->first();
+
+                        if ($client && $value === $client->phone) {
+                            return;
+                        }
+                    }
+
+                    $valid = preg_match('/^[6-9][0-9]{9}$/D', $value)
+                        || preg_match('/^\\+[1-9][0-9]{7,14}$/D', $value);
+
+                    if (! $valid) {
+                        $fail('Enter a valid phone number without spaces or special characters. Only a leading + is allowed for the country code.');
+                    }
+                },
+            ],
             'company' => ['nullable', 'string', 'max:191'],
             'job_title' => ['nullable', 'string', 'max:191'],
             'website' => ['nullable', 'url', 'max:500'],

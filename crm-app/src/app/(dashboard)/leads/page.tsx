@@ -116,6 +116,21 @@ function LeadForm({ lead, presetClientId, onSave, onClose, saving, phoneError, o
     billing_cycles: isRecurringLead ? (lead.billing_cycles ?? null) : null,
     contract_value: isRecurringLead ? (lead.contract_value ?? null) : null,
   });
+  const [selectedClientPhone, setSelectedClientPhone] = useState<string | null>(null);
+  const phoneValue = form.phone ?? '';
+  const phoneInvalid = phoneValue !== '' &&
+    !(lead && phoneValue === lead.phone) &&
+    !(form.client_type === 'EXISTING' &&
+      form.client_id &&
+      selectedClientPhone !== null &&
+      phoneValue === selectedClientPhone) &&
+    !(/^[6-9][0-9]{9}$/.test(phoneValue) ||
+      /^\+[1-9][0-9]{7,14}$/.test(phoneValue));
+
+  const phoneValidationError = phoneInvalid
+    ? 'Enter a valid phone number without spaces or special characters. Only a leading + is allowed for the country code.'
+    : null;
+
   const [clientSearch, setClientSearch] = useState('');
 
   const duplicateTerm = form.client_type === 'EXISTING'
@@ -134,6 +149,7 @@ function LeadForm({ lead, presetClientId, onSave, onClose, saving, phoneError, o
   });
 
   const applyClient = (client: Client) => {
+    setSelectedClientPhone(client.phone ?? '');
     setForm((f) => ({
       ...f, client_type: 'EXISTING', client_id: client.id,
       first_name: client.first_name ?? '', last_name: client.last_name ?? '', company: client.company ?? '',
@@ -166,7 +182,7 @@ function LeadForm({ lead, presetClientId, onSave, onClose, saving, phoneError, o
 
   const calculatedContract = form.recurring_amount && form.billing_cycles
     ? Number(form.recurring_amount) * Number(form.billing_cycles) : null;
-  const canSubmit = !!form.types && !!form.client_type && !!form.business_type && !!form.market_type
+  const canSubmit = !phoneInvalid && !!form.types && !!form.client_type && !!form.business_type && !!form.market_type
     && (form.client_type === 'EXISTING' ? !!form.client_id : !!form.first_name.trim())
     && (form.business_type !== 'RECURRING' || (!!form.recurring_frequency && !!form.recurring_amount && !!form.recurring_start_date
       && (form.recurring_end_type !== 'FIXED' || !!form.recurring_end_date)));
@@ -192,8 +208,12 @@ function LeadForm({ lead, presetClientId, onSave, onClose, saving, phoneError, o
       <label className="block text-xs font-semibold text-gray-600 mb-1">{label}{required ? ' *' : ''}</label>
       <input type={type} value={(form[key] as string | number | null) ?? ''} readOnly={readOnly}
         onChange={(e) => type === 'number' ? number(key, e.target.value) : set(key, e.target.value)}
-        className={`${inputCls} ${readOnly ? 'bg-gray-50 text-gray-500' : ''} ${key === 'phone' && phoneError ? 'border-red-300 ring-1 ring-red-200' : ''}`} />
-      {key === 'phone' && phoneError && <p className="mt-1 text-xs text-red-600">{phoneError}</p>}
+        className={`${inputCls} ${readOnly ? 'bg-gray-50 text-gray-500' : ''} ${key === 'phone' && (phoneValidationError || phoneError) ? 'border-red-300 ring-1 ring-red-200' : ''}`} />
+      {key === 'phone' && (phoneValidationError || phoneError) && (
+        <p className="mt-1 text-xs text-red-600" role="alert">
+          {phoneValidationError || phoneError}
+        </p>
+      )}
     </div>
   );
 
@@ -218,7 +238,7 @@ function LeadForm({ lead, presetClientId, onSave, onClose, saving, phoneError, o
           {form.client_type === 'EXISTING' && (
             <div className="md:col-span-2 lg:col-span-3 relative">
               <label className="block text-xs font-semibold text-gray-600 mb-1">Select Existing Client *</label>
-              <input value={clientSearch} onChange={(e) => { setClientSearch(e.target.value); setForm((f) => ({ ...f, client_id: null })); }}
+              <input value={clientSearch} onChange={(e) => { setClientSearch(e.target.value); setSelectedClientPhone(null); setForm((f) => ({ ...f, client_id: null })); }}
                 placeholder="Search name, company, email or phone…" className={inputCls} />
               {clientSearch.length >= 2 && !form.client_id && (
                 <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-xl max-h-48 overflow-auto">
