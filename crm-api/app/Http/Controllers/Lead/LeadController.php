@@ -44,6 +44,31 @@ class LeadController extends Controller
 
     // ── GET /api/leads/department-counts ──────────────────────────────────────
 
+    public function marketCounts(Request $request): JsonResponse
+    {
+        $query = Lead::query()->where('organization_id', $this->orgId($request));
+
+        if ($request->user()->isEmployee()) {
+            $query->where('assigned_to', $request->user()->id);
+        }
+
+        $counts = (clone $query)
+            ->whereIn('market_type', ['DOMESTIC', 'INTERNATIONAL'])
+            ->groupBy('market_type')
+            ->select('market_type', DB::raw('COUNT(*) as leads_count'))
+            ->pluck('leads_count', 'market_type');
+
+        return response()->json([
+            'data' => [
+                'total' => (clone $query)->count(),
+                'markets' => [
+                    ['market_type' => 'DOMESTIC', 'label' => 'Domestic', 'leads_count' => (int) ($counts['DOMESTIC'] ?? 0)],
+                    ['market_type' => 'INTERNATIONAL', 'label' => 'International', 'leads_count' => (int) ($counts['INTERNATIONAL'] ?? 0)],
+                ],
+            ],
+        ]);
+    }
+
     public function departmentCounts(Request $request): JsonResponse
     {
         if (! $request->user()->isOwner()) {

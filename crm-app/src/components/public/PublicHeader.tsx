@@ -15,6 +15,7 @@ export default function PublicHeader() {
           <Link href="/" className="transition-colors hover:text-gray-900">Home</Link>
           <Link href="/#features" className="transition-colors hover:text-gray-900">Features</Link>
           <Link href="/#pricing" className="transition-colors hover:text-gray-900">Pricing</Link>
+          <Link href="/contact-sales" className="transition-colors hover:text-gray-900">Contact sales</Link>
         </nav>
         <div className="flex shrink-0 items-center gap-3">
           {isLoggedIn ? (

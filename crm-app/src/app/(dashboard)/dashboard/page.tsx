@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar,
@@ -18,6 +18,9 @@ import { RemindersCard } from '@/components/dashboard/RemindersCard';
 import { PerformanceLeaderboard } from '@/components/dashboard/PerformanceLeaderboard';
 import { ConversionPeriodSelector } from '@/components/dashboard/ConversionPeriodSelector';
 import { DynamicTargetSummary } from '@/components/dashboard/DynamicTargetSummary';
+import { LeadForm } from '@/components/leads/LeadsWorkspace';
+import { Modal } from '@/components/ui/Modal';
+import { leadsApi, type LeadPayload } from '@/lib/api/leads';
 
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.08 } } };
 const cardItem  = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { type: 'spring' as const, damping: 24, stiffness: 300 } } };
@@ -187,15 +190,20 @@ function PerformanceDetailsModal({ type, detail, loading, page, onPage, onClose 
 
 export default function DashboardPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { user, isOwner, isAdmin, isBusinessPlan, isEnterprisePlan } = useAuthStore();
   const [selectedMember, setSelectedMember] = useState('');
   const [detailType, setDetailType] = useState<DetailType | null>(null);
   const [detailPage, setDetailPage] = useState(1);
+  const [addLeadOpen, setAddLeadOpen] = useState(false);
+  const [leadPhoneError, setLeadPhoneError] = useState<string | null>(null);
+  const [leadCreated, setLeadCreated] = useState(false);
   const today = new Date();
   const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
   const [conversionPeriod, setConversionPeriod] = useState<ConversionPeriodSelection>({ mode: 'current_month', month: currentMonth, start: '', end: '', targetId: '' });
 
   const canManage      = isOwner() || isAdmin();
+  const canCreateLead  = ['owner', 'admin', 'employee'].includes(user?.role ?? '');
   const planLabel      = isEnterprisePlan() ? 'Enterprise Plan' : isBusinessPlan() ? 'Business Plan' : user?.subscription?.plan === 'growth' ? 'Growth Plan' : 'Free Plan';
   const planClass      = isEnterprisePlan() ? 'text-violet-600 font-medium' : isBusinessPlan() ? 'text-indigo-600 font-medium' : user?.subscription?.plan === 'growth' ? 'text-emerald-600 font-medium' : 'text-gray-500';
   // Employees are always forced to their own ID by the API. Managers may select a team member.
@@ -217,6 +225,28 @@ export default function DashboardPage() {
           params: { ...(assignedFilter ? { assigned_to: assignedFilter } : {}), ...conversionParams },
         })
         .then((r) => r.data.data),
+  });
+
+  const createLeadMutation = useMutation({
+    mutationFn: (payload: LeadPayload) => leadsApi.create(payload),
+    onSuccess: () => {
+      setLeadPhoneError(null);
+      setAddLeadOpen(false);
+      setLeadCreated(true);
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: ['lead-market-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['lead-department-counts'] });
+    },
+    onError: (err: unknown) => {
+      const phoneMessage = (err as { response?: { data?: { errors?: { phone?: string[] } } } })?.response?.data?.errors?.phone?.[0];
+      if (phoneMessage) {
+        setLeadPhoneError(phoneMessage);
+        return;
+      }
+      const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      alert(message ?? 'Failed to create lead.');
+    },
   });
 
   const { data: detail, isLoading: detailLoading } = useQuery({
@@ -356,6 +386,22 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {leadCreated && (
+        <div
+          role="status"
+          className="fixed right-4 top-20 z-[60] flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-xl border border-emerald-200 bg-white px-4 py-3 text-sm font-medium text-emerald-800 shadow-lg"
+        >
+          Lead created successfully.
+          <button
+            type="button"
+            onClick={() => setLeadCreated(false)}
+            className="rounded-md px-1.5 py-0.5 text-emerald-600 hover:bg-emerald-50"
+            aria-label="Dismiss lead created notification"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       {/* Greeting */}
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
         <div className="shrink-0 pt-1">
@@ -372,6 +418,16 @@ export default function DashboardPage() {
             )}
           </p>
         </div>
+        {canCreateLead && (
+          <button
+            type="button"
+            onClick={() => setAddLeadOpen(true)}
+            className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 self-start rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 transition hover:-translate-y-0.5 hover:bg-indigo-700 hover:shadow-xl focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-200 active:translate-y-0 xl:self-center"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+            Add Lead
+          </button>
+        )}
         <div className="flex min-w-0 flex-col gap-3 rounded-2xl border border-indigo-100 bg-gradient-to-r from-white via-indigo-50/60 to-cyan-50/60 p-4 shadow-sm lg:flex-row lg:items-end xl:max-w-[980px] xl:justify-end">
           <div className="min-w-[220px] lg:mr-2">
             <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-indigo-500">Lead-to-Conversion Ratio</p>
@@ -660,6 +716,27 @@ export default function DashboardPage() {
           </div>
         </div>
       </motion.div>
+
+      <Modal
+        open={addLeadOpen}
+        onClose={() => {
+          setLeadPhoneError(null);
+          setAddLeadOpen(false);
+        }}
+        title="Add Lead"
+        maxWidth="max-w-6xl"
+      >
+        <LeadForm
+          onSave={(payload) => createLeadMutation.mutate(payload)}
+          onClose={() => {
+            setLeadPhoneError(null);
+            setAddLeadOpen(false);
+          }}
+          saving={createLeadMutation.isPending}
+          phoneError={leadPhoneError}
+          onPhoneChange={() => setLeadPhoneError(null)}
+        />
+      </Modal>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import PublicFooter from '@/components/public/PublicFooter';
 import PublicHeader from '@/components/public/PublicHeader';
+import SalesWhatsAppButton from '@/components/public/SalesWhatsAppButton';
 
 /* ─── SVG Icons ────────────────────────────────────────────────────────────── */
 function IconArrow() {
@@ -470,11 +471,12 @@ export default function MarketingHome() {
                         USD checkout pending eligibility
                       </span>
                     ) : (
-                      <Link href={plan.name === 'Enterprise' ? 'mailto:contact@kanpritech.com?subject=Growneq%20CRM%20Enterprise' : '/register'}
+                      <Link href={plan.name === 'Enterprise' ? '/contact-sales' : '/register'}
                         className={`mt-8 block text-center py-3 px-6 rounded-xl font-semibold text-sm transition-colors ${plan.ctaStyle}`}>
                         {plan.cta}
                       </Link>
                     )}
+                    {plan.name === 'Enterprise' && <SalesWhatsAppButton className="mt-3 w-full" />}
                   </div>
                 ))}
               </div>
@@ -533,6 +535,7 @@ export default function MarketingHome() {
         {/* FOOTER                                                        */}
         {/* ══════════════════════════════════════════════════════════════ */}
         <PublicFooter />
+        <SalesWhatsAppButton floating label="Chat on WhatsApp" />
 
       </div>
   );

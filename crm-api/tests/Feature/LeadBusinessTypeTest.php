@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\Lead;
+use App\Models\Department;
+use App\Models\Client;
 use App\Models\Organization;
 use App\Models\Subscription;
 use App\Models\User;
@@ -76,6 +78,16 @@ class LeadBusinessTypeTest extends TestCase
             $table->id();
             $table->unsignedBigInteger('organization_id');
             $table->string('first_name');
+            $table->string('last_name')->nullable();
+            $table->string('email')->nullable();
+            $table->string('phone')->nullable();
+            $table->string('phone_normalized')->nullable();
+            $table->string('company')->nullable();
+            $table->string('job_title')->nullable();
+            $table->string('website')->nullable();
+            $table->string('city')->nullable();
+            $table->string('state')->nullable();
+            $table->string('country')->nullable();
             $table->timestamps();
             $table->softDeletes();
         });
@@ -133,6 +145,11 @@ class LeadBusinessTypeTest extends TestCase
             $table->string('action');
             $table->string('description', 500);
             $table->json('meta')->nullable();
+            $table->timestamps();
+        });
+        Schema::create('proposals', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('lead_id');
             $table->timestamps();
         });
 
@@ -312,6 +329,136 @@ class LeadBusinessTypeTest extends TestCase
         self::assertSame(4, $lead->billing_cycles);
     }
 
+    public function test_market_filter_uses_selected_market_instead_of_assignee_department(): void
+    {
+        $international = Department::create([
+            'organization_id' => $this->owner->organization_id,
+            'name' => 'IT Sales International',
+        ]);
+        $employee = $this->createEmployee('international@example.com');
+        $employee->departments()->attach($international->id);
+
+        $created = $this->postJson('/api/leads', $this->leadPayload([
+            'first_name' => 'Domestic Cross Department',
+            'market_type' => 'DOMESTIC',
+            'assigned_to' => $employee->id,
+        ]))->assertCreated();
+
+        $leadId = $created->json('data.id');
+        $lead = Lead::findOrFail($leadId);
+        self::assertSame('DOMESTIC', $lead->market_type);
+        self::assertSame($international->id, $lead->department_id);
+
+        $this->getJson('/api/leads?market_type=DOMESTIC')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $leadId);
+        $this->getJson('/api/leads?market_type=INTERNATIONAL')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 0);
+    }
+
+    public function test_employee_sees_only_their_assigned_leads_across_both_markets(): void
+    {
+        $employee = $this->createEmployee('employee@example.com');
+        $other = $this->createEmployee('other@example.com');
+
+        $domestic = $this->createAssignedLead($employee, 'Own Domestic', 'DOMESTIC');
+        $international = $this->createAssignedLead($employee, 'Own International', 'INTERNATIONAL');
+        $this->createAssignedLead($other, 'Unauthorized Domestic', 'DOMESTIC');
+
+        Sanctum::actingAs($employee);
+
+        $this->getJson('/api/leads')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 2)
+            ->assertJsonFragment(['id' => $domestic->id])
+            ->assertJsonFragment(['id' => $international->id])
+            ->assertJsonMissing(['first_name' => 'Unauthorized Domestic']);
+        $this->getJson('/api/leads?market_type=INTERNATIONAL')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $international->id);
+        $this->getJson('/api/leads/market-counts')
+            ->assertOk()
+            ->assertJsonPath('data.total', 2)
+            ->assertJsonPath('data.markets.0.leads_count', 1)
+            ->assertJsonPath('data.markets.1.leads_count', 1);
+    }
+
+    public function test_editing_market_preserves_assignment_and_department(): void
+    {
+        $department = Department::create([
+            'organization_id' => $this->owner->organization_id,
+            'name' => 'IT Sales Domestic',
+        ]);
+        $employee = $this->createEmployee('domestic@example.com');
+        $employee->departments()->attach($department->id);
+        $lead = $this->createAssignedLead($employee, 'Market Edit', 'DOMESTIC', $department->id);
+
+        $this->putJson("/api/leads/{$lead->id}", ['market_type' => 'INTERNATIONAL'])
+            ->assertOk()
+            ->assertJsonPath('data.market_type', 'INTERNATIONAL');
+
+        $lead->refresh();
+        self::assertSame($employee->id, $lead->assigned_to);
+        self::assertSame($department->id, $lead->department_id);
+        self::assertSame('INTERNATIONAL', $lead->market_type);
+    }
+
+    public function test_market_search_pagination_and_tenant_isolation_are_preserved(): void
+    {
+        $employee = $this->createEmployee('search@example.com');
+        $visible = $this->createAssignedLead($employee, 'Needle Domestic', 'DOMESTIC');
+        $this->createAssignedLead($employee, 'Other International', 'INTERNATIONAL');
+
+        $otherOrganization = Organization::create([
+            'name' => 'Other Tenant',
+            'slug' => 'other-tenant',
+            'is_active' => true,
+        ]);
+        Lead::create([
+            ...$this->leadPayload(['first_name' => 'Needle Other Tenant', 'market_type' => 'DOMESTIC']),
+            'organization_id' => $otherOrganization->id,
+            'created_by' => 999,
+        ]);
+
+        $this->getJson('/api/leads?market_type=DOMESTIC&search=Needle&per_page=1&page=1')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('meta.per_page', 1)
+            ->assertJsonPath('data.0.id', $visible->id)
+            ->assertJsonMissing(['first_name' => 'Needle Other Tenant']);
+    }
+
+    public function test_existing_client_and_phone_rules_remain_compatible_with_market_selection(): void
+    {
+        $client = Client::create([
+            'organization_id' => $this->owner->organization_id,
+            'first_name' => 'Legacy',
+            'last_name' => 'Client',
+            'phone' => '0674-legacy-number',
+            'company' => 'Legacy Company',
+        ]);
+
+        $this->postJson('/api/leads', $this->leadPayload([
+            'client_type' => 'EXISTING',
+            'client_id' => $client->id,
+            'first_name' => '',
+            'phone' => $client->phone,
+            'market_type' => 'INTERNATIONAL',
+        ]))->assertCreated()
+            ->assertJsonPath('data.market_type', 'INTERNATIONAL')
+            ->assertJsonPath('data.client_id', $client->id)
+            ->assertJsonPath('data.phone', $client->phone);
+
+        $this->postJson('/api/leads', $this->leadPayload([
+            'first_name' => 'Invalid Phone',
+            'phone' => '123-INVALID',
+        ]))->assertUnprocessable()
+            ->assertJsonValidationErrors(['phone']);
+    }
+
     /** @param array<string, mixed> $overrides */
     private function leadPayload(array $overrides = []): array
     {
@@ -340,6 +487,32 @@ class LeadBusinessTypeTest extends TestCase
                 'next_billing_date' => '2026-11-15',
                 'billing_cycles' => 12,
                 'contract_value' => 120000,
+            ]),
+            'organization_id' => $this->owner->organization_id,
+            'created_by' => $this->owner->id,
+        ]);
+    }
+
+    private function createEmployee(string $email): User
+    {
+        return User::forceCreate([
+            'organization_id' => $this->owner->organization_id,
+            'name' => strtok($email, '@'),
+            'email' => $email,
+            'password' => 'password',
+            'role' => 'employee',
+            'is_active' => true,
+        ]);
+    }
+
+    private function createAssignedLead(User $employee, string $name, string $market, ?int $departmentId = null): Lead
+    {
+        return Lead::create([
+            ...$this->leadPayload([
+                'first_name' => $name,
+                'market_type' => $market,
+                'assigned_to' => $employee->id,
+                'department_id' => $departmentId,
             ]),
             'organization_id' => $this->owner->organization_id,
             'created_by' => $this->owner->id,

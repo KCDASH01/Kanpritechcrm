@@ -30,7 +30,7 @@ export default function RegisterPage() {
     try {
       const { token, user } = await authApi.register(form);
       setAuth(user, token);
-      router.push('/start-trial');
+      router.push(`/start-trial?plan=${form.plan}&billing_cycle=${form.billing_cycle}`);
     } catch (err: unknown) {
       const data = (err as { response?: { data?: { errors?: Record<string, string[]>; message?: string } } })?.response?.data;
       if (data?.errors) {

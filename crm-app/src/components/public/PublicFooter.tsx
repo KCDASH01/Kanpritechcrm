@@ -8,6 +8,7 @@ export default function PublicFooter() {
         <BrandMark compact />
         <p className="text-center text-xs text-gray-500">© 2026 Growneq CRM. Operated by Kanpri Technologies LLP.</p>
         <nav className="flex flex-wrap justify-center gap-x-5 gap-y-2 text-xs text-gray-500" aria-label="Legal navigation">
+          <Link href="/contact-sales" className="transition-colors hover:text-gray-900">Contact Sales</Link>
           <Link href="/privacy-policy" className="transition-colors hover:text-gray-900">Privacy</Link>
           <Link href="/terms-of-service" className="transition-colors hover:text-gray-900">Terms</Link>
           <Link href="/data-deletion" className="transition-colors hover:text-gray-900">Data Deletion</Link>

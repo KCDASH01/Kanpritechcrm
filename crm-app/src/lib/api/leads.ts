@@ -12,6 +12,15 @@ export interface LeadDepartmentCounts {
   departments: LeadDepartmentCount[];
 }
 
+export interface LeadMarketCounts {
+  total: number;
+  markets: Array<{
+    market_type: 'DOMESTIC' | 'INTERNATIONAL';
+    label: string;
+    leads_count: number;
+  }>;
+}
+
 export interface LeadFilters {
   search?: string;
   status?: string;
@@ -109,6 +118,9 @@ export interface ConvertToDealResponse {
 }
 
 export const leadsApi = {
+  marketCounts: () =>
+    client.get<{ data: LeadMarketCounts }>('/leads/market-counts').then((r) => r.data.data),
+
   departmentCounts: () =>
     client.get<{ data: LeadDepartmentCounts }>('/leads/department-counts').then((r) => r.data.data),
 

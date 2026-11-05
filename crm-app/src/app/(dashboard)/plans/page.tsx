@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import { subscriptionApi, type SubscribeOrderPayload } from '@/lib/api/subscription';
 import { useAuthStore } from '@/store/authStore';
 import { PaymentSuccessModal } from '@/components/ui/PaymentSuccessModal';
+import SalesWhatsAppButton from '@/components/public/SalesWhatsAppButton';
 
 // Extend Window for Razorpay
 declare global {
@@ -634,7 +635,8 @@ export default function PlansPage() {
             <h2 className="text-xl font-bold text-gray-900">Enterprise</h2>
             <p className="mt-3 text-3xl font-extrabold">Custom</p>
             <ul className="my-6 flex-1 space-y-2 text-sm text-gray-600"><li>✓ Custom entitlements</li><li>✓ Custom pricing</li><li>✓ Implementation planning</li></ul>
-            <a href="mailto:contact@kanpritech.com?subject=Growneq%20CRM%20Enterprise" className="rounded-xl bg-gray-900 px-4 py-3 text-center text-sm font-semibold text-white">Contact sales</a>
+            <button onClick={() => router.push('/contact-sales')} className="rounded-xl bg-gray-900 px-4 py-3 text-center text-sm font-semibold text-white">Contact sales</button>
+            <SalesWhatsAppButton className="mt-3 w-full" />
           </div>
         </div>
         <p className="text-xs text-gray-500">The exact first billing date and amount are shown before secure authorization. Razorpay or the issuing bank may show an authorization charge or temporary hold. USD recurring payments remain disabled pending merchant eligibility.</p>

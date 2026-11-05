@@ -33,6 +33,7 @@ use App\Http\Controllers\Notification\NotificationController;
 use App\Http\Controllers\Pipeline\PipelineController;
 use App\Http\Controllers\Pipeline\StageController;
 use App\Http\Controllers\Proposal\ProposalController;
+use App\Http\Controllers\PublicSite\ContactSalesController;
 use App\Http\Controllers\RecurringBusiness\RecurringBusinessController;
 use App\Http\Controllers\Reports\ReportsController;
 use App\Http\Controllers\SalesTarget\SalesTargetController;
@@ -55,6 +56,7 @@ Route::prefix('auth')->group(function () {
 });
 
 Route::post('sso/login', [SSOController::class, 'login']);
+Route::post('contact-sales', ContactSalesController::class)->middleware('throttle:5,1');
 
 Route::get('webhooks/meta', [LeadIntegrationWebhookController::class, 'verifyMeta']);
 Route::post('webhooks/meta', [LeadIntegrationWebhookController::class, 'meta']);
@@ -133,6 +135,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('pipelines/{pipeline}/stages/reorder', [StageController::class, 'reorder']);
 
         // Leads
+        Route::get('leads/market-counts', [LeadController::class, 'marketCounts']);
         Route::get('leads/department-counts', [LeadController::class, 'departmentCounts']);
         Route::get('leads/{lead}/timeline', [LeadController::class, 'timeline']);
         Route::post('leads/{lead}/convert', [LeadController::class, 'convertToDeal']);

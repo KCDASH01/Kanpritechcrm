@@ -19,7 +19,7 @@ return [
     ],
 
     'resend' => [
-        'key' => env('RESEND_API_KEY'),
+        'key' => env('RESEND_KEY'),
     ],
 
     'ses' => [
@@ -56,6 +56,11 @@ return [
                 'yearly' => ['INR' => env('RAZORPAY_PLAN_BUSINESS_YEARLY_INR'), 'USD' => env('RAZORPAY_PLAN_BUSINESS_YEARLY_USD')],
             ],
         ],
+    ],
+
+    'sales_contact' => [
+        'email' => env('SALES_CONTACT_EMAIL', 'contact@kanpritech.com'),
+        'whatsapp' => env('SALES_CONTACT_WHATSAPP', '917751973970'),
     ],
 
     'meta' => [
