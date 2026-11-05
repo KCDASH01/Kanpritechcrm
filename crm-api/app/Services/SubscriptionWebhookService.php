@@ -13,24 +13,39 @@ use Throwable;
 
 class SubscriptionWebhookService
 {
-    public function process(SubscriptionGatewayEvent $event): void
+    public function process(SubscriptionGatewayEvent $event): string
     {
         try {
-            DB::transaction(function () use ($event) {
-                $payload = $event->payload;
-                $remote = data_get($payload, 'payload.subscription.entity');
-                $payment = data_get($payload, 'payload.payment.entity');
-                $gatewayId = $remote['id'] ?? $event->gateway_subscription_id;
-                $subscription = Subscription::where('gateway_subscription_id', $gatewayId)->lockForUpdate()->first();
-                if (! $subscription) {
-                    $event->update(['processing_status' => 'ignored', 'processed_at' => now()]);
+            return DB::transaction(function () use ($event) {
+                $lockedEvent = SubscriptionGatewayEvent::query()
+                    ->whereKey($event->getKey())
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-                    return;
+                if (! in_array($lockedEvent->processing_status, ['received', 'failed'], true)) {
+                    return 'duplicate';
                 }
 
-                $event->update(['organization_id' => $subscription->organization_id, 'subscription_id' => $subscription->id]);
+                $lockedEvent->update([
+                    'processing_status' => 'processing',
+                    'processing_error' => null,
+                    'processed_at' => null,
+                ]);
+
+                $payload = $lockedEvent->payload;
+                $remote = data_get($payload, 'payload.subscription.entity');
+                $payment = data_get($payload, 'payload.payment.entity');
+                $gatewayId = $remote['id'] ?? $lockedEvent->gateway_subscription_id;
+                $subscription = Subscription::where('gateway_subscription_id', $gatewayId)->lockForUpdate()->first();
+                if (! $subscription) {
+                    $lockedEvent->update(['processing_status' => 'ignored', 'processed_at' => now()]);
+
+                    return 'ignored';
+                }
+
+                $lockedEvent->update(['organization_id' => $subscription->organization_id, 'subscription_id' => $subscription->id]);
                 $before = $subscription->toArray();
-                $type = $event->event_type;
+                $type = $lockedEvent->event_type;
                 if (in_array($type, ['subscription.authenticated', 'subscription.activated', 'subscription.charged'], true)) {
                     $expectedPlanId = (string) ($subscription->gateway_plan_id ?? '');
                     $remotePlanId = (string) ($remote['plan_id'] ?? '');
@@ -42,9 +57,9 @@ class SubscriptionWebhookService
                 $eventTimestamp = data_get($payload, 'created_at');
                 $lastTimestamp = data_get($subscription->external_metadata, 'last_gateway_event_at');
                 if ($eventTimestamp && $lastTimestamp && (int) $eventTimestamp < (int) $lastTimestamp) {
-                    $event->update(['processing_status' => 'ignored', 'processed_at' => now(), 'processing_error' => 'Older than the last processed gateway event.']);
+                    $lockedEvent->update(['processing_status' => 'ignored', 'processed_at' => now(), 'processing_error' => 'Older than the last processed gateway event.']);
 
-                    return;
+                    return 'ignored';
                 }
 
                 if (in_array($type, ['subscription.authenticated'], true) && ! $subscription->authorized_at) {
@@ -106,7 +121,7 @@ class SubscriptionWebhookService
                     $subscription->update([
                         'external_metadata' => array_merge($subscription->external_metadata ?? [], [
                             'last_gateway_event_at' => (int) $eventTimestamp,
-                            'last_gateway_event_id' => $event->event_id,
+                            'last_gateway_event_id' => $lockedEvent->event_id,
                         ]),
                     ]);
                 }
@@ -114,12 +129,21 @@ class SubscriptionWebhookService
                 SubscriptionAuditEvent::create([
                     'organization_id' => $subscription->organization_id, 'subscription_id' => $subscription->id,
                     'event_type' => $type, 'before' => $before, 'after' => $subscription->fresh()->toArray(),
-                    'metadata' => ['gateway_event_id' => $event->event_id], 'created_at' => now(),
+                    'metadata' => ['gateway_event_id' => $lockedEvent->event_id], 'created_at' => now(),
                 ]);
-                $event->update(['processing_status' => 'processed', 'processed_at' => now()]);
+                $lockedEvent->update(['processing_status' => 'processed', 'processed_at' => now()]);
+
+                return 'processed';
             });
         } catch (Throwable $exception) {
-            $event->update(['processing_status' => 'failed', 'processing_error' => mb_substr($exception->getMessage(), 0, 2000)]);
+            SubscriptionGatewayEvent::query()
+                ->whereKey($event->getKey())
+                ->whereNotIn('processing_status', ['processed', 'ignored'])
+                ->update([
+                    'processing_status' => 'failed',
+                    'processing_error' => mb_substr($exception->getMessage(), 0, 2000),
+                    'processed_at' => null,
+                ]);
             throw $exception;
         }
     }

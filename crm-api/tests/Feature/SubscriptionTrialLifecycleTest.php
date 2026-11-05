@@ -367,6 +367,105 @@ class SubscriptionTrialLifecycleTest extends TestCase
         self::assertSame('active', $subscription->fresh()->status);
     }
 
+    public function test_failed_webhook_delivery_is_safely_reprocessed_on_razorpay_retry(): void
+    {
+        $subscription = Subscription::create([
+            'organization_id' => $this->organization->id, 'user_id' => $this->owner->id,
+            'plan' => 'growth', 'billing_cycle' => 'monthly', 'subscription_source' => 'internal',
+            'status' => 'trialing', 'provider_status' => 'authenticated', 'is_active' => true,
+            'gateway' => 'razorpay', 'gateway_subscription_id' => 'sub_retry_failed',
+            'gateway_plan_id' => 'plan_temporarily_wrong',
+            'authorized_at' => now(), 'trial_ends_at' => now()->addDays(7),
+            'access_until' => now()->addDays(7), 'amount' => 799, 'currency' => 'INR',
+        ]);
+        $periodEnd = now()->addMonth()->timestamp;
+        $raw = json_encode([
+            'event' => 'subscription.charged', 'created_at' => now()->timestamp,
+            'payload' => [
+                'subscription' => ['entity' => [
+                    'id' => 'sub_retry_failed', 'status' => 'active',
+                    'plan_id' => 'plan_growth_test',
+                    'current_start' => now()->timestamp, 'current_end' => $periodEnd,
+                ]],
+                'payment' => ['entity' => [
+                    'id' => 'pay_retry_failed', 'status' => 'captured', 'amount' => 79900,
+                    'currency' => 'INR', 'created_at' => now()->timestamp,
+                ]],
+            ],
+        ], JSON_THROW_ON_ERROR);
+        $server = [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_X_RAZORPAY_SIGNATURE' => hash_hmac('sha256', $raw, 'test_webhook_secret'),
+            'HTTP_X_RAZORPAY_EVENT_ID' => 'evt_retry_failed',
+        ];
+
+        $this->call('POST', '/api/webhooks/razorpay', [], [], [], $server, $raw)->assertServerError();
+        $event = SubscriptionGatewayEvent::where('event_id', 'evt_retry_failed')->sole();
+        self::assertSame('failed', $event->processing_status);
+        self::assertDatabaseCount('subscription_transactions', 0);
+
+        // Simulate correction of the transient local mismatch before Razorpay retries.
+        $subscription->update(['gateway_plan_id' => 'plan_growth_test']);
+
+        $this->call('POST', '/api/webhooks/razorpay', [], [], [], $server, $raw)
+            ->assertOk()
+            ->assertJson(['received' => true, 'retried' => true]);
+
+        $event->refresh();
+        self::assertSame('processed', $event->processing_status);
+        self::assertNull($event->processing_error);
+        self::assertNotNull($event->processed_at);
+        self::assertSame(1, SubscriptionGatewayEvent::where('event_id', 'evt_retry_failed')->count());
+        self::assertDatabaseCount('subscription_transactions', 1);
+        self::assertSame(1, DB::table('subscription_audit_events')->where('event_type', 'subscription.charged')->count());
+
+        $this->call('POST', '/api/webhooks/razorpay', [], [], [], $server, $raw)
+            ->assertOk()
+            ->assertJson(['received' => true, 'duplicate' => true]);
+        self::assertDatabaseCount('subscription_transactions', 1);
+        self::assertSame(1, DB::table('subscription_audit_events')->where('event_type', 'subscription.charged')->count());
+    }
+
+    public function test_duplicate_event_id_with_different_signed_payload_is_rejected(): void
+    {
+        Subscription::create([
+            'organization_id' => $this->organization->id, 'user_id' => $this->owner->id,
+            'plan' => 'growth', 'billing_cycle' => 'monthly', 'subscription_source' => 'internal',
+            'status' => 'trialing', 'provider_status' => 'authenticated', 'is_active' => true,
+            'gateway' => 'razorpay', 'gateway_subscription_id' => 'sub_payload_conflict',
+            'gateway_plan_id' => 'plan_growth_test', 'authorized_at' => now(),
+            'access_until' => now()->addDays(7), 'amount' => 799, 'currency' => 'INR',
+        ]);
+        $payload = [
+            'event' => 'subscription.charged', 'created_at' => now()->timestamp,
+            'payload' => [
+                'subscription' => ['entity' => [
+                    'id' => 'sub_payload_conflict', 'plan_id' => 'plan_growth_test',
+                    'current_start' => now()->timestamp, 'current_end' => now()->addMonth()->timestamp,
+                ]],
+                'payment' => ['entity' => [
+                    'id' => 'pay_payload_conflict', 'status' => 'captured',
+                    'amount' => 79900, 'currency' => 'INR', 'created_at' => now()->timestamp,
+                ]],
+            ],
+        ];
+        $raw = json_encode($payload, JSON_THROW_ON_ERROR);
+        $server = [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_X_RAZORPAY_SIGNATURE' => hash_hmac('sha256', $raw, 'test_webhook_secret'),
+            'HTTP_X_RAZORPAY_EVENT_ID' => 'evt_payload_conflict',
+        ];
+        $this->call('POST', '/api/webhooks/razorpay', [], [], [], $server, $raw)->assertOk();
+
+        $payload['payload']['payment']['entity']['amount'] = 199900;
+        $changedRaw = json_encode($payload, JSON_THROW_ON_ERROR);
+        $server['HTTP_X_RAZORPAY_SIGNATURE'] = hash_hmac('sha256', $changedRaw, 'test_webhook_secret');
+        $this->call('POST', '/api/webhooks/razorpay', [], [], [], $server, $changedRaw)->assertStatus(409);
+
+        self::assertSame(1, SubscriptionGatewayEvent::where('event_id', 'evt_payload_conflict')->count());
+        self::assertDatabaseCount('subscription_transactions', 1);
+    }
+
     public function test_successful_renewal_clears_grace_and_extends_access(): void
     {
         $subscription = Subscription::create([
