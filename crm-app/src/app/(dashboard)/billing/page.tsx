@@ -245,7 +245,11 @@ export default function BillingPage() {
                 <p>Amount: <span className="text-gray-900 font-medium">{sub.currency} {Number(sub.amount).toLocaleString('en-IN')}</span></p>
               )}
               {sub.next_charge_at && !sub.cancel_requested_at && (
-                <p>Next billing: <span className="text-gray-900 font-medium">{new Date(sub.next_charge_at).toLocaleString('en-IN')}</span></p>
+                <p>Next billing: <span className="text-gray-900 font-medium">{new Date(sub.next_charge_at).toLocaleString('en-IN', {
+                  timeZone: 'Asia/Kolkata',
+                  dateStyle: 'medium',
+                  timeStyle: 'short',
+                })}</span></p>
               )}
               {sub.grace_ends_at && <p className="text-amber-700">Payment grace ends {new Date(sub.grace_ends_at).toLocaleString('en-IN')}</p>}
               {sub.cancel_requested_at && <p className="text-amber-700">Cancellation requested · access until {sub.access_until ? new Date(sub.access_until).toLocaleString('en-IN') : 'the current period end'}</p>}
