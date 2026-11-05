@@ -106,6 +106,72 @@ class Subscription extends Model
             && ! (bool) $this->grace_ends_at?->isFuture();
     }
 
+    public function authorizationState(): string
+    {
+        if (! $this->billing_cycle || $this->plan === 'free') {
+            return 'not_applicable';
+        }
+
+        return $this->authorized_at
+            && in_array($this->provider_status, ['authenticated', 'active'], true)
+                ? 'authorized'
+                : 'pending';
+    }
+
+    public function renewalMode(): string
+    {
+        if ($this->plan === 'free' || $this->cancel_requested_at || $this->isExpired()) {
+            return 'none';
+        }
+
+        if ($this->authorizationState() === 'authorized' && $this->is_active) {
+            return 'automatic';
+        }
+
+        return $this->billing_cycle ? 'pending' : 'manual';
+    }
+
+    public function lifecycleState(): string
+    {
+        if ($this->plan === 'free') {
+            return 'free';
+        }
+
+        if ($this->status === 'expired' || $this->isExpired()) {
+            return 'expired';
+        }
+
+        if ($this->grace_ends_at?->isFuture() && $this->last_payment_failed_at) {
+            return 'grace_period';
+        }
+
+        if ($this->cancel_requested_at) {
+            return 'cancellation_pending';
+        }
+
+        if ($this->status === 'cancelled') {
+            return 'cancelled';
+        }
+
+        if ($this->status === 'trialing') {
+            return $this->authorizationState() === 'authorized'
+                ? 'trial_authorized'
+                : 'trial_pending_authorization';
+        }
+
+        if ($this->status === 'active' && $this->renewalMode() === 'automatic') {
+            return 'active_auto_renew';
+        }
+
+        return $this->status === 'active' ? 'active' : 'unknown';
+    }
+
+    public function canResumeAuthorization(): bool
+    {
+        return $this->lifecycleState() === 'trial_pending_authorization'
+            && ! $this->is_active;
+    }
+
     public function scopeActive($query)
     {
         return $query->where('is_active', true)

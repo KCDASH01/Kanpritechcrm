@@ -9,76 +9,9 @@ import { subscriptionApi } from '@/lib/api/subscription';
 import type { Subscription } from '@/types';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { SetPasswordModal } from '@/components/layout/SetPasswordModal';
+import { SubscriptionStatusNotice } from '@/components/subscription/SubscriptionStatusNotice';
 
 // ── Subscription banners ──────────────────────────────────────────────────────
-
-function SubscriptionExpiredBanner({ sub }: { sub: Subscription }) {
-  const planLabel = sub.plan === 'enterprise' ? 'Enterprise' : 'Business';
-  const expiredOn = sub.end_date
-    ? new Date(sub.end_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-    : null;
-
-  return (
-    <div className="mb-4 flex flex-col items-stretch gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 sm:flex-row sm:items-center">
-      <div className="shrink-0 w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
-        <svg className="w-4 h-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-            d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-        </svg>
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-red-800">
-          Your {planLabel} subscription has expired
-          {expiredOn ? ` (${expiredOn})` : ''}.
-        </p>
-        <p className="text-xs text-red-600 mt-0.5">
-          Access to paid features is restricted. Renew or upgrade to continue.
-        </p>
-      </div>
-      <Link
-        href="/plans"
-        className="shrink-0 rounded-lg bg-red-600 px-3 py-2 text-center text-xs font-bold text-white transition-colors hover:bg-red-700 sm:py-1.5"
-      >
-        View Plans
-      </Link>
-    </div>
-  );
-}
-
-function SubscriptionExpiringSoonBanner({ sub }: { sub: Subscription }) {
-  const planLabel = sub.plan === 'enterprise' ? 'Enterprise' : 'Business';
-  const endDate   = sub.end_date ? new Date(sub.end_date) : null;
-  if (!endDate) return null;
-
-  const daysLeft = Math.ceil((endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-
-  return (
-    <div className="mb-4 flex flex-col items-stretch gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center">
-      <div className="shrink-0 w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
-        <svg className="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-amber-800">
-          Your {planLabel} plan expires in {daysLeft} day{daysLeft !== 1 ? 's' : ''}.
-        </p>
-        <p className="text-xs text-amber-700 mt-0.5">
-          Renew before{' '}
-          {endDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}{' '}
-          to avoid any interruption.
-        </p>
-      </div>
-      <Link
-        href="/plans"
-        className="shrink-0 rounded-lg bg-amber-200 px-3 py-2 text-center text-xs font-bold text-amber-900 transition-colors hover:bg-amber-300 sm:py-1.5"
-      >
-        Renew Now
-      </Link>
-    </div>
-  );
-}
 
 function NoSubscriptionWall() {
   return (
@@ -179,13 +112,7 @@ export default function DashboardGroupLayout({ children }: { children: React.Rea
 
   // ── Subscription status ────────────────────────────────────────────────────
   const subReady    = !subLoading;
-  const isPaidPlan  = liveSub?.plan === 'growth' || liveSub?.plan === 'business' || liveSub?.plan === 'enterprise';
-  const isExpired   = liveSub?.is_expired === true;
   const noActiveSub = subReady && liveSub === null;
-
-  // Days until expiry for "expiring soon" warning (null = free / no end_date)
-  const ms = msUntilExpiry(liveSub);
-  const expiringSoon = ms !== null && ms > 0 && ms < 7 * 24 * 60 * 60 * 1000 && isPaidPlan;
 
   return (
     <>
@@ -193,8 +120,7 @@ export default function DashboardGroupLayout({ children }: { children: React.Rea
       <DashboardLayout>
         {/* ── Subscription banners (shown at top of content area) ── */}
         {noActiveSub && <NoSubscriptionWall />}
-        {!noActiveSub && isExpired && isPaidPlan && <SubscriptionExpiredBanner sub={liveSub!} />}
-        {!noActiveSub && !isExpired && expiringSoon && <SubscriptionExpiringSoonBanner sub={liveSub!} />}
+        {!noActiveSub && liveSub && <div className="mb-4"><SubscriptionStatusNotice subscription={liveSub} /></div>}
 
         {children}
       </DashboardLayout>

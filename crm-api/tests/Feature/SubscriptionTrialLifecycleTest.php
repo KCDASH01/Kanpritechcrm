@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Resources\SubscriptionResource;
 use App\Http\Middleware\CheckSubscription;
 use App\Models\Organization;
 use App\Models\Subscription;
@@ -535,5 +536,61 @@ class SubscriptionTrialLifecycleTest extends TestCase
             'plan' => 'free',
             'is_active' => true,
         ]);
+    }
+
+    public function test_subscription_resource_exposes_ui_lifecycle_without_changing_subscription_data(): void
+    {
+        $trial = new Subscription([
+            'plan' => 'business', 'billing_cycle' => 'yearly', 'status' => 'trialing',
+            'provider_status' => 'authenticated', 'is_active' => true,
+            'authorized_at' => now(), 'next_charge_at' => now()->addDays(7),
+            'access_until' => now()->addDays(7), 'amount' => 19990, 'currency' => 'INR',
+        ]);
+        $trialData = (new SubscriptionResource($trial))->resolve(request());
+        self::assertSame('trial_authorized', $trialData['lifecycle_state']);
+        self::assertSame('authorized', $trialData['authorization_state']);
+        self::assertSame('automatic', $trialData['renewal_mode']);
+        self::assertFalse($trialData['can_resume_authorization']);
+
+        $pending = new Subscription([
+            'plan' => 'growth', 'billing_cycle' => 'monthly', 'status' => 'trialing',
+            'provider_status' => 'created', 'is_active' => false,
+            'amount' => 799, 'currency' => 'INR',
+        ]);
+        $pendingData = (new SubscriptionResource($pending))->resolve(request());
+        self::assertSame('trial_pending_authorization', $pendingData['lifecycle_state']);
+        self::assertSame('pending', $pendingData['authorization_state']);
+        self::assertSame('pending', $pendingData['renewal_mode']);
+        self::assertTrue($pendingData['can_resume_authorization']);
+
+        $active = new Subscription([
+            'plan' => 'business', 'billing_cycle' => 'monthly', 'status' => 'active',
+            'provider_status' => 'active', 'is_active' => true, 'authorized_at' => now(),
+            'current_period_end' => now()->addMonth(), 'access_until' => now()->addMonth(),
+        ]);
+        self::assertSame('active_auto_renew', $active->lifecycleState());
+        self::assertSame('automatic', $active->renewalMode());
+
+        $active->cancel_requested_at = now();
+        self::assertSame('cancellation_pending', $active->lifecycleState());
+        self::assertSame('none', $active->renewalMode());
+
+        $grace = new Subscription([
+            'plan' => 'business', 'billing_cycle' => 'monthly', 'status' => 'active',
+            'is_active' => true, 'last_payment_failed_at' => now(),
+            'grace_ends_at' => now()->addDays(3), 'access_until' => now()->addDays(3),
+        ]);
+        self::assertSame('grace_period', $grace->lifecycleState());
+
+        $expired = new Subscription([
+            'plan' => 'business', 'billing_cycle' => 'monthly', 'status' => 'expired',
+            'is_active' => false, 'access_until' => now()->subDay(),
+        ]);
+        self::assertSame('expired', $expired->lifecycleState());
+
+        $free = new Subscription(['plan' => 'free', 'status' => 'active', 'is_active' => true]);
+        self::assertSame('free', $free->lifecycleState());
+        self::assertSame('not_applicable', $free->authorizationState());
+        self::assertSame('none', $free->renewalMode());
     }
 }

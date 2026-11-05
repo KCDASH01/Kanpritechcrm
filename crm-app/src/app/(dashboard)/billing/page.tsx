@@ -7,6 +7,8 @@ import { useAuthStore } from '@/store/authStore';
 import { AccessDenied } from '@/components/ui/AccessDenied';
 import { PaymentSuccessModal } from '@/components/ui/PaymentSuccessModal';
 import { GrowneqLogo } from '@/components/brand/GrowneqLogo';
+import { SubscriptionStatusNotice } from '@/components/subscription/SubscriptionStatusNotice';
+import { formatSubscriptionAmount, formatSubscriptionDate } from '@/lib/subscriptionStatus';
 
 // Extend Window for Razorpay
 declare global {
@@ -113,6 +115,9 @@ export default function BillingPage() {
       : sub?.plan === 'growth'
         ? 'bg-emerald-600 text-white'
         : 'bg-gray-100 text-gray-700';
+  const billingAmount = sub ? formatSubscriptionAmount(sub) : null;
+  const nextBillingDate = sub ? formatSubscriptionDate(sub.next_charge_at ?? sub.current_period_end, sub.currency) : null;
+  const accessUntilDate = sub ? formatSubscriptionDate(sub.access_until ?? sub.end_date, sub.currency) : null;
 
   const extraPurchased  = sub?.extra_members_purchased ?? 0;
   const totalTeamLimit  = sub?.total_team_limit ?? 0;
@@ -230,35 +235,27 @@ export default function BillingPage() {
             <div className="w-5 h-5 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : sub ? (
-          <div className="flex items-center gap-4 flex-wrap">
-            <div className={`px-4 py-2 rounded-xl font-bold text-lg ${planColor}`}>
-              {planLabel}
+          <div className="space-y-4">
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className={`px-4 py-2 rounded-xl font-bold text-lg ${planColor}`}>
+                {planLabel}
+              </div>
+              <div className="text-sm text-gray-500">
+                {billingAmount && <p>Plan price: <span className="text-gray-900 font-medium">{billingAmount} / {sub.billing_cycle ?? 'billing period'}</span></p>}
+                {sub.renewal_mode === 'automatic' && nextBillingDate && (
+                  <p>Next billing: <span className="text-gray-900 font-medium">{nextBillingDate}</span></p>
+                )}
+                {(sub.lifecycle_state === 'cancellation_pending' || sub.lifecycle_state === 'expired' || sub.lifecycle_state === 'cancelled') && accessUntilDate && (
+                  <p>Access through: <span className="text-gray-900 font-medium">{accessUntilDate}</span></p>
+                )}
+              </div>
+              {sub.is_active && !sub.cancel_requested_at && !sub.is_expired && sub.plan !== 'free' && (
+                <button onClick={handleCancelSubscription} disabled={cancelLoading} className="ml-auto rounded-xl border border-red-200 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50">
+                  {cancelLoading ? 'Cancelling…' : 'Cancel Subscription'}
+                </button>
+              )}
             </div>
-            <div className="text-sm text-gray-500">
-              <p>Status: <span className="text-gray-900 font-medium capitalize">{sub.status}</span></p>
-              {sub.end_date && (
-                <p>Expires: <span className="text-gray-900 font-medium">
-                  {new Date(sub.end_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                </span></p>
-              )}
-              {sub.amount && (
-                <p>Amount: <span className="text-gray-900 font-medium">{sub.currency} {Number(sub.amount).toLocaleString('en-IN')}</span></p>
-              )}
-              {sub.next_charge_at && !sub.cancel_requested_at && (
-                <p>Next billing: <span className="text-gray-900 font-medium">{new Date(sub.next_charge_at).toLocaleString('en-IN', {
-                  timeZone: 'Asia/Kolkata',
-                  dateStyle: 'medium',
-                  timeStyle: 'short',
-                })}</span></p>
-              )}
-              {sub.grace_ends_at && <p className="text-amber-700">Payment grace ends {new Date(sub.grace_ends_at).toLocaleString('en-IN')}</p>}
-              {sub.cancel_requested_at && <p className="text-amber-700">Cancellation requested · access until {sub.access_until ? new Date(sub.access_until).toLocaleString('en-IN') : 'the current period end'}</p>}
-            </div>
-            {!sub.cancel_requested_at && sub.plan !== 'free' && (
-              <button onClick={handleCancelSubscription} disabled={cancelLoading} className="ml-auto rounded-xl border border-red-200 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50">
-                {cancelLoading ? 'Cancelling…' : 'Cancel Subscription'}
-              </button>
-            )}
+            <SubscriptionStatusNotice subscription={sub} surface="billing" />
           </div>
         ) : (
           <p className="text-gray-400 text-sm">No active subscription.</p>

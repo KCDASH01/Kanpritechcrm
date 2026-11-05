@@ -19,9 +19,13 @@ export interface Subscription {
   id: number;
   plan: 'free' | 'growth' | 'business' | 'enterprise';
   subscription_source: 'internal' | 'external';
-  status: 'active' | 'cancelled' | 'expired' | 'trialing';
+  status: 'active' | 'cancelled' | 'expired' | 'trialing' | 'pending_authorization';
   is_active: boolean;
   is_read_only?: boolean;
+  lifecycle_state?: 'free' | 'trial_pending_authorization' | 'trial_authorized' | 'active_auto_renew' | 'active' | 'cancellation_pending' | 'grace_period' | 'cancelled' | 'expired' | 'unknown';
+  authorization_state?: 'authorized' | 'pending' | 'not_applicable';
+  renewal_mode?: 'automatic' | 'pending' | 'manual' | 'none';
+  can_resume_authorization?: boolean;
   provider_status?: string | null;
   billing_cycle?: 'monthly' | 'yearly' | null;
   start_date: string | null;
