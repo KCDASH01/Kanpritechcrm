@@ -58,6 +58,12 @@ return [
         ],
     ],
 
+    'promotions' => [
+        'enabled' => env('SUBSCRIPTION_PROMOTIONS_ENABLED', false),
+        'razorpay_subscription_offers_enabled' => env('RAZORPAY_SUBSCRIPTION_OFFERS_ENABLED', false),
+        'reservation_minutes' => (int) env('PROMOTION_RESERVATION_MINUTES', 30),
+    ],
+
     'sales_contact' => [
         'email' => env('SALES_CONTACT_EMAIL', 'contact@kanpritech.com'),
         'whatsapp' => env('SALES_CONTACT_WHATSAPP', '917751973970'),

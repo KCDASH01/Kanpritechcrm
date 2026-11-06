@@ -8,6 +8,7 @@ use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\AiConfigController;
 use App\Http\Controllers\WhatsAppTemplateController;
+use App\Http\Controllers\PromotionController;
 use Illuminate\Support\Facades\Route;
 
 // ── Auth ───────────────────────────────────────────────────────────────────────
@@ -45,6 +46,10 @@ Route::middleware('auth:admin')->group(function () {
     Route::get('organizations/{organization}/activate',                      [SubscriptionController::class, 'showActivate'])->name('subscriptions.activate.form');
     Route::post('organizations/{organization}/activate',                     [SubscriptionController::class, 'activate'])->name('subscriptions.activate');
     Route::post('subscriptions/{subscription}/cancel',                       [SubscriptionController::class, 'cancel'])->name('subscriptions.cancel');
+
+    Route::resource('promotions', PromotionController::class)->except(['destroy']);
+    Route::post('promotions/{promotion}/state', [PromotionController::class, 'state'])->name('promotions.state');
+    Route::post('promotions/{promotion}/duplicate', [PromotionController::class, 'duplicate'])->name('promotions.duplicate');
 
     // Sales Targets — managed in crm-app under owner/admin role (/targets)
 

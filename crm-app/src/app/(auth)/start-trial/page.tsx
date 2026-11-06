@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { subscriptionApi, type TrialAuthorization } from '@/lib/api/subscription';
+import { subscriptionApi, type PromotionQuote, type TrialAuthorization } from '@/lib/api/subscription';
 import { authApi } from '@/lib/api/auth';
 import { useAuthStore } from '@/store/authStore';
 import { AuthBrand } from '@/components/brand/GrowneqLogo';
@@ -19,6 +19,10 @@ export default function StartTrialPage() {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [storedSelection, setStoredSelection] = useState<{ plan: string; billing_cycle: string } | null>(null);
   const [selectionReady, setSelectionReady] = useState(false);
+  const [couponCode, setCouponCode] = useState('');
+  const [promotion, setPromotion] = useState<PromotionQuote | null>(null);
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [promotionsEnabled, setPromotionsEnabled] = useState(false);
 
   useEffect(() => {
     const script = document.createElement('script');
@@ -26,6 +30,10 @@ export default function StartTrialPage() {
     script.async = true;
     document.body.appendChild(script);
     return () => { script.remove(); };
+  }, []);
+
+  useEffect(() => {
+    subscriptionApi.getPricing().then((pricing) => setPromotionsEnabled(pricing.promotions_enabled)).catch(() => setPromotionsEnabled(false));
   }, []);
 
   useEffect(() => {
@@ -57,8 +65,11 @@ export default function StartTrialPage() {
     setLoading(true);
     setError(null);
     try {
-      if (!storedSelection || storedSelection.plan !== plan || storedSelection.billing_cycle !== billingCycle) {
-        await subscriptionApi.selectTrial({ plan, billing_cycle: billingCycle, currency: 'INR' });
+      if (couponCode.trim() && !promotion) {
+        throw new Error('Apply the coupon before continuing.');
+      }
+      if (!storedSelection || storedSelection.plan !== plan || storedSelection.billing_cycle !== billingCycle || Boolean(promotion)) {
+        await subscriptionApi.selectTrial({ plan, billing_cycle: billingCycle, currency: 'INR', coupon_code: promotion?.code ?? undefined });
         setStoredSelection({ plan, billing_cycle: billingCycle });
       }
       const details = await subscriptionApi.authorizeTrial();
@@ -87,13 +98,27 @@ export default function StartTrialPage() {
       });
       checkout.open();
     } catch (requestError: unknown) {
-      const apiError = requestError as { response?: { data?: { message?: string } } };
-      setError(apiError.response?.data?.message ?? 'Unable to start secure authorization.');
+      const apiError = requestError as { message?: string; response?: { data?: { message?: string; errors?: Record<string, string[]> } } };
+      setError(apiError.response?.data?.errors?.coupon_code?.[0] ?? apiError.response?.data?.message ?? apiError.message ?? 'Unable to start secure authorization.');
       setLoading(false);
     }
   }
 
   const currencySymbol = authorization?.currency === 'INR' ? '₹' : '$';
+
+  async function applyCoupon() {
+    const code = couponCode.trim().toUpperCase();
+    if (!code) return;
+    setCouponLoading(true); setError(null); setPromotion(null); setAuthorization(null);
+    try {
+      const result = await subscriptionApi.validatePromotion({ plan, billing_cycle: billingCycle, currency: 'INR', coupon_code: code });
+      if (!result.gateway_supported) throw new Error('This coupon is not yet available for secure Razorpay checkout.');
+      setCouponCode(result.code ?? code); setPromotion(result);
+    } catch (requestError: unknown) {
+      const apiError = requestError as { message?: string; response?: { data?: { message?: string; errors?: Record<string, string[]> } } };
+      setError(apiError.response?.data?.errors?.coupon_code?.[0] ?? apiError.response?.data?.message ?? apiError.message ?? 'Coupon could not be applied.');
+    } finally { setCouponLoading(false); }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -103,21 +128,34 @@ export default function StartTrialPage() {
         <p className="mt-2 text-sm text-gray-600">Payment method required. Cancel anytime before your trial ends to avoid the subscription charge.</p>
         <div className="mt-6 grid grid-cols-2 gap-3">
           <label className="text-xs font-semibold text-gray-700">Plan
-            <select value={plan} onChange={(event) => { setPlan(event.target.value as 'growth' | 'business'); setAuthorization(null); }} className="mt-1.5 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm">
+            <select value={plan} onChange={(event) => { setPlan(event.target.value as 'growth' | 'business'); setAuthorization(null); setPromotion(null); }} className="mt-1.5 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm">
               <option value="growth">Growth</option><option value="business">Business</option>
             </select>
           </label>
           <label className="text-xs font-semibold text-gray-700">Billing
-            <select value={billingCycle} onChange={(event) => { setBillingCycle(event.target.value as 'monthly' | 'yearly'); setAuthorization(null); }} className="mt-1.5 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm">
+            <select value={billingCycle} onChange={(event) => { setBillingCycle(event.target.value as 'monthly' | 'yearly'); setAuthorization(null); setPromotion(null); }} className="mt-1.5 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm">
               <option value="monthly">Monthly</option><option value="yearly">Yearly</option>
             </select>
           </label>
         </div>
+        {promotionsEnabled && <div className="mt-4">
+          <label className="text-xs font-semibold text-gray-700" htmlFor="coupon-code">Coupon code</label>
+          <div className="mt-1.5 flex gap-2">
+            <input id="coupon-code" value={couponCode} onChange={(event) => { setCouponCode(event.target.value.toUpperCase()); setPromotion(null); setAuthorization(null); }} maxLength={64} placeholder="Enter code" className="min-w-0 flex-1 rounded-xl border border-gray-300 px-3 py-2.5 text-sm uppercase" />
+            <button type="button" onClick={applyCoupon} disabled={!couponCode.trim() || couponLoading} className="rounded-xl border border-indigo-200 px-4 py-2.5 text-sm font-semibold text-indigo-700 disabled:opacity-50">{couponLoading ? 'Checking…' : 'Apply'}</button>
+          </div>
+          {promotion && <p className="mt-2 text-sm font-medium text-emerald-700">{promotion.code} applied — saving ₹{(promotion.discount_minor / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}.</p>}
+        </div>}
         <div className="my-6 rounded-xl bg-indigo-50 p-4 text-sm text-indigo-950">
           {authorization ? (
             <>
               <p className="font-semibold capitalize">{authorization.plan} · {authorization.billing_cycle}</p>
-              <p className="mt-1">First charge: {currencySymbol}{authorization.amount.toLocaleString()} plus applicable taxes</p>
+              {authorization.promotion ? <>
+                <p className="mt-1">Regular price: {currencySymbol}{(authorization.promotion.original_amount_minor / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                <p>Coupon savings: −{currencySymbol}{(authorization.promotion.discount_minor / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+                <p className="font-semibold">First billing amount: {currencySymbol}{(authorization.promotion.first_billing_amount_minor / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })} plus applicable taxes</p>
+                <p>Regular renewal: {currencySymbol}{(authorization.promotion.regular_renewal_amount_minor / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+              </> : <p className="mt-1">First charge: {currencySymbol}{authorization.amount.toLocaleString()} plus applicable taxes</p>}
               <p>First billing date: {new Date(authorization.first_billing_at).toLocaleString('en-IN')}</p>
               <p className="mt-2 text-xs">{authorization.authorization_disclosure}</p>
             </>
@@ -126,7 +164,7 @@ export default function StartTrialPage() {
           )}
         </div>
         {error && <div className="mb-4 space-y-3 rounded-xl bg-red-50 p-3 text-sm text-red-700"><p>{error}</p><div className="flex flex-col gap-2 sm:flex-row"><Link href="/contact-sales" className="rounded-lg bg-white px-3 py-2 text-center font-semibold text-indigo-700 ring-1 ring-indigo-200">Contact sales</Link><SalesWhatsAppButton className="px-3 py-2" /></div></div>}
-        <button onClick={begin} disabled={loading || !selectionReady} className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
+        <button onClick={begin} disabled={loading || !selectionReady || (Boolean(couponCode.trim()) && !promotion)} className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
           {loading ? 'Opening secure authorization…' : 'Authorize payment method and start trial'}
         </button>
         <p className="mt-4 text-center text-xs text-gray-500">The subscription fee is not charged during the trial. Authorization is verified by the server before access is granted.</p>

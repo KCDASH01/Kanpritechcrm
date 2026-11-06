@@ -98,6 +98,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('subscription/trial/authorize', [TrialSubscriptionController::class, 'authorizePaymentMethod']);
         Route::post('subscription/trial/select', [TrialSubscriptionController::class, 'select']);
         Route::post('subscription/trial/verify', [TrialSubscriptionController::class, 'verify']);
+        Route::post('subscription/promotions/validate', [TrialSubscriptionController::class, 'validatePromotion']);
     });
     Route::get('subscription/transactions', [TrialSubscriptionController::class, 'transactions']);
 

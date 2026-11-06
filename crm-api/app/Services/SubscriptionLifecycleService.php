@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Organization;
+use App\Models\PromotionRedemption;
 use App\Models\Subscription;
 use App\Models\SubscriptionAuditEvent;
 use App\Models\SubscriptionTransaction;
@@ -16,6 +17,8 @@ class SubscriptionLifecycleService
     public function __construct(
         private readonly RazorpaySubscriptionGateway $gateway,
         private readonly SubscriptionPricingService $pricing,
+        private readonly PromotionService $promotions,
+        private readonly RazorpayPromotionAdapter $promotionAdapter,
     ) {}
 
     public function createPending(Organization $organization, User $owner, string $plan, string $cycle, string $currency): Subscription
@@ -37,7 +40,7 @@ class SubscriptionLifecycleService
         ]);
     }
 
-    public function selectTrial(Organization $organization, User $actor, string $plan, string $cycle, string $currency): Subscription
+    public function selectTrial(Organization $organization, User $actor, string $plan, string $cycle, string $currency, ?string $couponCode = null): Subscription
     {
         $active = $organization->activeSubscription();
         if ($active && $active->plan !== 'free') {
@@ -63,10 +66,10 @@ class SubscriptionLifecycleService
                 'amount' => $quote['amount'], 'provider_status' => 'created',
             ]);
 
-            return $pending->fresh();
+            return $this->attachPromotion($organization, $pending->fresh(), $couponCode);
         }
 
-        return $this->createPending($organization, $actor, $plan, $cycle, $currency);
+        return $this->attachPromotion($organization, $this->createPending($organization, $actor, $plan, $cycle, $currency), $couponCode);
     }
 
     public function startAuthorization(Organization $organization, User $actor): array
@@ -81,12 +84,16 @@ class SubscriptionLifecycleService
         }
         $quote = $this->pricing->quote($subscription->plan, $subscription->billing_cycle, $subscription->currency);
         $gatewayPlanId = $this->gateway->planId($subscription->plan, $subscription->billing_cycle, $subscription->currency);
+        $redemption = $this->promotionRedemption($subscription);
+        if ($redemption) {
+            $this->promotions->revalidate($redemption);
+        }
 
         if ($subscription->gateway_subscription_id && $subscription->provider_status === 'created') {
             return $this->authorizationResponse($subscription, $quote);
         }
 
-        $created = $this->gateway->createSubscription([
+        $payload = $this->promotionAdapter->applyToSubscriptionPayload([
             'plan_id' => $gatewayPlanId,
             'total_count' => max(1, (int) config("services.razorpay.subscription_total_count.{$subscription->billing_cycle}")),
             'quantity' => 1,
@@ -98,7 +105,8 @@ class SubscriptionLifecycleService
                 'local_subscription_id' => (string) $subscription->id,
                 'environment' => config('services.razorpay.test_mode') ? 'test' : 'live',
             ],
-        ]);
+        ], $redemption);
+        $created = $this->gateway->createSubscription($payload);
 
         $subscription->update([
             'gateway_subscription_id' => $created['id'],
@@ -131,6 +139,11 @@ class SubscriptionLifecycleService
         $remote = $this->gateway->fetchSubscription($gatewaySubscriptionId);
         if (! in_array($remote['status'] ?? null, ['authenticated', 'active'], true)) {
             throw ValidationException::withMessages(['payment' => 'Razorpay has not verified the recurring payment authorization.']);
+        }
+        $redemption = $this->promotionRedemptionByOrganization($organization, $gatewaySubscriptionId);
+        if ($redemption && (! $redemption->gateway_offer_id
+            || ! hash_equals($redemption->gateway_offer_id, (string) ($remote['offer_id'] ?? '')))) {
+            throw ValidationException::withMessages(['coupon_code' => 'Razorpay did not confirm the reserved coupon offer.']);
         }
 
         return DB::transaction(function () use ($organization, $actor, $gatewaySubscriptionId, $paymentId, $remote) {
@@ -243,7 +256,7 @@ class SubscriptionLifecycleService
 
     private function authorizationResponse(Subscription $subscription, array $quote): array
     {
-        return [
+        $response = [
             'subscription_id' => $subscription->gateway_subscription_id,
             'key' => $this->gateway->keyId(),
             'plan' => $subscription->plan,
@@ -255,6 +268,66 @@ class SubscriptionLifecycleService
             'first_billing_at' => $subscription->trial_ends_at?->toIso8601String() ?? $quote['first_billing_at']->toIso8601String(),
             'authorization_disclosure' => 'Razorpay or your bank may place a nominal authorization charge or temporary hold. Any applicable amount and refund timing are shown in Razorpay Checkout.',
         ];
+        if ($redemption = $this->promotionRedemption($subscription)) {
+            $response['promotion'] = data_get($redemption->metadata, 'quote');
+        }
+
+        return $response;
+    }
+
+    private function attachPromotion(Organization $organization, Subscription $subscription, ?string $couponCode): Subscription
+    {
+        if (! config('services.promotions.enabled', false)) {
+            if ($couponCode && trim($couponCode) !== '') {
+                throw ValidationException::withMessages(['coupon_code' => 'Coupons are not currently enabled.']);
+            }
+
+            return $subscription;
+        }
+        if (! $couponCode || trim($couponCode) === '') {
+            $this->promotions->releasePendingFor($subscription, 'coupon_removed');
+            $metadata = $subscription->external_metadata ?? [];
+            unset($metadata['promotion_redemption_id'], $metadata['promotion_code']);
+            $subscription->update(['external_metadata' => $metadata]);
+            try {
+                $redemption = $this->promotions->reserve($organization, $subscription->fresh(), null);
+                $subscription->update(['external_metadata' => array_merge($metadata, [
+                    'promotion_redemption_id' => $redemption->id,
+                    'promotion_code' => null,
+                ])]);
+            } catch (ValidationException) {
+                // No eligible automatic campaign; standard pricing remains unchanged.
+            }
+
+            return $subscription->fresh();
+        }
+
+        $this->promotions->releasePendingFor($subscription, 'coupon_replaced');
+        $redemption = $this->promotions->reserve($organization, $subscription, $couponCode);
+        $subscription->update([
+            'external_metadata' => array_merge($subscription->external_metadata ?? [], [
+                'promotion_redemption_id' => $redemption->id,
+                'promotion_code' => $redemption->campaign()->value('code'),
+            ]),
+        ]);
+
+        return $subscription->fresh();
+    }
+
+    private function promotionRedemption(Subscription $subscription): ?PromotionRedemption
+    {
+        $id = data_get($subscription->external_metadata, 'promotion_redemption_id');
+
+        return $id ? PromotionRedemption::with('campaign')->find($id) : null;
+    }
+
+    private function promotionRedemptionByOrganization(Organization $organization, string $gatewaySubscriptionId): ?PromotionRedemption
+    {
+        $subscription = Subscription::where('organization_id', $organization->id)
+            ->where('gateway_subscription_id', $gatewaySubscriptionId)
+            ->first();
+
+        return $subscription ? $this->promotionRedemption($subscription) : null;
     }
 
     private function audit(Subscription $subscription, ?User $actor, string $event, ?array $before, ?array $after): void

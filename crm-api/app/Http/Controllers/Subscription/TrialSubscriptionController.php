@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\SubscriptionResource;
 use App\Models\Subscription;
 use App\Models\SubscriptionTransaction;
+use App\Services\PromotionService;
 use App\Services\SubscriptionLifecycleService;
 use App\Services\SubscriptionPricingService;
 use Illuminate\Http\JsonResponse;
@@ -16,6 +17,7 @@ class TrialSubscriptionController extends Controller
     public function __construct(
         private readonly SubscriptionLifecycleService $lifecycle,
         private readonly SubscriptionPricingService $pricing,
+        private readonly PromotionService $promotions,
     ) {}
 
     public function pricing(): JsonResponse
@@ -24,6 +26,7 @@ class TrialSubscriptionController extends Controller
             'data' => $this->pricing->publicPlans(),
             'trial_days' => 7,
             'tax_disclosure' => 'Prices exclude applicable taxes.',
+            'promotions_enabled' => (bool) config('services.promotions.enabled', false),
         ]);
     }
 
@@ -60,6 +63,7 @@ class TrialSubscriptionController extends Controller
             'plan' => ['required', 'in:growth,business'],
             'billing_cycle' => ['required', 'in:monthly,yearly'],
             'currency' => ['required', 'in:INR,USD'],
+            'coupon_code' => ['nullable', 'string', 'max:64', 'regex:/^[A-Za-z0-9_-]+$/'],
         ]);
         if ($data['currency'] === 'USD' && ! config('services.razorpay.usd_recurring_enabled')) {
             return response()->json(['message' => 'USD recurring payments require confirmed Razorpay merchant eligibility.'], 422);
@@ -71,9 +75,34 @@ class TrialSubscriptionController extends Controller
             $data['plan'],
             $data['billing_cycle'],
             $data['currency'],
+            $data['coupon_code'] ?? null,
         );
 
         return response()->json(['data' => new SubscriptionResource($subscription)]);
+    }
+
+    public function validatePromotion(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'plan' => ['required', 'in:growth,business'],
+            'billing_cycle' => ['required', 'in:monthly,yearly'],
+            'currency' => ['required', 'in:INR,USD'],
+            'coupon_code' => ['required', 'string', 'max:64', 'regex:/^[A-Za-z0-9_-]+$/'],
+        ]);
+        if ($data['currency'] === 'USD' && ! config('services.razorpay.usd_recurring_enabled')) {
+            return response()->json(['message' => 'USD recurring payments require confirmed Razorpay merchant eligibility.'], 422);
+        }
+        $price = $this->pricing->quote($data['plan'], $data['billing_cycle'], $data['currency']);
+        $promotion = $this->promotions->quote(
+            $request->user()->organization,
+            $data['plan'],
+            $data['billing_cycle'],
+            $data['currency'],
+            $price['amount_minor'],
+            $data['coupon_code'],
+        );
+
+        return response()->json(['data' => $promotion]);
     }
 
     public function verify(Request $request): JsonResponse

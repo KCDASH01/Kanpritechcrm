@@ -13,6 +13,8 @@ use Throwable;
 
 class SubscriptionWebhookService
 {
+    public function __construct(private readonly PromotionReconciliationService $promotions) {}
+
     public function process(SubscriptionGatewayEvent $event): string
     {
         try {
@@ -35,8 +37,17 @@ class SubscriptionWebhookService
                 $payload = $lockedEvent->payload;
                 $remote = data_get($payload, 'payload.subscription.entity');
                 $payment = data_get($payload, 'payload.payment.entity');
+                $refund = data_get($payload, 'payload.refund.entity');
+                $invoice = data_get($payload, 'payload.invoice.entity');
                 $gatewayId = $remote['id'] ?? $lockedEvent->gateway_subscription_id;
                 $subscription = Subscription::where('gateway_subscription_id', $gatewayId)->lockForUpdate()->first();
+                $relatedPaymentId = $payment['id'] ?? $refund['payment_id'] ?? null;
+                if (! $subscription && $relatedPaymentId) {
+                    $transaction = SubscriptionTransaction::where('gateway_payment_id', $relatedPaymentId)->first();
+                    $subscription = $transaction?->subscription_id
+                        ? Subscription::whereKey($transaction->subscription_id)->lockForUpdate()->first()
+                        : null;
+                }
                 if (! $subscription) {
                     $lockedEvent->update(['processing_status' => 'ignored', 'processed_at' => now()]);
 
@@ -95,8 +106,10 @@ class SubscriptionWebhookService
                         'status' => $expired ? 'cancelled' : $subscription->status,
                         'is_active' => ! $expired,
                     ]);
+                    $this->promotions->releaseUnapplied($subscription, 'cancelled');
                 } elseif (in_array($type, ['subscription.completed', 'subscription.expired'], true)) {
                     $subscription->update(['provider_status' => $remote['status'] ?? 'expired', 'status' => 'expired', 'is_active' => false]);
+                    $this->promotions->releaseUnapplied($subscription, 'released');
                 }
 
                 if ($payment && ! empty($payment['id'])) {
@@ -115,6 +128,12 @@ class SubscriptionWebhookService
                             'occurred_at' => $this->date($payment['created_at'] ?? null) ?? now(),
                         ]
                     );
+                }
+
+                if ($type === 'subscription.charged' && $payment) {
+                    $this->promotions->paymentSucceeded($subscription, $remote ?? [], $payment, is_array($invoice) ? $invoice : null);
+                } elseif (in_array($type, ['payment.refunded', 'refund.processed'], true) && $relatedPaymentId) {
+                    $this->promotions->paymentRefunded(['id' => $relatedPaymentId]);
                 }
 
                 if ($eventTimestamp) {

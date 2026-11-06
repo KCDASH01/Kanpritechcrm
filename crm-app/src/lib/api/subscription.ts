@@ -38,6 +38,23 @@ export interface TrialAuthorization {
   tax_exclusive: true;
   first_billing_at: string;
   authorization_disclosure: string;
+  promotion?: PromotionQuote;
+}
+
+export interface PromotionQuote {
+  campaign_id: number;
+  code: string | null;
+  name: string;
+  discount_type: 'percentage' | 'fixed';
+  percentage: number | null;
+  original_amount_minor: number;
+  discount_minor: number;
+  first_billing_amount_minor: number;
+  regular_renewal_amount_minor: number;
+  currency: 'INR' | 'USD';
+  duration: 'first_cycle' | 'limited_cycles' | 'recurring';
+  discount_cycles: number | null;
+  gateway_supported: boolean;
 }
 
 export interface SeatVerifyPayload {
@@ -48,6 +65,7 @@ export interface SeatVerifyPayload {
 }
 
 export const subscriptionApi = {
+  getPricing: () => client.get<{ data: Record<string, unknown>; trial_days: number; tax_disclosure: string; promotions_enabled: boolean }>('/subscription/pricing').then((r) => r.data),
   get: () =>
     client.get<ApiResponse<Subscription | null>>('/subscription').then((r) => r.data.data),
 
@@ -82,8 +100,11 @@ export const subscriptionApi = {
   authorizeTrial: () =>
     client.post<ApiResponse<TrialAuthorization>>('/subscription/trial/authorize').then((r) => r.data.data),
 
-  selectTrial: (payload: { plan: 'growth' | 'business'; billing_cycle: 'monthly' | 'yearly'; currency: 'INR' }) =>
+  selectTrial: (payload: { plan: 'growth' | 'business'; billing_cycle: 'monthly' | 'yearly'; currency: 'INR'; coupon_code?: string }) =>
     client.post<ApiResponse<Subscription>>('/subscription/trial/select', payload).then((r) => r.data.data),
+
+  validatePromotion: (payload: { plan: 'growth' | 'business'; billing_cycle: 'monthly' | 'yearly'; currency: 'INR'; coupon_code: string }) =>
+    client.post<ApiResponse<PromotionQuote>>('/subscription/promotions/validate', payload).then((r) => r.data.data),
 
   verifyTrial: (payload: {
     razorpay_subscription_id: string;

@@ -29,6 +29,11 @@ Schedule::command('subscriptions:trial-reminders')
     ->withoutOverlapping()
     ->runInBackground();
 
+Schedule::command('promotions:sync-states')
+    ->everyFiveMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 Schedule::command('customer-growth:process')
     ->dailyAt('01:10')
     ->withoutOverlapping()
