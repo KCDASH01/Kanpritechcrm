@@ -321,7 +321,7 @@ export default function TeamPage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" data-feature-team-lifecycle="v2">
 
       {lifecycleNotice && (
         <div className="fixed right-4 top-20 z-[70] max-w-sm rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 shadow-lg" role="status" aria-live="polite">

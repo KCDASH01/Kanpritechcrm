@@ -1377,7 +1377,11 @@ export default function LeadsPage() {
           {bulkNotice}
         </div>
       )}
-      <div className="space-y-5">
+      <div
+        className="space-y-5"
+        data-feature-lead-management="v2"
+        data-summary-scope={individualLeadScope ? 'member' : 'organization'}
+      >
         {/* Header */}
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
@@ -1651,7 +1655,7 @@ export default function LeadsPage() {
             <EmptyLeads onAdd={() => setModalLead(null)} canAdd={canCreateLead} />
           ) : (
             <div className="overflow-x-auto rounded-2xl">
-          <table className="min-w-[1100px] w-full">
+          <table className="min-w-[1100px] w-full" data-bulk-selection={isManager ? 'enabled' : 'disabled'}>
                 <thead>
                   <tr className="bg-gray-50/80 border-b border-gray-100">
                     {isManager && (

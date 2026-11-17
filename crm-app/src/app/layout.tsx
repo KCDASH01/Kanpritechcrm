@@ -10,6 +10,9 @@ export const metadata: Metadata = {
   },
   description: 'Growneq CRM helps businesses manage leads, organize sales pipelines, track team performance, and streamline customer relationships in one platform.',
   applicationName: 'Growneq CRM',
+  other: {
+    'growneq-feature-set': 'lead-management-v2',
+  },
   icons: {
     icon: [
       { url: '/branding/growneq-icon-32.png', type: 'image/png', sizes: '32x32' },
