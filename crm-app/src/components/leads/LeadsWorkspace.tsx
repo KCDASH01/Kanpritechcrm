@@ -737,6 +737,35 @@ function ActionsMenu({ lead, onEdit, onDelete, onView, onConvert, onChangeStatus
   const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const statusBtnRef = useRef<HTMLButtonElement>(null);
+  const statusMenuRef = useRef<HTMLDivElement>(null);
+
+  const focusableMenuItems = (container: HTMLElement | null) =>
+    Array.from(container?.querySelectorAll<HTMLElement>('button:not([disabled]), a[href]') ?? []);
+
+  const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = focusableMenuItems(menuRef.current);
+    if (items.length === 0) return;
+    const currentIndex = items.indexOf(document.activeElement as HTMLElement);
+
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const direction = event.key === 'ArrowDown' ? 1 : -1;
+      const nextIndex = currentIndex < 0
+        ? (direction > 0 ? 0 : items.length - 1)
+        : (currentIndex + direction + items.length) % items.length;
+      items[nextIndex]?.focus();
+    } else if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      items[event.key === 'Home' ? 0 : items.length - 1]?.focus();
+    } else if (event.key === 'ArrowRight' && document.activeElement === statusBtnRef.current && !statusMenuOpen) {
+      event.preventDefault();
+      toggleStatusMenu();
+    } else if (event.key === 'ArrowLeft' && statusMenuRef.current?.contains(document.activeElement)) {
+      event.preventDefault();
+      setStatusMenuOpen(false);
+      statusBtnRef.current?.focus();
+    }
+  };
 
   const positionMenu = () => {
     if (!btnRef.current) return;
@@ -796,6 +825,18 @@ function ActionsMenu({ lead, onEdit, onDelete, onView, onConvert, onChangeStatus
     };
   }, [open, statusMenuOpen]);
 
+  useEffect(() => {
+    if (!open) return;
+    const frame = window.requestAnimationFrame(() => focusableMenuItems(menuRef.current)[0]?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [open]);
+
+  useEffect(() => {
+    if (!statusMenuOpen) return;
+    const frame = window.requestAnimationFrame(() => focusableMenuItems(statusMenuRef.current)[0]?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [statusMenuOpen]);
+
   const toggle = () => {
     if (!open && btnRef.current) {
       positionMenu();
@@ -820,6 +861,13 @@ function ActionsMenu({ lead, onEdit, onDelete, onView, onConvert, onChangeStatus
       <button
         ref={btnRef}
         onClick={toggle}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            if (!open) positionMenu();
+            setOpen(true);
+          }
+        }}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`Actions for ${lead.full_name}`}
@@ -842,27 +890,29 @@ function ActionsMenu({ lead, onEdit, onDelete, onView, onConvert, onChangeStatus
             transition={{ type: 'spring', damping: 30, stiffness: 400 }}
             style={{ position: 'fixed', top: pos.top, bottom: pos.bottom, left: pos.left, zIndex: 9999 }}
             role="menu"
+            aria-label={`Actions for ${lead.full_name}`}
+            onKeyDown={handleMenuKeyDown}
             className="w-48 max-h-[calc(100vh-1rem)] overflow-y-auto bg-white border border-gray-100 rounded-xl shadow-xl shadow-black/10 py-1"
           >
-            <button onClick={() => { onView(); setOpen(false); }} className={menuItemCls}>
+            <button role="menuitem" onClick={() => { onView(); setOpen(false); }} className={menuItemCls}>
               <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
               View Timeline
             </button>
             {canEdit && (
-              <button onClick={() => { onEdit(); setOpen(false); }} className={menuItemCls}>
+              <button role="menuitem" onClick={() => { onEdit(); setOpen(false); }} className={menuItemCls}>
                 <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                 Edit Lead
               </button>
             )}
-            <button onClick={() => { onReminder(); setOpen(false); }} className={`${menuItemCls} text-amber-700`}>
+            <button role="menuitem" onClick={() => { onReminder(); setOpen(false); }} className={`${menuItemCls} text-amber-700`}>
               <svg className="w-3.5 h-3.5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
               Set Reminder
             </button>
-            <button onClick={() => { onWhatsApp(); setOpen(false); }} className={`${menuItemCls} text-green-700`}>
+            <button role="menuitem" onClick={() => { onWhatsApp(); setOpen(false); }} className={`${menuItemCls} text-green-700`}>
               <svg className="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
               WhatsApp
             </button>
-            <button onClick={() => { onProposal(); setOpen(false); }} className={`${menuItemCls} text-indigo-700`}>
+            <button role="menuitem" onClick={() => { onProposal(); setOpen(false); }} className={`${menuItemCls} text-indigo-700`}>
               {(lead.proposals_count ?? 0) > 0 ? (
                 <>
                   <svg className="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
@@ -876,7 +926,7 @@ function ActionsMenu({ lead, onEdit, onDelete, onView, onConvert, onChangeStatus
               )}
             </button>
             {lead.status !== 'converted' && (
-              <Link href={`/billing-invoicing/documents/new?type=proforma&lead_id=${lead.id}`} onClick={() => setOpen(false)} className={`${menuItemCls} text-violet-700`}>
+              <Link role="menuitem" href={`/billing-invoicing/documents/new?type=proforma&lead_id=${lead.id}`} onClick={() => setOpen(false)} className={`${menuItemCls} text-violet-700`}>
                 <span className="text-sm">₹</span> Create Proforma
               </Link>
             )}
@@ -884,7 +934,7 @@ function ActionsMenu({ lead, onEdit, onDelete, onView, onConvert, onChangeStatus
             <div className="mx-2 my-1 border-t border-gray-100" />
 
             {lead.status !== 'converted' && (
-              <button onClick={() => { onConvert(); setOpen(false); }} className={`${menuItemCls} text-emerald-700`}>
+              <button role="menuitem" onClick={() => { onConvert(); setOpen(false); }} className={`${menuItemCls} text-emerald-700`}>
                 <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 Convert to Deal
               </button>
@@ -899,6 +949,7 @@ function ActionsMenu({ lead, onEdit, onDelete, onView, onConvert, onChangeStatus
               <div className="relative">
                 <button
                   ref={statusBtnRef}
+                  role="menuitem"
                   type="button"
                   onClick={toggleStatusMenu}
                   className={`${menuItemCls} justify-between`}
@@ -916,6 +967,7 @@ function ActionsMenu({ lead, onEdit, onDelete, onView, onConvert, onChangeStatus
 
             {statusMenuOpen && statusPos && (
               <motion.div
+                ref={statusMenuRef}
                 data-menu="true"
                 initial={{ opacity: 0, x: 6 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -928,10 +980,13 @@ function ActionsMenu({ lead, onEdit, onDelete, onView, onConvert, onChangeStatus
                   zIndex: 10000,
                 }}
                 className="w-44 bg-white border border-gray-100 rounded-xl shadow-xl shadow-black/10 py-1 max-h-[min(18rem,calc(100vh-1rem))] overflow-y-auto"
+                role="menu"
+                aria-label="Change lead status"
               >
                 {LEAD_STATUS_MENU.map((s) => (
                   <button
                     key={s}
+                    role="menuitem"
                     onClick={() => { onChangeStatus(s); setOpen(false); }}
                     className={`${menuItemCls} ${lead.status === s ? 'bg-indigo-50 text-indigo-700' : ''}`}
                   >
@@ -945,7 +1000,7 @@ function ActionsMenu({ lead, onEdit, onDelete, onView, onConvert, onChangeStatus
             <div className="mx-2 my-1 border-t border-gray-100" />
 
             {canDelete && (
-            <button onClick={() => { onDelete(); setOpen(false); }} className={`${menuItemCls} text-red-600`}>
+            <button role="menuitem" onClick={() => { onDelete(); setOpen(false); }} className={`${menuItemCls} text-red-600`}>
               <svg className="w-3.5 h-3.5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
               Delete Lead
             </button>
@@ -1035,6 +1090,7 @@ export default function LeadsPage() {
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [bulkAssignee, setBulkAssignee] = useState('');
   const [bulkError, setBulkError] = useState<string | null>(null);
+  const [bulkNotice, setBulkNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (searchParams.get('new') === '1') setModalLead(null);
@@ -1070,6 +1126,7 @@ export default function LeadsPage() {
     types:         typeFilter || undefined,
     client_type:   clientTypeFilter || undefined,
     business_type: businessTypeFilter || undefined,
+    client_id:      presetClientId,
     market_type:   marketTypeFilter || undefined,
     date_from:     dateFromFilter || undefined,
     date_to:       dateToFilter || undefined,
@@ -1080,13 +1137,13 @@ export default function LeadsPage() {
   };
 
   const hasActiveFilters = !!(
-    search || statusFilter || typeFilter || clientTypeFilter || businessTypeFilter || marketTypeFilter || teamMemberFilter || dateFromFilter || dateToFilter || departmentFilter
+    search || statusFilter || typeFilter || clientTypeFilter || businessTypeFilter || marketTypeFilter || teamMemberFilter || dateFromFilter || dateToFilter || departmentFilter || presetClientId
   );
 
   const clearAllFilters = () =>
     updateParams({
       search: null, status: null, types: null, client_type: null, business_type: null, market_type: null, member: null,
-      date_from: null, date_to: null, department: null, page: null,
+      client_id: null, date_from: null, date_to: null, department: null, page: null,
     });
 
   const { data: liveSub } = useQuery({
@@ -1105,6 +1162,12 @@ export default function LeadsPage() {
     setSelectedLeadIds(new Set());
     setSelectAllMatching(false);
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!bulkNotice) return;
+    const timeout = window.setTimeout(() => setBulkNotice(null), 4500);
+    return () => window.clearTimeout(timeout);
+  }, [bulkNotice]);
 
   // Create / Update
   const createMutation = useMutation({
@@ -1224,7 +1287,11 @@ export default function LeadsPage() {
       setSelectAllMatching(false);
       setBulkModalOpen(false);
       setBulkError(null);
-      alert(result.message);
+      setBulkNotice(
+        result.unchanged_leads > 0
+          ? `${result.reassigned_leads} lead(s) reassigned; ${result.unchanged_leads} already had that owner.`
+          : result.message,
+      );
     },
     onError: (err: unknown) => setBulkError(
       (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Bulk reassignment failed.',
@@ -1270,7 +1337,7 @@ export default function LeadsPage() {
   const leads = data?.data ?? [];
   const meta  = data?.meta;
   const summary = meta?.summary;
-  const individualLeadScope = assignedToFilter !== undefined;
+  const individualLeadScope = assignedToFilter !== undefined || unassignedFilter;
   const departmentCounts = summary?.departments ?? [];
   const selectedDepartment = departmentCounts.find(
     (d) => String(d.id) === departmentFilter,
@@ -1305,6 +1372,11 @@ export default function LeadsPage() {
 
   return (
     <>
+      {bulkNotice && (
+        <div className="fixed right-4 top-20 z-[10020] max-w-sm rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 shadow-lg" role="status" aria-live="polite">
+          {bulkNotice}
+        </div>
+      )}
       <div className="space-y-5">
         {/* Header */}
         <div className="flex items-center justify-between gap-4 flex-wrap">

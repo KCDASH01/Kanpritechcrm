@@ -16,6 +16,11 @@ export interface EmployeeRemovalPayload {
   reason?: string;
 }
 
+export interface EmployeeLifecycleResult {
+  message: string;
+  reassigned_leads: number;
+}
+
 export const employeesApi = {
   list: (params?: { role?: string; include_inactive?: boolean }) =>
     client.get<ApiResponse<User[]>>('/employees', { params }).then((r) => r.data.data),
@@ -30,13 +35,13 @@ export const employeesApi = {
     client.put<ApiResponse<User>>(`/employees/${id}`, payload).then((r) => r.data.data),
 
   removalPreview: (id: number) =>
-    client.get<{ data: { employee_id: number; assigned_leads: number } }>(`/employees/${id}/removal-preview`).then((r) => r.data.data),
+    client.get<{ data: { employee_id: number; assigned_leads: number; active_follow_ups: number } }>(`/employees/${id}/removal-preview`).then((r) => r.data.data),
 
   delete: (id: number, payload: EmployeeRemovalPayload) =>
-    client.delete(`/employees/${id}`, { data: payload }).then((r) => r.data),
+    client.delete<EmployeeLifecycleResult>(`/employees/${id}`, { data: payload }).then((r) => r.data),
 
   deactivate: (id: number, payload: EmployeeRemovalPayload) =>
-    client.post(`/employees/${id}/deactivate`, payload).then((r) => r.data),
+    client.post<EmployeeLifecycleResult>(`/employees/${id}/deactivate`, payload).then((r) => r.data),
 
   reactivate: (id: number) =>
     client.post<ApiResponse<User>>(`/employees/${id}/reactivate`).then((r) => r.data.data),

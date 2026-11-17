@@ -30,6 +30,7 @@ use App\Services\PlanEntitlementService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class LeadController extends Controller
 {
@@ -161,7 +162,7 @@ class LeadController extends Controller
         $orgId = $this->orgId($request);
         $data = $request->validate([
             'selection' => ['required', Rule::in(['selected', 'matching'])],
-            'lead_ids' => ['required_if:selection,selected', 'array', 'max:5000'],
+            'lead_ids' => ['required_if:selection,selected', 'array', 'min:1', 'max:5000'],
             'lead_ids.*' => ['integer'],
             'filters' => ['nullable', 'array'],
             'assigned_to' => [
@@ -174,10 +175,18 @@ class LeadController extends Controller
             'reason' => ['nullable', 'string', 'max:500'],
         ]);
 
-        $changed = DB::transaction(function () use ($request, $data, $orgId) {
+        $leadIds = array_values(array_unique(array_map('intval', $data['lead_ids'] ?? [])));
+
+        $result = DB::transaction(function () use ($request, $data, $orgId, $leadIds) {
             $query = $data['selection'] === 'matching'
                 ? $this->filteredLeadQuery($request, $data['filters'] ?? [])
-                : Lead::query()->where('organization_id', $orgId)->whereIn('id', $data['lead_ids'] ?? []);
+                : Lead::query()->where('organization_id', $orgId)->whereIn('id', $leadIds);
+
+            if ($data['selection'] === 'selected' && (clone $query)->count() !== count($leadIds)) {
+                throw ValidationException::withMessages([
+                    'lead_ids' => ['One or more selected leads are missing or unavailable to this organization.'],
+                ]);
+            }
 
             if ((clone $query)->count() > 5000) {
                 abort(422, 'Bulk reassignment is limited to 5,000 leads per operation. Narrow the filters and try again.');
@@ -189,18 +198,24 @@ class LeadController extends Controller
                 : null;
             $leads = $query->orderBy('leads.id')->lockForUpdate()->get();
 
-            return $this->ownership->reassignLocked(
+            $changed = $this->ownership->reassignLocked(
                 $leads,
                 $target,
                 $request->user(),
                 'bulk_transfer',
                 $data['reason'] ?? 'Bulk reassignment',
             );
+
+            return [
+                'requested_leads' => $leads->count(),
+                'reassigned_leads' => $changed,
+                'unchanged_leads' => $leads->count() - $changed,
+            ];
         });
 
         return response()->json([
-            'message' => "{$changed} lead(s) reassigned successfully.",
-            'reassigned_leads' => $changed,
+            'message' => "{$result['reassigned_leads']} lead(s) reassigned successfully.",
+            ...$result,
         ]);
     }
 
@@ -889,7 +904,7 @@ class LeadController extends Controller
                 $query->where("leads.{$field}", $value);
             }
         }
-        foreach (['stage_id', 'pipeline_id'] as $field) {
+        foreach (['stage_id', 'pipeline_id', 'client_id'] as $field) {
             if ($value = ($filters[$field] ?? null)) {
                 $query->where("leads.{$field}", $value);
             }
@@ -935,7 +950,9 @@ class LeadController extends Controller
             'international' => (int) ($marketCounts['INTERNATIONAL'] ?? 0),
         ];
 
-        if ($request->user()->isOwner() && empty($request->input('assigned_to'))) {
+        if ($request->user()->isOwner()
+            && empty($request->input('assigned_to'))
+            && ! $request->boolean('unassigned')) {
             $departmentCounts = (clone $query)
                 ->join('department_user', 'department_user.user_id', '=', 'leads.assigned_to')
                 ->join('departments', function ($join) {

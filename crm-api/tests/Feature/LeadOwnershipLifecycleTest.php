@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Activity;
 use App\Models\Lead;
 use App\Models\Organization;
 use App\Models\Subscription;
@@ -90,6 +91,14 @@ class LeadOwnershipLifecycleTest extends TestCase
             $table->string('position')->nullable();
             $table->timestamps();
         });
+        Schema::create('clients', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('organization_id');
+            $table->string('first_name')->nullable();
+            $table->string('last_name')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+        });
         Schema::create('leads', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('organization_id');
@@ -139,9 +148,14 @@ class LeadOwnershipLifecycleTest extends TestCase
         });
         Schema::create('activities', function (Blueprint $table) {
             $table->id();
+            $table->unsignedBigInteger('organization_id');
+            $table->unsignedBigInteger('created_by')->nullable();
             $table->unsignedBigInteger('assigned_to')->nullable();
             $table->string('subject_type')->nullable();
             $table->unsignedBigInteger('subject_id')->nullable();
+            $table->string('type')->nullable();
+            $table->string('title')->nullable();
+            $table->dateTime('due_at')->nullable();
             $table->boolean('is_done')->default(false);
             $table->timestamps();
             $table->softDeletes();
@@ -204,6 +218,37 @@ class LeadOwnershipLifecycleTest extends TestCase
             ->assertJsonPath('meta.summary.international', 0);
     }
 
+    public function test_employee_with_zero_leads_can_be_removed_without_affecting_other_leads(): void
+    {
+        $employee = $this->user('No Leads', 'no-leads-remove@example.com');
+        $other = $this->user('Other Employee', 'other-employee@example.com');
+        $lead = $this->lead($other, 'DOMESTIC');
+
+        $this->actingAs($this->owner)
+            ->deleteJson("/api/employees/{$employee->id}", ['lead_action' => 'unassign'])
+            ->assertOk()
+            ->assertJsonPath('reassigned_leads', 0);
+
+        $this->assertSoftDeleted('users', ['id' => $employee->id]);
+        $this->assertDatabaseHas('leads', ['id' => $lead->id, 'assigned_to' => $other->id]);
+    }
+
+    public function test_summary_and_list_share_search_client_and_employee_filters(): void
+    {
+        $included = $this->lead($this->employee, 'DOMESTIC');
+        $included->update(['first_name' => 'Acme Match', 'client_id' => 77]);
+        $excluded = $this->lead($this->employee, 'INTERNATIONAL');
+        $excluded->update(['first_name' => 'Acme Match', 'client_id' => 88]);
+
+        $this->getJson("/api/leads?assigned_to={$this->employee->id}&client_id=77&search=Acme")
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('meta.summary.total', 1)
+            ->assertJsonPath('meta.summary.domestic', 1)
+            ->assertJsonPath('meta.summary.international', 0)
+            ->assertJsonPath('data.0.id', $included->id);
+    }
+
     public function test_new_unassigned_lead_uses_null_and_is_immediately_filterable(): void
     {
         $lead = $this->lead(null, null);
@@ -212,7 +257,8 @@ class LeadOwnershipLifecycleTest extends TestCase
         $this->getJson('/api/leads?unassigned=1')
             ->assertOk()
             ->assertJsonPath('meta.total', 1)
-            ->assertJsonPath('meta.summary.total', 1);
+            ->assertJsonPath('meta.summary.total', 1)
+            ->assertJsonMissingPath('meta.summary.departments');
     }
 
     public function test_removing_employee_unassigns_leads_and_writes_audit_history(): void
@@ -229,6 +275,27 @@ class LeadOwnershipLifecycleTest extends TestCase
             'lead_id' => $lead->id, 'action' => 'assigned', 'user_id' => $this->owner->id,
         ]);
         self::assertSoftDeleted('users', ['id' => $this->employee->id]);
+    }
+
+    public function test_removal_preview_reports_assigned_leads_and_active_follow_ups(): void
+    {
+        $lead = $this->lead($this->employee, 'DOMESTIC');
+        Activity::create([
+            'organization_id' => $this->organization->id,
+            'created_by' => $this->owner->id,
+            'assigned_to' => $this->employee->id,
+            'subject_type' => Lead::class,
+            'subject_id' => $lead->id,
+            'type' => 'task',
+            'title' => 'Call lead',
+            'due_at' => now()->addDay(),
+            'is_done' => false,
+        ]);
+
+        $this->getJson("/api/employees/{$this->employee->id}/removal-preview")
+            ->assertOk()
+            ->assertJsonPath('data.assigned_leads', 1)
+            ->assertJsonPath('data.active_follow_ups', 1);
     }
 
     public function test_employee_removal_can_transfer_leads_to_active_same_org_member(): void
@@ -269,10 +336,65 @@ class LeadOwnershipLifecycleTest extends TestCase
         $this->postJson('/api/leads/bulk-reassign', [
             'selection' => 'selected', 'lead_ids' => [$first->id, $second->id],
             'assigned_to' => $target->id,
-        ])->assertOk()->assertJsonPath('reassigned_leads', 2);
+        ])->assertOk()
+            ->assertJsonPath('requested_leads', 2)
+            ->assertJsonPath('reassigned_leads', 2)
+            ->assertJsonPath('unchanged_leads', 0);
 
         self::assertSame(2, Lead::where('assigned_to', $target->id)->count());
         self::assertSame(2, DB::table('lead_timeline')->where('action', 'assigned')->count());
+    }
+
+    public function test_bulk_reassignment_handles_duplicate_ids_once(): void
+    {
+        $target = $this->user('Target', 'duplicate-target@example.com');
+        $lead = $this->lead($this->employee, 'DOMESTIC');
+
+        $this->postJson('/api/leads/bulk-reassign', [
+            'selection' => 'selected', 'lead_ids' => [$lead->id, $lead->id],
+            'assigned_to' => $target->id,
+        ])->assertOk()
+            ->assertJsonPath('requested_leads', 1)
+            ->assertJsonPath('reassigned_leads', 1);
+
+        self::assertSame(1, DB::table('lead_timeline')->where('lead_id', $lead->id)->where('action', 'assigned')->count());
+    }
+
+    public function test_bulk_reassignment_rejects_missing_or_cross_tenant_leads_without_partial_changes(): void
+    {
+        $target = $this->user('Target', 'validation-target@example.com');
+        $lead = $this->lead($this->employee, 'DOMESTIC');
+        $foreignOrg = Organization::create(['name' => 'Foreign Bulk', 'slug' => 'foreign-bulk', 'is_active' => true]);
+        $foreignOwner = User::forceCreate([
+            'organization_id' => $foreignOrg->id, 'name' => 'Foreign Owner', 'email' => 'foreign-owner@example.com',
+            'password' => 'password', 'role' => 'owner', 'is_active' => true,
+        ]);
+        $foreignLead = Lead::create([
+            'organization_id' => $foreignOrg->id, 'created_by' => $foreignOwner->id,
+            'assigned_to' => $foreignOwner->id, 'lead_date' => '2026-11-17', 'first_name' => 'Foreign Lead',
+            'status' => 'new', 'source' => 'manual',
+        ]);
+
+        $this->postJson('/api/leads/bulk-reassign', [
+            'selection' => 'selected', 'lead_ids' => [$lead->id, $foreignLead->id, 999999],
+            'assigned_to' => $target->id,
+        ])->assertUnprocessable()->assertJsonValidationErrors('lead_ids');
+
+        self::assertSame($this->employee->id, $lead->fresh()->assigned_to);
+        self::assertSame(0, DB::table('lead_timeline')->where('action', 'assigned')->count());
+    }
+
+    public function test_bulk_reassignment_rejects_inactive_destination(): void
+    {
+        $target = $this->user('Inactive Target', 'inactive-target@example.com');
+        $target->update(['is_active' => false]);
+        $lead = $this->lead($this->employee, 'DOMESTIC');
+
+        $this->postJson('/api/leads/bulk-reassign', [
+            'selection' => 'selected', 'lead_ids' => [$lead->id], 'assigned_to' => $target->id,
+        ])->assertUnprocessable()->assertJsonValidationErrors('assigned_to');
+
+        self::assertSame($this->employee->id, $lead->fresh()->assigned_to);
     }
 
     public function test_deactivate_unassigns_and_reactivate_restores_login_eligibility_without_deleting_history(): void

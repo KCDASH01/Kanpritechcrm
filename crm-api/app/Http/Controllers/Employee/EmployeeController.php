@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Employee;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Employee\EmployeeRequest;
 use App\Http\Resources\UserResource;
+use App\Models\Activity;
 use App\Models\Lead;
 use App\Models\User;
 use App\Services\LeadOwnershipService;
@@ -139,11 +140,20 @@ class EmployeeController extends Controller
         $this->authorizeManager($request);
         $this->authorizeOrg($request, $employee);
 
+        $leadQuery = Lead::query()
+            ->where('organization_id', $this->orgId($request))
+            ->where('assigned_to', $employee->id);
+
         return response()->json(['data' => [
             'employee_id' => $employee->id,
-            'assigned_leads' => Lead::query()
+            'assigned_leads' => (clone $leadQuery)->count(),
+            'active_follow_ups' => Activity::query()
                 ->where('organization_id', $this->orgId($request))
-                ->where('assigned_to', $employee->id)
+                ->whereIn('subject_type', ['lead', Lead::class])
+                ->whereIn('subject_id', $leadQuery->select('id'))
+                ->where('type', 'task')
+                ->whereNotNull('due_at')
+                ->where('is_done', false)
                 ->count(),
         ]]);
     }

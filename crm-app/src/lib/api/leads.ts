@@ -39,6 +39,7 @@ export interface LeadFilters {
   types?: string;
   stage_id?: number;
   pipeline_id?: number;
+  client_id?: number;
   assigned_to?: number | null;
   unassigned?: boolean;
   department_id?: number;
@@ -144,7 +145,12 @@ export const leadsApi = {
     filters?: LeadFilters;
     assigned_to: number | null;
     reason?: string;
-  }) => client.post<{ message: string; reassigned_leads: number }>('/leads/bulk-reassign', payload).then((r) => r.data),
+  }) => client.post<{
+    message: string;
+    requested_leads: number;
+    reassigned_leads: number;
+    unchanged_leads: number;
+  }>('/leads/bulk-reassign', payload).then((r) => r.data),
 
   get: (id: number) =>
     client.get<ApiResponse<Lead>>(`/leads/${id}`).then((r) => r.data.data),

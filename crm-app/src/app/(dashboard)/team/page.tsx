@@ -31,6 +31,8 @@ export default function TeamPage() {
   const [leadAction, setLeadAction] = useState<'transfer' | 'unassign'>('unassign');
   const [transferTo, setTransferTo] = useState('');
   const [lifecycleError, setLifecycleError] = useState<string | null>(null);
+  const [lifecycleNotice, setLifecycleNotice] = useState<string | null>(null);
+  const lifecycleDialogRef = useRef<HTMLDivElement>(null);
 
   // ── Password reset modal state ────────────────────────────────────────────
   const [pwModal,   setPwModal]   = useState<User | null>(null);
@@ -54,6 +56,12 @@ export default function TeamPage() {
     script.async = true;
     document.body.appendChild(script);
   }, []);
+
+  useEffect(() => {
+    if (!lifecycleNotice) return;
+    const timeout = window.setTimeout(() => setLifecycleNotice(null), 4500);
+    return () => window.clearTimeout(timeout);
+  }, [lifecycleNotice]);
 
   // ── Data (hooks must run before any conditional return) ─────────────────────
 
@@ -125,9 +133,13 @@ export default function TeamPage() {
   const lifecycleMutation = useMutation({
     mutationFn: ({ id, kind, payload }: { id: number; kind: 'remove' | 'deactivate'; payload: EmployeeRemovalPayload }) =>
       kind === 'remove' ? employeesApi.delete(id, payload) : employeesApi.deactivate(id, payload),
-    onSuccess: () => {
+    onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['employees'] });
       qc.invalidateQueries({ queryKey: ['leads'] });
+      const destination = leadAction === 'transfer'
+        ? `transferred to ${employees?.find((member) => member.id === Number(transferTo))?.name ?? 'the selected employee'}`
+        : 'moved to Unassigned';
+      setLifecycleNotice(`${result.reassigned_leads} lead(s) ${destination}. ${result.message}`);
       setLifecycleMember(null);
       setLifecycleError(null);
     },
@@ -136,9 +148,22 @@ export default function TeamPage() {
     ),
   });
 
+  useEffect(() => {
+    if (!lifecycleMember) return;
+    lifecycleDialogRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !lifecycleMutation.isPending) setLifecycleMember(null);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [lifecycleMember, lifecycleMutation.isPending]);
+
   const reactivateMutation = useMutation({
     mutationFn: (id: number) => employeesApi.reactivate(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['employees'] }),
+    onSuccess: (employee) => {
+      qc.invalidateQueries({ queryKey: ['employees'] });
+      setLifecycleNotice(`${employee.name} was reactivated successfully.`);
+    },
   });
 
   const resetPasswordMutation = useMutation({
@@ -298,6 +323,12 @@ export default function TeamPage() {
   return (
     <div className="space-y-5">
 
+      {lifecycleNotice && (
+        <div className="fixed right-4 top-20 z-[70] max-w-sm rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 shadow-lg" role="status" aria-live="polite">
+          {lifecycleNotice}
+        </div>
+      )}
+
       {/* ── Header ── */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3 flex-wrap">
@@ -422,7 +453,7 @@ export default function TeamPage() {
 
       {lifecycleMember && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="lifecycle-title">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+          <div ref={lifecycleDialogRef} tabIndex={-1} className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl outline-none">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 id="lifecycle-title" className="text-lg font-bold text-gray-900">
@@ -433,18 +464,27 @@ export default function TeamPage() {
                     ? 'Checking assigned leads…'
                     : `${lifecyclePreview.data?.assigned_leads ?? 0} lead(s) are currently assigned to this member.`}
                 </p>
+                {!lifecyclePreview.isLoading && !lifecyclePreview.isError && (
+                  <p className="mt-1 text-sm text-gray-500">
+                    {lifecyclePreview.data?.active_follow_ups ?? 0} active follow-up(s) will move with these leads.
+                  </p>
+                )}
               </div>
               <button onClick={() => setLifecycleMember(null)} className="text-xl text-gray-400 hover:text-gray-600" aria-label="Close">×</button>
             </div>
 
-            {lifecycleError && <div className="mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">{lifecycleError}</div>}
+            {(lifecycleError || lifecyclePreview.isError) && (
+              <div className="mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {lifecycleError ?? 'Unable to verify this employee’s assigned work. Close the dialog and try again.'}
+              </div>
+            )}
 
             <div className="mt-5 space-y-3">
               <label className="flex cursor-pointer gap-3 rounded-xl border border-gray-200 p-4">
                 <input type="radio" name="lead-action" checked={leadAction === 'transfer'} onChange={() => setLeadAction('transfer')} className="mt-1" />
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-semibold text-gray-900">Transfer leads</span>
-                  <span className="block text-xs text-gray-500">Move current lead ownership to another active team member.</span>
+                  <span className="block text-xs text-gray-500">Transfer all {lifecyclePreview.data?.assigned_leads ?? 0} lead(s) and their active follow-ups to another active team member.</span>
                   {leadAction === 'transfer' && (
                     <select value={transferTo} onChange={(event) => setTransferTo(event.target.value)} className="mt-3 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm">
                       <option value="">Select team member…</option>
@@ -457,13 +497,13 @@ export default function TeamPage() {
               </label>
               <label className="flex cursor-pointer gap-3 rounded-xl border border-gray-200 p-4">
                 <input type="radio" name="lead-action" checked={leadAction === 'unassign'} onChange={() => setLeadAction('unassign')} className="mt-1" />
-                <span><span className="block text-sm font-semibold text-gray-900">Move leads to Unassigned</span><span className="block text-xs text-gray-500">Lead records and history remain available in the Unassigned filter.</span></span>
+                <span><span className="block text-sm font-semibold text-gray-900">Move leads to Unassigned</span><span className="block text-xs text-gray-500">Move all {lifecyclePreview.data?.assigned_leads ?? 0} lead(s) to Unassigned while preserving records and history.</span></span>
               </label>
             </div>
 
             <div className="mt-6 flex gap-3">
-              <button onClick={submitLifecycle} disabled={lifecycleMutation.isPending || lifecyclePreview.isLoading} className={`flex-1 rounded-xl py-2.5 text-sm font-semibold text-white disabled:opacity-50 ${lifecycleKind === 'remove' ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-600 hover:bg-amber-700'}`}>
-                {lifecycleMutation.isPending ? 'Saving…' : lifecycleKind === 'remove' ? 'Confirm removal' : 'Confirm deactivation'}
+              <button onClick={submitLifecycle} disabled={lifecycleMutation.isPending || lifecyclePreview.isLoading || lifecyclePreview.isError} className={`flex-1 rounded-xl py-2.5 text-sm font-semibold text-white disabled:opacity-50 ${lifecycleKind === 'remove' ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-600 hover:bg-amber-700'}`}>
+                {lifecycleMutation.isPending ? 'Saving…' : leadAction === 'transfer' ? `Confirm Transfer & ${lifecycleKind === 'remove' ? 'Remove' : 'Deactivate'}` : `Confirm Unassign & ${lifecycleKind === 'remove' ? 'Remove' : 'Deactivate'}`}
               </button>
               <button onClick={() => setLifecycleMember(null)} className="rounded-xl border border-gray-200 px-4 text-sm text-gray-600">Cancel</button>
             </div>
