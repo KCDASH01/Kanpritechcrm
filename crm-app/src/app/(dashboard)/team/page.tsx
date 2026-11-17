@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { employeesApi, type EmployeePayload } from '@/lib/api/employees';
+import { employeesApi, type EmployeePayload, type EmployeeRemovalPayload } from '@/lib/api/employees';
 import { subscriptionApi } from '@/lib/api/subscription';
 import { useAuthStore } from '@/store/authStore';
 import { AccessDenied } from '@/components/ui/AccessDenied';
@@ -26,6 +26,11 @@ export default function TeamPage() {
   const [modal,     setModal]     = useState<User | null | undefined>(undefined);
   const [form,      setForm]      = useState<EmployeePayload>({ name: '', email: '', password: '' });
   const [formError, setFormError] = useState<string | null>(null);
+  const [lifecycleMember, setLifecycleMember] = useState<User | null>(null);
+  const [lifecycleKind, setLifecycleKind] = useState<'remove' | 'deactivate'>('remove');
+  const [leadAction, setLeadAction] = useState<'transfer' | 'unassign'>('unassign');
+  const [transferTo, setTransferTo] = useState('');
+  const [lifecycleError, setLifecycleError] = useState<string | null>(null);
 
   // ── Password reset modal state ────────────────────────────────────────────
   const [pwModal,   setPwModal]   = useState<User | null>(null);
@@ -54,7 +59,7 @@ export default function TeamPage() {
 
   const { data: employees, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['employees', 'team'],
-    queryFn:  () => employeesApi.list(),
+    queryFn:  () => employeesApi.list({ include_inactive: true }),
     enabled:  manageTeam,
   });
 
@@ -111,8 +116,28 @@ export default function TeamPage() {
     onError: () => setFormError('Failed to update member. Please try again.'),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => employeesApi.delete(id),
+  const lifecyclePreview = useQuery({
+    queryKey: ['employee-removal-preview', lifecycleMember?.id],
+    queryFn: () => employeesApi.removalPreview(lifecycleMember!.id),
+    enabled: lifecycleMember !== null,
+  });
+
+  const lifecycleMutation = useMutation({
+    mutationFn: ({ id, kind, payload }: { id: number; kind: 'remove' | 'deactivate'; payload: EmployeeRemovalPayload }) =>
+      kind === 'remove' ? employeesApi.delete(id, payload) : employeesApi.deactivate(id, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['employees'] });
+      qc.invalidateQueries({ queryKey: ['leads'] });
+      setLifecycleMember(null);
+      setLifecycleError(null);
+    },
+    onError: (err: unknown) => setLifecycleError(
+      (err as ApiError)?.response?.data?.message ?? 'Failed to update this team member.',
+    ),
+  });
+
+  const reactivateMutation = useMutation({
+    mutationFn: (id: number) => employeesApi.reactivate(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['employees'] }),
   });
 
@@ -235,6 +260,31 @@ export default function TeamPage() {
 
   const isPending = createMutation.isPending || updateMutation.isPending;
 
+  const openLifecycle = (employee: User, kind: 'remove' | 'deactivate') => {
+    setLifecycleMember(employee);
+    setLifecycleKind(kind);
+    setLeadAction('unassign');
+    setTransferTo('');
+    setLifecycleError(null);
+  };
+
+  const submitLifecycle = () => {
+    if (!lifecycleMember) return;
+    if (leadAction === 'transfer' && !transferTo) {
+      setLifecycleError('Select an active team member to receive the leads.');
+      return;
+    }
+    lifecycleMutation.mutate({
+      id: lifecycleMember.id,
+      kind: lifecycleKind,
+      payload: {
+        lead_action: leadAction,
+        transfer_to: leadAction === 'transfer' ? Number(transferTo) : null,
+        reason: lifecycleKind === 'remove' ? 'Removed from Team page' : 'Deactivated from Team page',
+      },
+    });
+  };
+
   if (!manageTeam) {
     return <AccessDenied reason="Team management is only available to owners and admins on the Business or Enterprise plan." />;
   }
@@ -329,7 +379,9 @@ export default function TeamPage() {
                   }`}>
                     {emp.role}
                   </span>
-                  <span className={`w-2 h-2 rounded-full ${emp.is_active ? 'bg-green-400' : 'bg-red-400'}`} />
+                  <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 ${emp.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                    {emp.is_active ? 'Active' : 'Inactive'}
+                  </span>
                   {isAdmin() && (
                     <>
                       <button onClick={() => openEdit(emp)} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Edit</button>
@@ -342,12 +394,14 @@ export default function TeamPage() {
                           Reset Password
                         </button>
                       )}
-                      <button
-                        onClick={() => { if (confirm('Remove this member?')) deleteMutation.mutate(emp.id); }}
-                        className="text-xs text-red-500 hover:text-red-700 font-medium"
-                      >
-                        Remove
-                      </button>
+                      {emp.is_active ? (
+                        <>
+                          <button onClick={() => openLifecycle(emp, 'deactivate')} className="text-xs text-amber-600 hover:text-amber-700 font-medium">Deactivate</button>
+                          <button onClick={() => openLifecycle(emp, 'remove')} className="text-xs text-red-500 hover:text-red-700 font-medium">Remove</button>
+                        </>
+                      ) : (
+                        <button onClick={() => reactivateMutation.mutate(emp.id)} disabled={reactivateMutation.isPending} className="text-xs text-emerald-600 hover:text-emerald-700 font-medium disabled:opacity-50">Reactivate</button>
+                      )}
                     </>
                   )}
                 </div>
@@ -365,6 +419,57 @@ export default function TeamPage() {
           </div>
         )}
       </div>
+
+      {lifecycleMember && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="lifecycle-title">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="lifecycle-title" className="text-lg font-bold text-gray-900">
+                  {lifecycleKind === 'remove' ? 'Remove' : 'Deactivate'} {lifecycleMember.name}?
+                </h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  {lifecyclePreview.isLoading
+                    ? 'Checking assigned leads…'
+                    : `${lifecyclePreview.data?.assigned_leads ?? 0} lead(s) are currently assigned to this member.`}
+                </p>
+              </div>
+              <button onClick={() => setLifecycleMember(null)} className="text-xl text-gray-400 hover:text-gray-600" aria-label="Close">×</button>
+            </div>
+
+            {lifecycleError && <div className="mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">{lifecycleError}</div>}
+
+            <div className="mt-5 space-y-3">
+              <label className="flex cursor-pointer gap-3 rounded-xl border border-gray-200 p-4">
+                <input type="radio" name="lead-action" checked={leadAction === 'transfer'} onChange={() => setLeadAction('transfer')} className="mt-1" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-gray-900">Transfer leads</span>
+                  <span className="block text-xs text-gray-500">Move current lead ownership to another active team member.</span>
+                  {leadAction === 'transfer' && (
+                    <select value={transferTo} onChange={(event) => setTransferTo(event.target.value)} className="mt-3 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm">
+                      <option value="">Select team member…</option>
+                      {(employees ?? []).filter((member) => member.is_active && member.id !== lifecycleMember.id).map((member) => (
+                        <option key={member.id} value={member.id}>{member.name}</option>
+                      ))}
+                    </select>
+                  )}
+                </span>
+              </label>
+              <label className="flex cursor-pointer gap-3 rounded-xl border border-gray-200 p-4">
+                <input type="radio" name="lead-action" checked={leadAction === 'unassign'} onChange={() => setLeadAction('unassign')} className="mt-1" />
+                <span><span className="block text-sm font-semibold text-gray-900">Move leads to Unassigned</span><span className="block text-xs text-gray-500">Lead records and history remain available in the Unassigned filter.</span></span>
+              </label>
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button onClick={submitLifecycle} disabled={lifecycleMutation.isPending || lifecyclePreview.isLoading} className={`flex-1 rounded-xl py-2.5 text-sm font-semibold text-white disabled:opacity-50 ${lifecycleKind === 'remove' ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-600 hover:bg-amber-700'}`}>
+                {lifecycleMutation.isPending ? 'Saving…' : lifecycleKind === 'remove' ? 'Confirm removal' : 'Confirm deactivation'}
+              </button>
+              <button onClick={() => setLifecycleMember(null)} className="rounded-xl border border-gray-200 px-4 text-sm text-gray-600">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Buy Seats Modal ── */}
       {seatModal && (

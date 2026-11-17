@@ -21,6 +21,7 @@ use App\Models\User;
 use App\Services\LeadAuthorizationService;
 use App\Services\DealStatusService;
 use App\Services\RecurringRevenueService;
+use App\Services\LeadOwnershipService;
 use App\Support\PhoneNormalizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -28,6 +29,7 @@ use Illuminate\Http\Request;
 use App\Services\PlanEntitlementService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class LeadController extends Controller
 {
@@ -35,6 +37,7 @@ class LeadController extends Controller
         private readonly LeadAuthorizationService $leadAuth,
         private readonly DealStatusService $dealStatus,
         private readonly RecurringRevenueService $recurringRevenue,
+        private readonly LeadOwnershipService $ownership,
     ) {}
 
     private function orgId(Request $request): int
@@ -121,79 +124,11 @@ class LeadController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = Lead::where('organization_id', $this->orgId($request))
-                     ->with(['stage', 'pipeline', 'assignedTo', 'createdBy', 'client', 'department'])
-                     ->withCount('proposals');
+        $query = $this->filteredLeadQuery($request, $request->all());
+        $summary = $this->leadSummary($request, clone $query);
 
-        if ($request->user()->isEmployee()) {
-            $query->where('assigned_to', $request->user()->id);
-        }
-
-        if ($search = $request->input('search')) {
-            $query->where(function ($q) use ($search) {
-                $q->where('first_name', 'like', "%{$search}%")
-                  ->orWhere('last_name',  'like', "%{$search}%")
-                  ->orWhere('email',      'like', "%{$search}%")
-                  ->orWhere('company',    'like', "%{$search}%")
-                  ->orWhere('phone',      'like', "%{$search}%");
-            });
-        }
-
-        if ($status = $request->input('status')) {
-            $query->where('status', $status);
-        }
-
-        if ($source = $request->input('source')) {
-            $query->where('source', $source);
-        }
-
-        if ($types = $request->input('types')) {
-            $query->where('types', $types);
-        }
-
-        foreach (['client_type', 'business_type', 'market_type'] as $field) {
-            if ($value = $request->input($field)) {
-                $query->where($field, $value);
-            }
-        }
-
-        if ($stageId = $request->input('stage_id')) {
-            $query->where('stage_id', $stageId);
-        }
-
-        if ($pipelineId = $request->input('pipeline_id')) {
-            $query->where('pipeline_id', $pipelineId);
-        }
-
-        if ($request->boolean('unassigned')) {
-            $query->whereNull('assigned_to');
-        } elseif ($assignedTo = $request->input('assigned_to')) {
-            $query->where('assigned_to', $assignedTo);
-        }
-
-        if ($dateFrom = $request->input('date_from')) {
-            $query->where('lead_date', '>=', $dateFrom);
-        }
-
-        if ($dateTo = $request->input('date_to')) {
-            $query->where('lead_date', '<=', $dateTo);
-        }
-
-        if ($departmentId = $request->input('department_id')) {
-            if (! $request->user()->isOwner()) {
-                return response()->json(['message' => 'You are not allowed to filter leads by department.'], 403);
-            }
-
-            $departmentExists = Department::where('id', $departmentId)
-                ->where('organization_id', $this->orgId($request))
-                ->exists();
-
-            if (! $departmentExists) {
-                return response()->json(['message' => 'Invalid department.'], 422);
-            }
-
-            $query->whereHas('assignedTo.departments', fn ($q) => $q->where('departments.id', $departmentId));
-        }
+        $query->with(['stage', 'pipeline', 'assignedTo', 'createdBy', 'client', 'department'])
+            ->withCount('proposals');
 
         $sortBy  = $request->input('sort_by', 'created_at');
         $sortDir = $request->input('sort_dir', 'desc');
@@ -212,7 +147,60 @@ class LeadController extends Controller
                 'per_page'     => $leads->perPage(),
                 'current_page' => $leads->currentPage(),
                 'last_page'    => $leads->lastPage(),
+                'summary'      => $summary,
             ],
+        ]);
+    }
+
+    public function bulkReassign(Request $request): JsonResponse
+    {
+        if (! $request->user()->isAdmin()) {
+            return response()->json(['message' => 'Only owners and administrators can reassign leads.'], 403);
+        }
+
+        $orgId = $this->orgId($request);
+        $data = $request->validate([
+            'selection' => ['required', Rule::in(['selected', 'matching'])],
+            'lead_ids' => ['required_if:selection,selected', 'array', 'max:5000'],
+            'lead_ids.*' => ['integer'],
+            'filters' => ['nullable', 'array'],
+            'assigned_to' => [
+                'nullable', 'integer',
+                Rule::exists('users', 'id')->where(fn ($q) => $q
+                    ->where('organization_id', $orgId)
+                    ->where('is_active', true)
+                    ->whereNull('deleted_at')),
+            ],
+            'reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $changed = DB::transaction(function () use ($request, $data, $orgId) {
+            $query = $data['selection'] === 'matching'
+                ? $this->filteredLeadQuery($request, $data['filters'] ?? [])
+                : Lead::query()->where('organization_id', $orgId)->whereIn('id', $data['lead_ids'] ?? []);
+
+            if ((clone $query)->count() > 5000) {
+                abort(422, 'Bulk reassignment is limited to 5,000 leads per operation. Narrow the filters and try again.');
+            }
+
+            $target = isset($data['assigned_to'])
+                ? User::query()->where('organization_id', $orgId)->where('is_active', true)
+                    ->lockForUpdate()->findOrFail($data['assigned_to'])
+                : null;
+            $leads = $query->orderBy('leads.id')->lockForUpdate()->get();
+
+            return $this->ownership->reassignLocked(
+                $leads,
+                $target,
+                $request->user(),
+                'bulk_transfer',
+                $data['reason'] ?? 'Bulk reassignment',
+            );
+        });
+
+        return response()->json([
+            'message' => "{$changed} lead(s) reassigned successfully.",
+            'reassigned_leads' => $changed,
         ]);
     }
 
@@ -876,6 +864,101 @@ class LeadController extends Controller
                 'rescheduled' => $wasCompleted,
             ]
         );
+    }
+
+    private function filteredLeadQuery(Request $request, array $filters): Builder
+    {
+        $query = Lead::query()->where('leads.organization_id', $this->orgId($request));
+
+        if ($request->user()->isEmployee()) {
+            $query->where('leads.assigned_to', $request->user()->id);
+        }
+
+        if ($search = ($filters['search'] ?? null)) {
+            $query->where(function ($q) use ($search) {
+                $q->where('leads.first_name', 'like', "%{$search}%")
+                    ->orWhere('leads.last_name', 'like', "%{$search}%")
+                    ->orWhere('leads.email', 'like', "%{$search}%")
+                    ->orWhere('leads.company', 'like', "%{$search}%")
+                    ->orWhere('leads.phone', 'like', "%{$search}%");
+            });
+        }
+
+        foreach (['status', 'source', 'types', 'client_type', 'business_type', 'market_type'] as $field) {
+            if ($value = ($filters[$field] ?? null)) {
+                $query->where("leads.{$field}", $value);
+            }
+        }
+        foreach (['stage_id', 'pipeline_id'] as $field) {
+            if ($value = ($filters[$field] ?? null)) {
+                $query->where("leads.{$field}", $value);
+            }
+        }
+
+        if (filter_var($filters['unassigned'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            $query->whereNull('leads.assigned_to');
+        } elseif (! empty($filters['assigned_to'])) {
+            $query->where('leads.assigned_to', (int) $filters['assigned_to']);
+        }
+
+        if ($dateFrom = ($filters['date_from'] ?? null)) {
+            $query->whereDate('leads.lead_date', '>=', $dateFrom);
+        }
+        if ($dateTo = ($filters['date_to'] ?? null)) {
+            $query->whereDate('leads.lead_date', '<=', $dateTo);
+        }
+
+        if ($departmentId = ($filters['department_id'] ?? null)) {
+            abort_unless($request->user()->isOwner(), 403, 'You are not allowed to filter leads by department.');
+            $departmentExists = Department::query()
+                ->whereKey($departmentId)
+                ->where('organization_id', $this->orgId($request))
+                ->exists();
+            abort_unless($departmentExists, 422, 'Invalid department.');
+            $query->whereHas('assignedTo.departments', fn ($q) => $q->where('departments.id', $departmentId));
+        }
+
+        return $query;
+    }
+
+    private function leadSummary(Request $request, Builder $query): array
+    {
+        $marketCounts = (clone $query)
+            ->whereIn('leads.market_type', ['DOMESTIC', 'INTERNATIONAL'])
+            ->select('leads.market_type', DB::raw('COUNT(DISTINCT leads.id) as leads_count'))
+            ->groupBy('leads.market_type')
+            ->pluck('leads_count', 'market_type');
+
+        $summary = [
+            'total' => (clone $query)->distinct('leads.id')->count('leads.id'),
+            'domestic' => (int) ($marketCounts['DOMESTIC'] ?? 0),
+            'international' => (int) ($marketCounts['INTERNATIONAL'] ?? 0),
+        ];
+
+        if ($request->user()->isOwner() && empty($request->input('assigned_to'))) {
+            $departmentCounts = (clone $query)
+                ->join('department_user', 'department_user.user_id', '=', 'leads.assigned_to')
+                ->join('departments', function ($join) {
+                    $join->on('departments.id', '=', 'department_user.department_id')
+                        ->whereNull('departments.deleted_at');
+                })
+                ->where('departments.organization_id', $this->orgId($request))
+                ->select('departments.id', DB::raw('COUNT(DISTINCT leads.id) as leads_count'))
+                ->groupBy('departments.id')
+                ->pluck('leads_count', 'departments.id');
+
+            $summary['departments'] = Department::query()
+                ->where('organization_id', $this->orgId($request))
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn ($department) => [
+                    'id' => (int) $department->id,
+                    'name' => $department->name,
+                    'leads_count' => (int) ($departmentCounts[$department->id] ?? 0),
+                ])->values()->all();
+        }
+
+        return $summary;
     }
 
     /**

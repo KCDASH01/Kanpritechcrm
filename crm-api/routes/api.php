@@ -138,6 +138,7 @@ Route::middleware('auth:sanctum')->group(function () {
         // Leads
         Route::get('leads/market-counts', [LeadController::class, 'marketCounts']);
         Route::get('leads/department-counts', [LeadController::class, 'departmentCounts']);
+        Route::post('leads/bulk-reassign', [LeadController::class, 'bulkReassign']);
         Route::get('leads/{lead}/timeline', [LeadController::class, 'timeline']);
         Route::post('leads/{lead}/convert', [LeadController::class, 'convertToDeal']);
         Route::apiResource('leads', LeadController::class);
@@ -258,6 +259,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // ── Business-plan only ───────────────────────────────────────────────
         Route::middleware('business.only')->group(function () {
+            Route::get('employees/{employee}/removal-preview', [EmployeeController::class, 'removalPreview']);
+            Route::post('employees/{employee}/deactivate', [EmployeeController::class, 'deactivate']);
+            Route::post('employees/{employee}/reactivate', [EmployeeController::class, 'reactivate']);
             Route::apiResource('employees', EmployeeController::class);
             Route::apiResource('departments', DepartmentController::class);
 

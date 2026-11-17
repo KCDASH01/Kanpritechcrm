@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { leadsApi, type LeadPayload, type LeadTimelineEntry, type ConvertPayload } from '@/lib/api/leads';
+import { leadsApi, type LeadPayload, type LeadTimelineEntry, type ConvertPayload, type LeadFilters, type LeadListResponse } from '@/lib/api/leads';
 import { activitiesApi } from '@/lib/api/activities';
 import { pipelinesApi } from '@/lib/api/pipelines';
 import { employeesApi } from '@/lib/api/employees';
@@ -15,7 +16,7 @@ import { PlanLimitBar } from '@/components/ui/PlanLimitBar';
 import { toWhatsAppNumber } from '@/lib/phone';
 import { whatsappTemplatesApi } from '@/lib/api/whatsappTemplates';
 import { subscriptionApi } from '@/lib/api/subscription';
-import type { Lead, PaginatedResponse } from '@/types';
+import type { Lead } from '@/types';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { SkeletonTable } from '@/components/ui/Skeleton';
@@ -731,10 +732,36 @@ function ActionsMenu({ lead, onEdit, onDelete, onView, onConvert, onChangeStatus
 }) {
   const [open, setOpen] = useState(false);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
-  const [pos, setPos] = useState<{ top?: number; bottom?: number; right: number }>({ top: 0, right: 0 });
-  const [statusPos, setStatusPos] = useState<{ top?: number; bottom?: number; right: number } | null>(null);
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number }>({ top: 0, left: 0 });
+  const [statusPos, setStatusPos] = useState<{ top?: number; bottom?: number; left: number } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const statusBtnRef = useRef<HTMLButtonElement>(null);
+
+  const positionMenu = () => {
+    if (!btnRef.current) return;
+    const r = btnRef.current.getBoundingClientRect();
+    const menuWidth = 192;
+    const menuHeight = Math.min(340, window.innerHeight - 16);
+    const left = Math.max(8, Math.min(r.right - menuWidth, window.innerWidth - menuWidth - 8));
+    const spaceBelow = window.innerHeight - r.bottom;
+    setPos(spaceBelow < menuHeight && r.top > spaceBelow
+      ? { bottom: Math.max(8, window.innerHeight - r.top + 4), left }
+      : { top: Math.max(8, r.bottom + 4), left });
+  };
+
+  const positionStatusMenu = () => {
+    if (!statusBtnRef.current) return;
+    const r = statusBtnRef.current.getBoundingClientRect();
+    const width = 176;
+    const height = Math.min(LEAD_STATUS_MENU.length * 34 + 12, window.innerHeight - 16);
+    const openLeft = r.left - width - 6;
+    const left = openLeft >= 8 ? openLeft : Math.min(r.right + 6, window.innerWidth - width - 8);
+    const spaceBelow = window.innerHeight - r.top;
+    setStatusPos(spaceBelow < height
+      ? { bottom: 8, left }
+      : { top: Math.max(8, Math.min(r.top, window.innerHeight - height - 8)), left });
+  };
 
   useEffect(() => {
     if (!open) {
@@ -743,25 +770,35 @@ function ActionsMenu({ lead, onEdit, onDelete, onView, onConvert, onChangeStatus
       return;
     }
     const handler = (e: MouseEvent) => {
-      if (btnRef.current && !btnRef.current.closest('[data-menu]')?.contains(e.target as Node)) {
+      if (!btnRef.current?.contains(e.target as Node) && !menuRef.current?.contains(e.target as Node)) {
         setOpen(false);
       }
     };
+    const keyHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpen(false);
+        btnRef.current?.focus();
+      }
+    };
+    const reposition = () => {
+      positionMenu();
+      if (statusMenuOpen) positionStatusMenu();
+    };
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
+    document.addEventListener('keydown', keyHandler);
+    window.addEventListener('resize', reposition);
+    window.addEventListener('scroll', reposition, true);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('keydown', keyHandler);
+      window.removeEventListener('resize', reposition);
+      window.removeEventListener('scroll', reposition, true);
+    };
+  }, [open, statusMenuOpen]);
 
   const toggle = () => {
     if (!open && btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect();
-      const MENU_HEIGHT = 340; // approximate max height of the dropdown
-      const spaceBelow = window.innerHeight - r.bottom;
-      if (spaceBelow < MENU_HEIGHT) {
-        // not enough room below — open upward
-        setPos({ bottom: window.innerHeight - r.top + 4, right: window.innerWidth - r.right });
-      } else {
-        setPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
-      }
+      positionMenu();
     }
     if (open) setStatusMenuOpen(false);
     setOpen((v) => !v);
@@ -769,16 +806,7 @@ function ActionsMenu({ lead, onEdit, onDelete, onView, onConvert, onChangeStatus
 
   const toggleStatusMenu = () => {
     if (!statusMenuOpen && statusBtnRef.current) {
-      const r = statusBtnRef.current.getBoundingClientRect();
-      const submenuHeight = LEAD_STATUS_MENU.length * 34 + 12;
-      const spaceBelow = window.innerHeight - r.bottom;
-      const right = window.innerWidth - r.left + 6;
-
-      if (spaceBelow < submenuHeight) {
-        setStatusPos({ bottom: window.innerHeight - r.bottom, right });
-      } else {
-        setStatusPos({ top: r.top, right });
-      }
+      positionStatusMenu();
     } else {
       setStatusPos(null);
     }
@@ -792,6 +820,9 @@ function ActionsMenu({ lead, onEdit, onDelete, onView, onConvert, onChangeStatus
       <button
         ref={btnRef}
         onClick={toggle}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Actions for ${lead.full_name}`}
         className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
         title="More actions"
       >
@@ -800,16 +831,18 @@ function ActionsMenu({ lead, onEdit, onDelete, onView, onConvert, onChangeStatus
         </svg>
       </button>
 
-      <AnimatePresence>
+      {typeof document !== 'undefined' && createPortal(<AnimatePresence>
         {open && (
           <motion.div
+            ref={menuRef}
             data-menu="true"
             initial={{ opacity: 0, scale: 0.95, y: pos.bottom ? 4 : -4 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: pos.bottom ? 4 : -4 }}
             transition={{ type: 'spring', damping: 30, stiffness: 400 }}
-            style={{ position: 'fixed', top: pos.top, bottom: pos.bottom, right: pos.right, zIndex: 9999 }}
-            className="w-48 bg-white border border-gray-100 rounded-xl shadow-xl shadow-black/10 py-1"
+            style={{ position: 'fixed', top: pos.top, bottom: pos.bottom, left: pos.left, zIndex: 9999 }}
+            role="menu"
+            className="w-48 max-h-[calc(100vh-1rem)] overflow-y-auto bg-white border border-gray-100 rounded-xl shadow-xl shadow-black/10 py-1"
           >
             <button onClick={() => { onView(); setOpen(false); }} className={menuItemCls}>
               <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
@@ -891,7 +924,7 @@ function ActionsMenu({ lead, onEdit, onDelete, onView, onConvert, onChangeStatus
                   position: 'fixed',
                   top: statusPos.top,
                   bottom: statusPos.bottom,
-                  right: statusPos.right,
+                  left: statusPos.left,
                   zIndex: 10000,
                 }}
                 className="w-44 bg-white border border-gray-100 rounded-xl shadow-xl shadow-black/10 py-1 max-h-[min(18rem,calc(100vh-1rem))] overflow-y-auto"
@@ -919,7 +952,7 @@ function ActionsMenu({ lead, onEdit, onDelete, onView, onConvert, onChangeStatus
             )}
           </motion.div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>, document.body)}
     </div>
   );
 }
@@ -997,6 +1030,11 @@ export default function LeadsPage() {
   const [remarkStatusLead, setRemarkStatusLead] = useState<{ lead: Lead; status: RemarkLeadStatus } | null>(null);
   const [waLead, setWaLead]                 = useState<Lead | null>(null); // WhatsApp template picker
   const [leadPhoneError, setLeadPhoneError] = useState<string | null>(null);
+  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<number>>(new Set());
+  const [selectAllMatching, setSelectAllMatching] = useState(false);
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [bulkAssignee, setBulkAssignee] = useState('');
+  const [bulkError, setBulkError] = useState<string | null>(null);
 
   useEffect(() => {
     if (searchParams.get('new') === '1') setModalLead(null);
@@ -1057,24 +1095,16 @@ export default function LeadsPage() {
     staleTime: 5 * 60_000,
   });
 
-  const { data: marketCounts, isLoading: loadingMarketCounts } = useQuery({
-    queryKey: ['lead-market-counts'],
-    queryFn: () => leadsApi.marketCounts(),
-    staleTime: 60_000,
-  });
-
-  const { data: departmentCounts, isLoading: loadingDeptCounts } = useQuery({
-    queryKey: ['lead-department-counts'],
-    queryFn:  () => leadsApi.departmentCounts(),
-    enabled:  showDepartmentFilters,
-    staleTime: 60_000,
-  });
-
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['leads', listFilters],
     queryFn:  () => leadsApi.list(listFilters),
     placeholderData: keepPreviousData,
   });
+
+  useEffect(() => {
+    setSelectedLeadIds(new Set());
+    setSelectAllMatching(false);
+  }, [searchParams]);
 
   // Create / Update
   const createMutation = useMutation({
@@ -1160,8 +1190,8 @@ export default function LeadsPage() {
     mutationFn: (id: number) => leadsApi.delete(id),
     onMutate: async (id) => {
       await qc.cancelQueries({ queryKey: ['leads'] });
-      const prev = qc.getQueryData<PaginatedResponse<Lead>>(['leads', listFilters]);
-      qc.setQueryData<PaginatedResponse<Lead>>(
+      const prev = qc.getQueryData<LeadListResponse>(['leads', listFilters]);
+      qc.setQueryData<LeadListResponse>(
         ['leads', listFilters],
         (old) => old ? { ...old, data: old.data.filter((l) => l.id !== id) } : old
       );
@@ -1176,6 +1206,29 @@ export default function LeadsPage() {
       qc.invalidateQueries({ queryKey: ['lead-market-counts'] });
       qc.invalidateQueries({ queryKey: ['lead-department-counts'] });
     },
+  });
+
+  const bulkReassignMutation = useMutation({
+    mutationFn: () => leadsApi.bulkReassign({
+      selection: selectAllMatching ? 'matching' : 'selected',
+      lead_ids: selectAllMatching ? undefined : Array.from(selectedLeadIds),
+      filters: selectAllMatching ? (listFilters as LeadFilters) : undefined,
+      assigned_to: bulkAssignee ? Number(bulkAssignee) : null,
+      reason: 'Bulk reassignment from Leads page',
+    }),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ['leads'] });
+      qc.invalidateQueries({ queryKey: ['lead-market-counts'] });
+      qc.invalidateQueries({ queryKey: ['lead-department-counts'] });
+      setSelectedLeadIds(new Set());
+      setSelectAllMatching(false);
+      setBulkModalOpen(false);
+      setBulkError(null);
+      alert(result.message);
+    },
+    onError: (err: unknown) => setBulkError(
+      (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Bulk reassignment failed.',
+    ),
   });
 
   // Convert to deal
@@ -1216,9 +1269,33 @@ export default function LeadsPage() {
 
   const leads = data?.data ?? [];
   const meta  = data?.meta;
-  const selectedDepartment = departmentCounts?.departments.find(
+  const summary = meta?.summary;
+  const individualLeadScope = assignedToFilter !== undefined;
+  const departmentCounts = summary?.departments ?? [];
+  const selectedDepartment = departmentCounts.find(
     (d) => String(d.id) === departmentFilter,
   );
+  const selectedCount = selectAllMatching ? (meta?.total ?? 0) : selectedLeadIds.size;
+  const currentPageFullySelected = leads.length > 0 && leads.every((lead) => selectedLeadIds.has(lead.id));
+
+  const toggleLeadSelection = (id: number) => {
+    setSelectAllMatching(false);
+    setSelectedLeadIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleCurrentPage = () => {
+    setSelectAllMatching(false);
+    setSelectedLeadIds((current) => {
+      const next = new Set(current);
+      if (currentPageFullySelected) leads.forEach((lead) => next.delete(lead.id));
+      else leads.forEach((lead) => next.add(lead.id));
+      return next;
+    });
+  };
 
   // ── Plan usage limits (free: 100, business: 5,000, enterprise: unlimited) ───
   const activePlan  = liveSub?.plan ?? user?.subscription?.plan;
@@ -1305,10 +1382,13 @@ export default function LeadsPage() {
             >
               <p className={`text-xs font-semibold ${!marketTypeFilter ? 'text-indigo-700' : 'text-gray-500'}`}>All Markets</p>
               <p className={`text-xl font-bold mt-0.5 ${!marketTypeFilter ? 'text-indigo-700' : 'text-gray-900'}`}>
-                {loadingMarketCounts ? '…' : (marketCounts?.total ?? 0).toLocaleString()}
+                {isLoading ? '…' : (summary?.total ?? 0).toLocaleString()}
               </p>
             </button>
-            {(marketCounts?.markets ?? []).map((market) => {
+            {([
+              { market_type: 'DOMESTIC' as const, label: 'Domestic', leads_count: summary?.domestic ?? 0 },
+              { market_type: 'INTERNATIONAL' as const, label: 'International', leads_count: summary?.international ?? 0 },
+            ]).map((market) => {
               const active = marketTypeFilter === market.market_type;
               return (
                 <button
@@ -1333,7 +1413,7 @@ export default function LeadsPage() {
         </div>
 
         {/* Department filter cards — Owner only; retained for team ownership filtering. */}
-        {showDepartmentFilters && (
+        {showDepartmentFilters && !individualLeadScope && (
           <div className="space-y-2">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Departments</p>
             <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-thin">
@@ -1351,11 +1431,11 @@ export default function LeadsPage() {
                   All Departments
                 </p>
                 <p className={`text-xl font-bold mt-0.5 ${!departmentFilter ? 'text-indigo-700' : 'text-gray-900'}`}>
-                  {loadingDeptCounts ? '…' : (departmentCounts?.total ?? 0).toLocaleString()}
+                  {isLoading ? '…' : (summary?.total ?? 0).toLocaleString()}
                 </p>
               </button>
 
-              {(departmentCounts?.departments ?? []).map((dept) => {
+              {departmentCounts.map((dept) => {
                 const active = departmentFilter === String(dept.id);
                 return (
                   <button
@@ -1472,6 +1552,25 @@ export default function LeadsPage() {
           )}
         </div>
 
+        {isManager && selectedCount > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3">
+            <div className="text-sm text-indigo-900">
+              <span className="font-bold">{selectedCount.toLocaleString()}</span> lead(s) selected
+              {!selectAllMatching && currentPageFullySelected && (meta?.total ?? 0) > leads.length && (
+                <button type="button" onClick={() => setSelectAllMatching(true)} className="ml-3 font-semibold text-indigo-700 underline underline-offset-2">
+                  Select all {(meta?.total ?? 0).toLocaleString()} matching leads
+                </button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => { setBulkAssignee(''); setBulkError(null); setBulkModalOpen(true); }} className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-700">
+                Bulk Reassign
+              </button>
+              <button type="button" onClick={() => { setSelectedLeadIds(new Set()); setSelectAllMatching(false); }} className="rounded-xl border border-indigo-200 bg-white px-3 py-2 text-xs font-semibold text-indigo-700">Clear</button>
+            </div>
+          </div>
+        )}
+
         {/* Table */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm">
           {isLoading ? (
@@ -1483,6 +1582,11 @@ export default function LeadsPage() {
           <table className="min-w-[1100px] w-full">
                 <thead>
                   <tr className="bg-gray-50/80 border-b border-gray-100">
+                    {isManager && (
+                      <th className="w-12 rounded-tl-2xl px-5 py-3.5 text-left">
+                        <input type="checkbox" aria-label="Select all leads on this page" checked={currentPageFullySelected} onChange={toggleCurrentPage} className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                      </th>
+                    )}
                     {['Name', 'Requirement', 'Company', 'Contact', 'Status', 'Date', 'Actions'].map((h, hi, arr) => (
                       <th key={h} className={`px-5 py-3.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider ${hi === 0 ? 'rounded-tl-2xl' : ''} ${hi === arr.length - 1 ? 'rounded-tr-2xl' : ''}`}>
                         {h}
@@ -1501,6 +1605,11 @@ export default function LeadsPage() {
                         transition={{ delay: i * 0.03, duration: 0.2 }}
                         className="hover:bg-indigo-50/20 transition-colors"
                       >
+                        {isManager && (
+                          <td className="px-5 py-3.5">
+                            <input type="checkbox" aria-label={`Select ${lead.full_name}`} checked={selectedLeadIds.has(lead.id) || selectAllMatching} onChange={() => toggleLeadSelection(lead.id)} className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                          </td>
+                        )}
                         {/* Name */}
                         <td className="px-5 py-3.5">
                           <Link
@@ -1576,7 +1685,7 @@ export default function LeadsPage() {
                   </AnimatePresence>
                   {leads.length === 0 && hasActiveFilters && (
                     <tr>
-                      <td colSpan={7} className="px-5 py-10 text-center text-gray-400 text-sm">
+                      <td colSpan={isManager ? 8 : 7} className="px-5 py-10 text-center text-gray-400 text-sm">
                         No leads match your filters.
                         <button onClick={clearAllFilters} className="ml-2 text-indigo-600 hover:underline">Clear filters</button>
                       </td>
@@ -1601,6 +1710,26 @@ export default function LeadsPage() {
           )}
         </div>
       </div>
+
+      <Modal open={bulkModalOpen} onClose={() => setBulkModalOpen(false)} title="Bulk Reassign Leads" maxWidth="max-w-md">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">Reassign <strong>{selectedCount.toLocaleString()}</strong> selected lead(s). This action is recorded in each lead timeline.</p>
+          {bulkError && <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">{bulkError}</div>}
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-700">New owner</label>
+            <select value={bulkAssignee} onChange={(event) => setBulkAssignee(event.target.value)} className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm">
+              <option value="">Unassigned</option>
+              {(teamMembers ?? []).filter((member) => member.is_active).map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
+            </select>
+          </div>
+          <div className="flex gap-3">
+            <button onClick={() => bulkReassignMutation.mutate()} disabled={bulkReassignMutation.isPending || selectedCount === 0} className="flex-1 rounded-xl bg-indigo-600 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50">
+              {bulkReassignMutation.isPending ? 'Reassigning…' : 'Confirm Reassignment'}
+            </button>
+            <button onClick={() => setBulkModalOpen(false)} className="rounded-xl border border-gray-200 px-4 text-sm text-gray-600">Cancel</button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Edit / Create modal */}
       <Modal

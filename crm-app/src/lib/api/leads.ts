@@ -21,6 +21,17 @@ export interface LeadMarketCounts {
   }>;
 }
 
+export interface LeadListSummary {
+  total: number;
+  domestic: number;
+  international: number;
+  departments?: LeadDepartmentCount[];
+}
+
+export interface LeadListResponse extends PaginatedResponse<Lead> {
+  meta: PaginatedResponse<Lead>['meta'] & { summary: LeadListSummary };
+}
+
 export interface LeadFilters {
   search?: string;
   status?: string;
@@ -125,7 +136,15 @@ export const leadsApi = {
     client.get<{ data: LeadDepartmentCounts }>('/leads/department-counts').then((r) => r.data.data),
 
   list: (filters?: LeadFilters) =>
-    client.get<PaginatedResponse<Lead>>('/leads', { params: filters }).then((r) => r.data),
+    client.get<LeadListResponse>('/leads', { params: filters }).then((r) => r.data),
+
+  bulkReassign: (payload: {
+    selection: 'selected' | 'matching';
+    lead_ids?: number[];
+    filters?: LeadFilters;
+    assigned_to: number | null;
+    reason?: string;
+  }) => client.post<{ message: string; reassigned_leads: number }>('/leads/bulk-reassign', payload).then((r) => r.data),
 
   get: (id: number) =>
     client.get<ApiResponse<Lead>>(`/leads/${id}`).then((r) => r.data.data),
