@@ -32,6 +32,14 @@ export interface LeadListResponse extends PaginatedResponse<Lead> {
   meta: PaginatedResponse<Lead>['meta'] & { summary: LeadListSummary };
 }
 
+export interface LeadCatalogueOption {
+  id: number;
+  type: 'product' | 'service';
+  code: string;
+  name: string;
+  category?: string | null;
+}
+
 export interface LeadFilters {
   search?: string;
   status?: string;
@@ -55,6 +63,7 @@ export interface LeadFilters {
 }
 
 export interface LeadPayload {
+  catalogue_item_id?: number | null;
   client_id?: number | null;
   client_type: 'NEW' | 'EXISTING';
   business_type: 'ONE_TIME' | 'RECURRING';
@@ -130,6 +139,9 @@ export interface ConvertToDealResponse {
 }
 
 export const leadsApi = {
+  catalogueOptions: () =>
+    client.get<{ data: LeadCatalogueOption[] }>('/leads/catalogue-options').then((r) => r.data.data),
+
   marketCounts: () =>
     client.get<{ data: LeadMarketCounts }>('/leads/market-counts').then((r) => r.data.data),
 

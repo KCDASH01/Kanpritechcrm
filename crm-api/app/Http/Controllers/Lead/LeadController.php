@@ -7,6 +7,7 @@ use App\Http\Requests\Lead\LeadRequest;
 use App\Http\Resources\LeadResource;
 use App\Http\Resources\LeadTimelineResource;
 use App\Models\Activity;
+use App\Models\BillingCatalogueItem;
 use App\Models\Client;
 use App\Models\Deal;
 use App\Models\DealPayment;
@@ -44,6 +45,56 @@ class LeadController extends Controller
     private function orgId(Request $request): int
     {
         return $request->user()->organization_id;
+    }
+
+    /**
+     * Active catalogue identities available to the lead form.
+     *
+     * This deliberately does not reuse the billing catalogue endpoint: lead
+     * creators may not have permission to view prices or billing settings.
+     */
+    public function catalogueOptions(Request $request): JsonResponse
+    {
+        abort_unless($this->leadAuth->canCreate($request->user()), 403);
+
+        $items = BillingCatalogueItem::query()
+            ->where('organization_id', $this->orgId($request))
+            ->where('is_active', true)
+            ->orderBy('type')
+            ->orderBy('name')
+            ->get(['id', 'type', 'code', 'name', 'category']);
+
+        return response()->json(['data' => $items]);
+    }
+
+    /**
+     * Validate a selected catalogue ID and store a human-readable snapshot in
+     * the legacy `types` column. This preserves existing reporting and keeps
+     * historical leads readable after an item is renamed or deactivated.
+     */
+    private function resolveCatalogueRequirement(Request $request, array $attributes): array
+    {
+        $catalogueItemId = $attributes['catalogue_item_id'] ?? null;
+        unset($attributes['catalogue_item_id']);
+
+        if ($catalogueItemId === null) {
+            return $attributes;
+        }
+
+        $item = BillingCatalogueItem::query()
+            ->where('organization_id', $this->orgId($request))
+            ->where('is_active', true)
+            ->find($catalogueItemId);
+
+        if (! $item) {
+            throw ValidationException::withMessages([
+                'catalogue_item_id' => ['The selected product or service is no longer available.'],
+            ]);
+        }
+
+        $attributes['types'] = $item->name;
+
+        return $attributes;
     }
 
     // ── GET /api/leads/department-counts ──────────────────────────────────────
@@ -239,7 +290,8 @@ class LeadController extends Controller
             ], 403);
         }
 
-        $payload = $this->leadAuth->attributesForCreate($user, $request->validated());
+        $payload = $this->resolveCatalogueRequirement($request, $request->validated());
+        $payload = $this->leadAuth->attributesForCreate($user, $payload);
 
         if (($payload['client_type'] ?? null) === 'EXISTING') {
             $client = $this->visibleClientQuery($request)->findOrFail($payload['client_id']);
@@ -293,7 +345,8 @@ class LeadController extends Controller
             return response()->json(['message' => 'You are not allowed to edit this lead.'], 403);
         }
 
-        $validated   = $this->leadAuth->attributesForUpdate($user, $request->validated());
+        $validated = $this->resolveCatalogueRequirement($request, $request->validated());
+        $validated = $this->leadAuth->attributesForUpdate($user, $validated);
         if (($validated['client_type'] ?? $lead->client_type) === 'EXISTING' && isset($validated['client_id'])) {
             $client = $this->visibleClientQuery($request)->findOrFail($validated['client_id']);
             $validated = array_merge($validated, $this->clientSnapshot($client));

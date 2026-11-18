@@ -2,9 +2,10 @@
 
 namespace Tests\Feature;
 
-use App\Models\Lead;
-use App\Models\Department;
+use App\Models\BillingCatalogueItem;
 use App\Models\Client;
+use App\Models\Department;
+use App\Models\Lead;
 use App\Models\Organization;
 use App\Models\Subscription;
 use App\Models\User;
@@ -151,6 +152,25 @@ class LeadBusinessTypeTest extends TestCase
             $table->id();
             $table->unsignedBigInteger('lead_id');
             $table->timestamps();
+        });
+        Schema::create('billing_catalogue_items', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('organization_id');
+            $table->string('type', 16);
+            $table->string('code', 64);
+            $table->string('name');
+            $table->string('category')->nullable();
+            $table->text('description')->nullable();
+            $table->string('unit', 32)->nullable();
+            $table->string('hsn_sac', 32)->nullable();
+            $table->decimal('default_tax_rate', 7, 4)->default(0);
+            $table->json('prices')->nullable();
+            $table->boolean('is_recurring')->default(false);
+            $table->boolean('is_active')->default(true);
+            $table->unsignedBigInteger('created_by');
+            $table->unsignedBigInteger('updated_by')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
         });
 
         $organization = Organization::create([
@@ -459,6 +479,92 @@ class LeadBusinessTypeTest extends TestCase
             ->assertJsonValidationErrors(['phone']);
     }
 
+    public function test_active_products_and_services_are_available_to_lead_forms(): void
+    {
+        $product = $this->catalogueItem('product', 'PROD-1', 'CRM Licence');
+        $service = $this->catalogueItem('service', 'SERV-1', 'Implementation Service');
+        $this->catalogueItem('service', 'SERV-OFF', 'Inactive Service', false);
+
+        $response = $this->getJson('/api/leads/catalogue-options')->assertOk();
+
+        $response->assertJsonFragment(['id' => $product->id, 'type' => 'product', 'name' => 'CRM Licence']);
+        $response->assertJsonFragment(['id' => $service->id, 'type' => 'service', 'name' => 'Implementation Service']);
+        $response->assertJsonMissing(['code' => 'SERV-OFF']);
+    }
+
+    public function test_catalogue_selections_create_and_update_leads_with_readable_snapshots(): void
+    {
+        $product = $this->catalogueItem('product', 'PROD-2', 'Analytics Product');
+        $service = $this->catalogueItem('service', 'SERV-2', 'Managed Service');
+
+        $created = $this->postJson('/api/leads', $this->leadPayload([
+            'catalogue_item_id' => $product->id,
+            'types' => 'client supplied value is not trusted',
+        ]))->assertCreated()
+            ->assertJsonPath('data.types', 'Analytics Product');
+
+        $this->postJson('/api/leads', $this->leadPayload([
+            'first_name' => 'Service Prospect',
+            'catalogue_item_id' => $service->id,
+            'types' => 'client supplied service value is not trusted',
+        ]))->assertCreated()
+            ->assertJsonPath('data.types', 'Managed Service');
+
+        $leadId = $created->json('data.id');
+        $this->putJson("/api/leads/{$leadId}", [
+            'catalogue_item_id' => $service->id,
+            'types' => 'another untrusted value',
+        ])->assertOk()
+            ->assertJsonPath('data.types', 'Managed Service');
+
+        self::assertSame('Managed Service', Lead::findOrFail($leadId)->types);
+    }
+
+    public function test_legacy_requirement_values_remain_editable_without_a_catalogue_reference(): void
+    {
+        $lead = $this->createAssignedLead($this->createEmployee('legacy-requirement@example.com'), 'Legacy Requirement', 'DOMESTIC');
+
+        $this->putJson("/api/leads/{$lead->id}", [
+            'types' => 'bespoke_historical_requirement',
+            'notes' => 'Historical value retained.',
+        ])->assertOk()
+            ->assertJsonPath('data.types', 'bespoke_historical_requirement');
+    }
+
+    public function test_inactive_and_cross_tenant_catalogue_selections_are_rejected(): void
+    {
+        $inactive = $this->catalogueItem('product', 'PROD-OFF', 'Inactive Product', false);
+        $otherOrganization = Organization::create([
+            'name' => 'Catalogue Tenant',
+            'slug' => 'catalogue-tenant',
+            'is_active' => true,
+        ]);
+        $crossTenant = BillingCatalogueItem::create([
+            'organization_id' => $otherOrganization->id,
+            'type' => 'service',
+            'code' => 'OTHER-1',
+            'name' => 'Other Tenant Service',
+            'prices' => ['INR' => 1000],
+            'default_tax_rate' => 0,
+            'is_active' => true,
+            'created_by' => $this->owner->id,
+        ]);
+
+        foreach ([$inactive->id, $crossTenant->id] as $catalogueItemId) {
+            $this->postJson('/api/leads', $this->leadPayload([
+                'catalogue_item_id' => $catalogueItemId,
+            ]))->assertUnprocessable()
+                ->assertJsonValidationErrors(['catalogue_item_id']);
+        }
+    }
+
+    public function test_empty_catalogue_returns_an_empty_selection_list(): void
+    {
+        $this->getJson('/api/leads/catalogue-options')
+            ->assertOk()
+            ->assertExactJson(['data' => []]);
+    }
+
     /** @param array<string, mixed> $overrides */
     private function leadPayload(array $overrides = []): array
     {
@@ -472,6 +578,20 @@ class LeadBusinessTypeTest extends TestCase
             'currency' => 'INR',
             'notes' => '',
         ], $overrides);
+    }
+
+    private function catalogueItem(string $type, string $code, string $name, bool $active = true): BillingCatalogueItem
+    {
+        return BillingCatalogueItem::create([
+            'organization_id' => $this->owner->organization_id,
+            'type' => $type,
+            'code' => $code,
+            'name' => $name,
+            'prices' => ['INR' => 1000],
+            'default_tax_rate' => 18,
+            'is_active' => $active,
+            'created_by' => $this->owner->id,
+        ]);
     }
 
     private function createRecurringLead(): Lead

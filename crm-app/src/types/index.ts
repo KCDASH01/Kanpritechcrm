@@ -147,7 +147,7 @@ export interface Lead {
   website?: string;
   status: 'new' | 'contacted' | 'ringing' | 'important' | 'converted' | 'lost' | 'followup' | 'meeting' | 'not_interested';
   source?: string;
-  types?: 'webapp_development' | 'mobile_app_development' | 'website_development' | 'digital_marketing' | 'others' | null;
+  types?: string | null;
   industry?: string;
   city?: string;
   state?: string;

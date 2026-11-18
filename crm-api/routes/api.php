@@ -138,6 +138,7 @@ Route::middleware('auth:sanctum')->group(function () {
         // Leads
         Route::get('leads/market-counts', [LeadController::class, 'marketCounts']);
         Route::get('leads/department-counts', [LeadController::class, 'departmentCounts']);
+        Route::get('leads/catalogue-options', [LeadController::class, 'catalogueOptions']);
         Route::post('leads/bulk-reassign', [LeadController::class, 'bulkReassign']);
         Route::get('leads/{lead}/timeline', [LeadController::class, 'timeline']);
         Route::post('leads/{lead}/convert', [LeadController::class, 'convertToDeal']);

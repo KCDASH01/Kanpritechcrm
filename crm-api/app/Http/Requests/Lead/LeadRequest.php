@@ -24,7 +24,7 @@ class LeadRequest extends FormRequest
             }
         }
 
-        foreach (['client_id', 'assigned_to', 'department_id', 'expected_value', 'recurring_amount', 'billing_cycles', 'contract_value'] as $field) {
+        foreach (['client_id', 'assigned_to', 'department_id', 'catalogue_item_id', 'expected_value', 'recurring_amount', 'billing_cycles', 'contract_value'] as $field) {
             if ($this->has($field) && $this->input($field) === '') {
                 $this->merge([$field => null]);
             }
@@ -138,7 +138,15 @@ class LeadRequest extends FormRequest
             'types' => [
                 $isUpdate ? 'sometimes' : 'required',
                 'string',
-                'in:webapp_development,mobile_app_development,website_development,digital_marketing,others',
+                'max:255',
+            ],
+            'catalogue_item_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('billing_catalogue_items', 'id')->where(fn ($query) => $query
+                    ->where('organization_id', $orgId)
+                    ->where('is_active', true)
+                    ->whereNull('deleted_at')),
             ],
             'industry' => ['nullable', 'string', 'max:64'],
             'city' => ['nullable', 'string', 'max:191'],

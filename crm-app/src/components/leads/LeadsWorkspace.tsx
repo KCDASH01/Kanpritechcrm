@@ -26,7 +26,7 @@ import { ScheduleStatusModal } from '@/components/leads/ScheduleStatusModal';
 import { RemarkStatusModal } from '@/components/leads/RemarkStatusModal';
 import { ConvertToDealFormFromLead } from '@/components/leads/ConvertToDealForm';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUS_MENU, isScheduledLeadStatus, isRemarkLeadStatus, type ScheduledLeadStatus, type RemarkLeadStatus } from '@/lib/leadStatuses';
-import { LEAD_TYPES, LEAD_TYPE_LABELS } from '@/lib/leadTypes';
+import { LEAD_TYPES, LEAD_TYPE_LABELS, leadTypeLabel } from '@/lib/leadTypes';
 import { clientsApi } from '@/lib/api/clients';
 import type { Client } from '@/types';
 
@@ -85,6 +85,19 @@ export function LeadForm({ lead, presetClientId, onSave, onClose, saving, phoneE
   });
 
   const employeeOptions = employees ?? [];
+
+  const {
+    data: catalogueOptions = [],
+    isLoading: catalogueLoading,
+    isError: catalogueError,
+  } = useQuery({
+    queryKey: ['lead-catalogue-options'],
+    queryFn: leadsApi.catalogueOptions,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    retry: 1,
+  });
+  const [catalogueSearch, setCatalogueSearch] = useState('');
 
   const [form, setForm] = useState<LeadPayload>({
     client_type: lead?.client_type ?? (presetClientId ? 'EXISTING' : 'NEW'),
@@ -183,6 +196,30 @@ export function LeadForm({ lead, presetClientId, onSave, onClose, saving, phoneE
 
   const calculatedContract = form.recurring_amount && form.billing_cycles
     ? Number(form.recurring_amount) * Number(form.billing_cycles) : null;
+  const normalizedCatalogueSearch = catalogueSearch.trim().toLowerCase();
+  const visibleCatalogueOptions = catalogueOptions.filter((item) => item.id === form.catalogue_item_id || !normalizedCatalogueSearch ||
+    [item.name, item.code, item.category].some((value) => value?.toLowerCase().includes(normalizedCatalogueSearch)));
+  const productOptions = visibleCatalogueOptions.filter((item) => item.type === 'product');
+  const serviceOptions = visibleCatalogueOptions.filter((item) => item.type === 'service');
+  const currentRequirementIsLegacy = !!form.types && !form.catalogue_item_id &&
+    !LEAD_TYPES.includes(form.types as (typeof LEAD_TYPES)[number]);
+  const requirementSelectValue = form.catalogue_item_id
+    ? `catalogue:${form.catalogue_item_id}`
+    : form.types ? `legacy:${form.types}` : '';
+
+  const selectRequirement = (value: string) => {
+    if (value.startsWith('catalogue:')) {
+      const id = Number(value.slice('catalogue:'.length));
+      const item = catalogueOptions.find((option) => option.id === id);
+      if (item) {
+        setForm((current) => ({ ...current, catalogue_item_id: item.id, types: item.name }));
+      }
+      return;
+    }
+
+    const legacyValue = value.startsWith('legacy:') ? value.slice('legacy:'.length) : '';
+    setForm((current) => ({ ...current, catalogue_item_id: null, types: legacyValue }));
+  };
   const canSubmit = !phoneInvalid && !!form.types && !!form.client_type && !!form.business_type && !!form.market_type
     && (form.client_type === 'EXISTING' ? !!form.client_id : !!form.first_name.trim())
     && (form.business_type !== 'RECURRING' || (!!form.recurring_frequency && !!form.recurring_amount && !!form.recurring_start_date
@@ -279,16 +316,57 @@ export function LeadForm({ lead, presetClientId, onSave, onClose, saving, phoneE
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         <div>
           <label className="block text-xs font-semibold text-gray-600 mb-1">Service / Product *</label>
+          {catalogueOptions.length > 8 && (
+            <input
+              type="search"
+              value={catalogueSearch}
+              onChange={(event) => setCatalogueSearch(event.target.value)}
+              placeholder="Search products and services…"
+              aria-label="Search products and services"
+              className={`${inputCls} mb-2`}
+            />
+          )}
           <select
-            value={form.types ?? ''}
-            onChange={(e) => set('types', e.target.value)}
+            value={requirementSelectValue}
+            onChange={(e) => selectRequirement(e.target.value)}
             className={inputCls}
           >
             <option value="">Select type</option>
-            {LEAD_TYPES.map((t) => (
-              <option key={t} value={t}>{LEAD_TYPE_LABELS[t]}</option>
-            ))}
+            {productOptions.length > 0 && (
+              <optgroup label="Products">
+                {productOptions.map((item) => (
+                  <option key={`product-${item.id}`} value={`catalogue:${item.id}`}>
+                    {item.name} ({item.code})
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {serviceOptions.length > 0 && (
+              <optgroup label="Services">
+                {serviceOptions.map((item) => (
+                  <option key={`service-${item.id}`} value={`catalogue:${item.id}`}>
+                    {item.name} ({item.code})
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            <optgroup label="Legacy requirements">
+              {LEAD_TYPES.map((t) => (
+                <option key={t} value={`legacy:${t}`}>{LEAD_TYPE_LABELS[t]}</option>
+              ))}
+              {currentRequirementIsLegacy && (
+                <option value={`legacy:${form.types}`}>{form.types} (current value)</option>
+              )}
+            </optgroup>
           </select>
+          {catalogueLoading && <p className="mt-1 text-xs text-gray-400">Loading catalogue…</p>}
+          {catalogueError && <p className="mt-1 text-xs text-amber-600">Catalogue unavailable. Legacy requirements remain available.</p>}
+          {!catalogueLoading && !catalogueError && catalogueOptions.length === 0 && (
+            <p className="mt-1 text-xs text-gray-400">No active catalogue items. Legacy requirements remain available.</p>
+          )}
+          {catalogueSearch && visibleCatalogueOptions.length === 0 && catalogueOptions.length > 0 && (
+            <p className="mt-1 text-xs text-gray-400">No catalogue items match your search.</p>
+          )}
         </div>
         <div>
           <label className="block text-xs font-semibold text-gray-600 mb-1">Business Type *</label>
@@ -415,7 +493,7 @@ function LeadPanel({ lead, onClose, onEdit }: { lead: Lead; onClose: () => void;
     ['Job Title',lead.job_title],
     ['Website',  lead.website],
     ['Status',   lead.status],
-    ['Type',     lead.types ? LEAD_TYPE_LABELS[lead.types] : null],
+    ['Type',     leadTypeLabel(lead.types) || null],
     ['Source',   lead.source],
     ['City',     lead.city],
     ['Country',  lead.country],
@@ -1111,6 +1189,13 @@ export default function LeadsPage() {
     retry:    false,
   });
 
+  const { data: leadCatalogueOptions = [] } = useQuery({
+    queryKey: ['lead-catalogue-options'],
+    queryFn: leadsApi.catalogueOptions,
+    staleTime: 0,
+    retry: 1,
+  });
+
   const unassignedFilter = isManager && !viewMine && teamMemberFilter === 'unassigned';
   const assignedToFilter = !isManager
     ? user?.id
@@ -1567,6 +1652,9 @@ export default function LeadsPage() {
             {LEAD_TYPES.map((t) => (
               <option key={t} value={t}>{LEAD_TYPE_LABELS[t]}</option>
             ))}
+            {leadCatalogueOptions.map((item) => (
+              <option key={`catalogue-filter-${item.id}`} value={item.name}>{item.name}</option>
+            ))}
           </select>
           <select value={clientTypeFilter} onChange={(e) => updateParams({ client_type: e.target.value || null, page: null })} className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white text-gray-600">
             <option value="">All clients</option><option value="NEW">New client</option><option value="EXISTING">Existing client</option>
@@ -1708,7 +1796,7 @@ export default function LeadsPage() {
 
                         {/* Requirement */}
                         <td className="px-5 py-3.5 text-sm text-gray-600">
-                          <p>{lead.types ? LEAD_TYPE_LABELS[lead.types] : '—'}</p>
+                          <p>{leadTypeLabel(lead.types) || '—'}</p>
                           <div className="flex gap-1 mt-1">
                             {lead.business_type && <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-50 text-violet-700">{lead.business_type === 'RECURRING' ? 'Recurring' : 'One time'}</span>}
                             {lead.market_type && <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 capitalize">{lead.market_type.toLowerCase()}</span>}

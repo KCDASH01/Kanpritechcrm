@@ -15,3 +15,9 @@ export const LEAD_TYPE_LABELS: Record<LeadType, string> = {
   digital_marketing:       'Digital Marketing',
   others:                  'Others',
 };
+
+export function leadTypeLabel(value?: string | null): string {
+  if (!value) return '';
+
+  return LEAD_TYPE_LABELS[value as LeadType] ?? value;
+}

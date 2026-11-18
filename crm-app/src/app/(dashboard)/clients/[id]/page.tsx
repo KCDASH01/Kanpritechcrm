@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { clientsApi } from '@/lib/api/clients';
-import { LEAD_TYPE_LABELS } from '@/lib/leadTypes';
+import { leadTypeLabel } from '@/lib/leadTypes';
 
 const money = (value: number) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
 
@@ -81,7 +81,7 @@ export default function ClientDetailsPage() {
           {leads.map((lead) => (
             <Link key={lead.id} href={`/leads/${lead.id}`} className="flex flex-col gap-2 px-4 py-3 hover:bg-gray-50 sm:flex-row sm:items-center sm:justify-between sm:px-5">
               <div className="min-w-0">
-                <p className="break-words font-medium text-gray-900">Lead #{lead.id} · {lead.types ? LEAD_TYPE_LABELS[lead.types] : 'Opportunity'}</p>
+                <p className="break-words font-medium text-gray-900">Lead #{lead.id} · {leadTypeLabel(lead.types) || 'Opportunity'}</p>
                 <p className="text-xs text-gray-400">{lead.business_type?.replace('_', ' ')} · {lead.market_type}</p>
               </div>
               <span className="shrink-0 text-xs uppercase text-gray-500">{lead.status}</span>

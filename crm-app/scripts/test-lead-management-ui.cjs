@@ -33,10 +33,19 @@ assert.match(leadsWorkspace, /Bulk Reassign/);
 assert.match(leadsWorkspace, /title="Bulk Reassign Leads"/);
 assert.match(leadsWorkspace, /assigned_to:\s+assignedToFilter/);
 assert.match(leadsWorkspace, /data-bulk-selection=\{isManager \? 'enabled' : 'disabled'\}/);
+assert.match(leadsWorkspace, /queryKey: \['lead-catalogue-options'\]/);
+assert.match(leadsWorkspace, /<optgroup label="Products">/);
+assert.match(leadsWorkspace, /<optgroup label="Services">/);
+assert.match(leadsWorkspace, /<optgroup label="Legacy requirements">/);
+assert.match(leadsWorkspace, /aria-label="Search products and services"/);
+assert.match(leadsWorkspace, /Catalogue unavailable\. Legacy requirements remain available\./);
+assert.match(leadsWorkspace, /No active catalogue items\. Legacy requirements remain available\./);
 
 assert.match(leadApi, /\/leads\/bulk-reassign/);
+assert.match(leadApi, /\/leads\/catalogue-options/);
 assert.match(employeeApi, /\/removal-preview/);
 assert.match(apiRoutes, /leads\/bulk-reassign/);
+assert.match(apiRoutes, /leads\/catalogue-options/);
 assert.match(apiRoutes, /employees\/\{employee\}\/removal-preview/);
 
 assert.match(releaseRoute, /lead-management-v2/);
