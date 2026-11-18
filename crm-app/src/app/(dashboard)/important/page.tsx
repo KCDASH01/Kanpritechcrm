@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { importantApi, type ImportantLead, type ImportantStatus } from '@/lib/api/important';
 import { activitiesApi } from '@/lib/api/activities';
 import { employeesApi } from '@/lib/api/employees';
+import { leadsApi } from '@/lib/api/leads';
 import { useAuthStore } from '@/store/authStore';
 import { LEAD_TYPES, LEAD_TYPE_LABELS } from '@/lib/leadTypes';
 import { SkeletonTable } from '@/components/ui/Skeleton';
@@ -115,6 +116,12 @@ export default function ImportantPage() {
     staleTime: 5 * 60_000,
     retry:    false,
   });
+  const { data: catalogueOptions = [] } = useQuery({
+    queryKey: ['lead-catalogue-options'],
+    queryFn: leadsApi.catalogueOptions,
+    staleTime: 0,
+    retry: 1,
+  });
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['important', listFilters],
@@ -191,6 +198,9 @@ export default function ImportantPage() {
           <option value="">All types</option>
           {LEAD_TYPES.map((t) => (
             <option key={t} value={t}>{LEAD_TYPE_LABELS[t]}</option>
+          ))}
+          {catalogueOptions.map((item) => (
+            <option key={`catalogue-${item.id}`} value={item.name}>{item.name}</option>
           ))}
         </select>
 

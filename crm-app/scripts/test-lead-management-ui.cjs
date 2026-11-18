@@ -13,6 +13,9 @@ const leadApi = read(appRoot, 'src', 'lib', 'api', 'leads.ts');
 const employeeApi = read(appRoot, 'src', 'lib', 'api', 'employees.ts');
 const apiRoutes = read(repositoryRoot, 'crm-api', 'routes', 'api.php');
 const releaseRoute = read(appRoot, 'src', 'app', 'api', 'release', 'route.ts');
+const leadReport = read(appRoot, 'src', 'components', 'reports', 'LeadReportTab.tsx');
+const revenueReport = read(appRoot, 'src', 'components', 'reports', 'RevenueReportTab.tsx');
+const importantPage = read(appRoot, 'src', 'app', '(dashboard)', 'important', 'page.tsx');
 
 assert.match(leadRoute, /return <LeadsWorkspace \/>/, 'The active /leads route must render LeadsWorkspace.');
 
@@ -47,6 +50,11 @@ assert.match(employeeApi, /\/removal-preview/);
 assert.match(apiRoutes, /leads\/bulk-reassign/);
 assert.match(apiRoutes, /leads\/catalogue-options/);
 assert.match(apiRoutes, /employees\/\{employee\}\/removal-preview/);
+
+for (const source of [leadReport, revenueReport, importantPage]) {
+  assert.match(source, /queryKey: \['lead-catalogue-options'\]/);
+  assert.match(source, /catalogueOptions\.map/);
+}
 
 assert.match(releaseRoute, /lead-management-v2/);
 assert.match(releaseRoute, /employee-lead-transfer/);

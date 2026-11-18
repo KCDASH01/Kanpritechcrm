@@ -92,7 +92,7 @@ class GeographicAnalyticsController extends Controller
             'assigned_to' => ['nullable', 'integer'],
             'department_id' => ['nullable', 'integer'],
             'status' => ['nullable', 'in:open,won,lost'],
-            'service_type' => ['nullable', 'string', 'max:191'],
+            'service_type' => ['nullable', 'string', 'max:255'],
             'country' => ['nullable', 'string', 'max:191'],
             'state' => ['nullable', 'string', 'max:191'],
             'city' => ['nullable', 'string', 'max:191'],

@@ -54,7 +54,7 @@ class DealRequest extends FormRequest
             'client_type'         => ['nullable', 'in:NEW,EXISTING'],
             'business_type'       => ['nullable', 'in:ONE_TIME,RECURRING'],
             'market_type'         => ['nullable', 'in:DOMESTIC,INTERNATIONAL'],
-            'service_type'        => ['nullable', 'string', 'max:64'],
+            'service_type'        => ['nullable', 'string', 'max:255'],
             'recurring_frequency' => ['nullable', 'in:MONTHLY,QUARTERLY,HALF_YEARLY,YEARLY'],
             'recurring_amount'    => ['nullable', 'numeric', 'gt:0'],
             'recurring_start_date'=> ['nullable', 'date'],

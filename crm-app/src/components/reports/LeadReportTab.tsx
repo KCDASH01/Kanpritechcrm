@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { keepPreviousData } from '@tanstack/react-query';
 import { reportsApi } from '@/lib/api/reports';
 import { employeesApi } from '@/lib/api/employees';
+import { leadsApi } from '@/lib/api/leads';
 import { LEAD_STATUSES, LEAD_STATUS_LABELS } from '@/lib/leadStatuses';
 import { LEAD_TYPES, LEAD_TYPE_LABELS } from '@/lib/leadTypes';
 import { Badge } from '@/components/ui/Badge';
@@ -74,6 +75,12 @@ export function LeadReportTab({ assignedToFilter, canFilterByMember = true }: Pr
     queryFn:  () => employeesApi.list({ role: 'employee' }),
     staleTime: 5 * 60_000,
     enabled:  canFilterByMember,
+  });
+  const { data: catalogueOptions = [] } = useQuery({
+    queryKey: ['lead-catalogue-options'],
+    queryFn: leadsApi.catalogueOptions,
+    staleTime: 0,
+    retry: 1,
   });
 
   const { data, isLoading, isFetching } = useQuery({
@@ -165,7 +172,7 @@ export function LeadReportTab({ assignedToFilter, canFilterByMember = true }: Pr
         <select value={clientType} onChange={(e) => { setClientType(e.target.value); setPage(1); }} className={inputCls}><option value="">All clients</option><option value="NEW">New</option><option value="EXISTING">Existing</option></select>
         <select value={businessType} onChange={(e) => { setBusinessType(e.target.value); setPage(1); }} className={inputCls}><option value="">All business</option><option value="ONE_TIME">One Time</option><option value="RECURRING">Recurring</option></select>
         <select value={marketType} onChange={(e) => { setMarketType(e.target.value); setPage(1); }} className={inputCls}><option value="">All markets</option><option value="DOMESTIC">Domestic</option><option value="INTERNATIONAL">International</option></select>
-        <select value={serviceType} onChange={(e) => { setServiceType(e.target.value); setPage(1); }} className={inputCls}><option value="">All services</option>{LEAD_TYPES.map((type) => <option key={type} value={type}>{LEAD_TYPE_LABELS[type]}</option>)}</select>
+        <select value={serviceType} onChange={(e) => { setServiceType(e.target.value); setPage(1); }} className={inputCls}><option value="">All services</option>{LEAD_TYPES.map((type) => <option key={type} value={type}>{LEAD_TYPE_LABELS[type]}</option>)}{catalogueOptions.map((item) => <option key={`catalogue-${item.id}`} value={item.name}>{item.name}</option>)}</select>
         {canFilterByMember && (
           <select value={assignedTo} onChange={(e) => { setAssignedTo(e.target.value); setPage(1); }} className={inputCls}>
             <option value="">All members</option>

@@ -213,7 +213,7 @@ class IntegrationLeadService
         if (isset($payload['email']) && ! filter_var($payload['email'], FILTER_VALIDATE_EMAIL)) {
             $missing[] = 'valid_email';
         }
-        if (isset($payload['types']) && ! in_array($payload['types'], ['webapp_development', 'mobile_app_development', 'website_development', 'digital_marketing', 'others'], true)) {
+        if (isset($payload['types']) && mb_strlen($payload['types']) > 255) {
             $missing[] = 'valid_types';
         }
         if (isset($payload['client_type']) && ! in_array($payload['client_type'], ['NEW', 'EXISTING'], true)) {
