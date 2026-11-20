@@ -8,7 +8,8 @@
     "start": "next start --port 3002",
     "lint": "next lint",
     "test:lead-management-ui": "node scripts/test-lead-management-ui.cjs",
-    "test:subscription-status": "node scripts/test-subscription-status.cjs"
+    "test:subscription-status": "node scripts/test-subscription-status.cjs",
+    "test:assistant-ui": "node scripts/test-assistant-ui.cjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.40.0",

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import { ScheduleAlertFab } from './ScheduleAlertFab';
+import { FollowUpBuddy } from '@/components/assistant/FollowUpBuddy';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -18,6 +19,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </main>
       </div>
       <ScheduleAlertFab />
+      <FollowUpBuddy />
     </div>
   );
 }

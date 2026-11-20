@@ -18,6 +18,7 @@ import { RemindersCard } from '@/components/dashboard/RemindersCard';
 import { PerformanceLeaderboard } from '@/components/dashboard/PerformanceLeaderboard';
 import { ConversionPeriodSelector } from '@/components/dashboard/ConversionPeriodSelector';
 import { DynamicTargetSummary } from '@/components/dashboard/DynamicTargetSummary';
+import { TargetCoach } from '@/components/dashboard/TargetCoach';
 import { LeadForm } from '@/components/leads/LeadsWorkspace';
 import { Modal } from '@/components/ui/Modal';
 import { leadsApi, type LeadPayload } from '@/lib/api/leads';
@@ -164,6 +165,7 @@ function PerformanceOverview({ performance, canManage, selectedMember, onSelectM
       <TargetProgressRow label="Sales Target" variant="sales" actual={target.achieved_amount} target={target.target_amount} remaining={target.remaining_sales_amount ?? Math.max(target.target_amount - target.achieved_amount, 0)} percentage={target.sales_percentage} daysLeft={target.days_remaining} periods={target.scope === 'team' && target.target_count > 1 ? target.periods : undefined} onClick={() => onOpen('sales')} />
       <TargetProgressRow label="Collection Target" variant="collection" actual={target.received_amount} target={target.receivable_amount} remaining={target.remaining_collection_amount ?? Math.max(target.receivable_amount - target.received_amount, 0)} percentage={target.collection_percentage} daysLeft={target.days_remaining} periods={target.scope === 'team' && target.target_count > 1 ? target.periods : undefined} onClick={() => onOpen('target_collections')} />
     </div>
+    <TargetCoach selectedUserId={selectedMember ? Number(selectedMember) : undefined} />
     <div className="p-5"><p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3">Revenue</p><div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
       {revenueCards.map((card) => <button key={card.type} type="button" onClick={() => onOpen(card.type)} className={`group rounded-2xl border border-white/70 bg-gradient-to-br ${card.card} p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-md`}>
         <div className={`flex h-9 w-9 items-center justify-center rounded-xl font-bold ${card.iconBg} ${card.accent}`}>{card.icon}</div>

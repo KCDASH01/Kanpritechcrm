@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Activity\ActivityController;
+use App\Http\Controllers\Assistant\AssistantController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Auth\MeController;
 use App\Http\Controllers\Auth\SSOController;
@@ -119,6 +120,8 @@ Route::middleware('auth:sanctum')->group(function () {
         // Dashboard
         Route::get('dashboard', [DashboardController::class, 'index']);
         Route::get('dashboard/performance-details', [DashboardController::class, 'performanceDetails']);
+        Route::get('assistant/alerts', [AssistantController::class, 'alerts']);
+        Route::get('assistant/targets', [AssistantController::class, 'targets']);
 
         // Notifications
         Route::prefix('notifications')->group(function () {
