@@ -105,4 +105,25 @@ class AssistantAlertServiceTest extends TestCase
         $this->assertSame('/activities', $alerts[0]['navigation']);
         $this->assertFalse($activity->fresh()->is_done);
     }
+
+    public function test_only_visible_tracked_activities_are_reported_as_confirmed_completions(): void
+    {
+        $org = Organization::create(['name' => 'Delta', 'slug' => 'delta', 'timezone' => 'Asia/Kolkata']);
+        $employee = User::create(['organization_id' => $org->id, 'name' => 'Employee', 'email' => 'delta@example.test', 'role' => 'employee']);
+        $own = Lead::create(['organization_id' => $org->id, 'assigned_to' => $employee->id, 'first_name' => 'Own']);
+        $unassigned = Lead::create(['organization_id' => $org->id, 'first_name' => 'Unassigned']);
+        $create = fn (Lead $lead, bool $done) => Activity::create([
+            'organization_id' => $org->id, 'subject_type' => 'lead', 'subject_id' => $lead->id,
+            'type' => 'task', 'title' => 'Call back', 'is_done' => $done,
+        ])->id;
+
+        $complete = $create($own, true);
+        $open = $create($own, false);
+        $private = $create($unassigned, true);
+        $create($own, true);
+
+        $service = app(AssistantAlertService::class);
+        $this->assertSame([$complete], $service->completedActivityIds($employee, [$complete, $open, $private]));
+        $this->assertSame([], $service->completedActivityIds($employee, []));
+    }
 }

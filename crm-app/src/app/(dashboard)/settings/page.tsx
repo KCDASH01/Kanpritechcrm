@@ -8,6 +8,7 @@ import { emailTemplatesApi, type EmailTemplatePayload } from '@/lib/api/emailTem
 import { organizationApi, type ReceiptSettings } from '@/lib/api/organization';
 import type { EmailTemplate } from '@/types';
 import { LeaderboardSettingsCard } from '@/components/settings/LeaderboardSettingsCard';
+import { AssistantSoundSettingsCard } from '@/components/settings/AssistantSoundSettingsCard';
 
 const inputCls = 'w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
 
@@ -187,6 +188,7 @@ export default function SettingsPage() {
       )}
 
       {canManage && <LeaderboardSettingsCard />}
+      {canManage && <AssistantSoundSettingsCard key={`${user?.organization?.id}:${user?.id}`} />}
 
       {/* ── Email Templates (managers only) ─────────────────────────────────── */}
       {canManage && (

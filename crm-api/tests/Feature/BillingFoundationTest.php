@@ -16,7 +16,9 @@ use App\Models\Client;
 use App\Models\Deal;
 use App\Models\DealPayment;
 use App\Models\Organization;
+use App\Models\RecurringBusiness;
 use App\Models\User;
+use App\Services\AssistantCollectionService;
 use App\Services\Billing\BillingAuditService;
 use App\Services\Billing\BillingNumberService;
 use App\Services\Billing\BillingPermissionService;
@@ -109,12 +111,24 @@ class BillingFoundationTest extends TestCase
             $t->decimal('value', 15, 2)->default(0);
             $t->string('currency', 3)->default('INR');
             $t->string('status')->default('open');
+            $t->string('business_type')->nullable();
             $t->timestamps();
             $t->softDeletes();
         });
         Schema::create('recurring_businesses', function (Blueprint $t) {
             $t->id();
             $t->unsignedBigInteger('organization_id');
+            $t->unsignedBigInteger('deal_id')->nullable();
+            $t->unsignedBigInteger('assigned_to')->nullable();
+            $t->string('business_name')->nullable();
+            $t->string('status')->default('ACTIVE');
+            $t->string('frequency')->default('MONTHLY');
+            $t->string('currency', 3)->default('INR');
+            $t->decimal('amount', 15, 2)->default(0);
+            $t->date('start_date')->nullable();
+            $t->date('next_billing_date')->nullable();
+            $t->date('end_date')->nullable();
+            $t->unsignedInteger('billing_cycles')->nullable();
             $t->timestamps();
         });
         Schema::create('deal_payments', function (Blueprint $t) {
@@ -132,6 +146,77 @@ class BillingFoundationTest extends TestCase
         (require database_path('migrations/2026_10_19_000001_create_billing_foundation.php'))->up();
         (require database_path('migrations/2026_10_20_000001_add_phase3_billing_workflow.php'))->up();
         (require database_path('migrations/2026_10_20_000002_enhance_billing_documents_and_receipts.php'))->up();
+    }
+
+    public function test_assistant_sound_settings_are_shared_with_employees_but_editable_only_by_their_managers(): void
+    {
+        [$owner, $employee, $otherOwner] = $this->users();
+        $owner->organization->update(['settings' => ['receipt' => ['company_name' => 'Retained']]]);
+        $admin = User::forceCreate(['organization_id' => $owner->organization_id, 'name' => 'Admin A', 'email' => 'admin-a@example.com', 'role' => 'admin']);
+        $url = '/api/organization/assistant-sound-settings';
+        $this->getJson($url)->assertUnauthorized();
+        Sanctum::actingAs($employee);
+        $defaults = $this->getJson($url)->assertOk()->assertJsonPath('data.volume', 'low')
+            ->assertJsonPath('data.enabled', true)->assertJsonPath('data.play_when_hidden', false)
+            ->assertJsonPath('data.buddy_interval_seconds', 60)->json('data');
+        $custom = array_replace($defaults, ['play_when_hidden' => true, 'alert' => false, 'buddy_interval_seconds' => 180, 'coach_interval_seconds' => 300]);
+        $this->putJson($url, $custom)->assertForbidden();
+        Sanctum::actingAs($admin);
+        $this->putJson($url, $custom + ['organization_id' => $otherOwner->organization_id])->assertUnprocessable();
+        $this->putJson($url, array_replace($custom, ['coach_interval_seconds' => 2]))->assertUnprocessable();
+        $this->putJson($url, $custom)->assertOk()->assertJsonPath('data.coach_interval_seconds', 300);
+        Sanctum::actingAs($otherOwner);
+        $this->getJson($url)->assertOk()->assertJsonPath('data.coach_interval_seconds', 60);
+        Sanctum::actingAs($employee->fresh());
+        $this->getJson($url)->assertOk()->assertJsonPath('data.play_when_hidden', true)->assertJsonPath('data.alert', false);
+        $this->assertSame('Retained', $owner->organization->fresh()->settings['receipt']['company_name']);
+    }
+
+    public function test_assistant_collection_reminders_respect_payments_visibility_and_duplicate_invoice_balances(): void
+    {
+        [$owner, $employee, $otherOwner] = $this->users();
+        $deal = function (User $assignee, string $title, float $value, ?string $type = null): Deal {
+            return Deal::create(['organization_id' => $assignee->organization_id, 'assigned_to' => $assignee->id,
+                'created_by' => $assignee->id, 'status' => 'won', 'title' => $title, 'value' => $value, 'currency' => 'INR', 'business_type' => $type]);
+        };
+        $invoice = function (Deal $deal, string $number, float $total): BillingDocument {
+            return BillingDocument::create(['organization_id' => $deal->organization_id, 'assigned_to' => $deal->assigned_to,
+                'created_by' => $deal->created_by, 'deal_id' => $deal->id, 'document_type' => 'invoice', 'status' => 'issued',
+                'document_number' => $number, 'issued_at' => now(), 'currency' => 'INR', 'grand_total' => $total]);
+        };
+        $billed = $deal($employee, 'Billed deal', 500);
+        $document = $invoice($billed, 'INV-TEST', 500);
+        $payment = DealPayment::create(['organization_id' => $employee->organization_id, 'deal_id' => $billed->id,
+            'created_by' => $employee->id, 'amount' => 120, 'payment_date' => today()]);
+        $document->allocations()->create(['organization_id' => $employee->organization_id, 'deal_payment_id' => $payment->id,
+            'allocated_by' => $employee->id, 'allocated_on' => today(), 'amount' => 120]);
+        $unbilled = $deal($employee, 'Unbilled deal', 200);
+        $hidden = $deal($owner, 'Manager deal', 750);
+        $foreign = $deal($otherOwner, 'Foreign deal', 950);
+        $invoice($foreign, 'INV-FOREIGN', 950);
+        $contract = RecurringBusiness::create(['organization_id' => $employee->organization_id, 'assigned_to' => $employee->id,
+            'deal_id' => $deal($employee, 'Legacy recurring deal', 900)->id,
+            'business_name' => 'Upcoming renewal', 'start_date' => today('Asia/Kolkata')->addDays(3), 'amount' => 90]);
+        $pastContract = RecurringBusiness::create(['organization_id' => $employee->organization_id, 'assigned_to' => $employee->id,
+            'business_name' => 'Recurring balance', 'start_date' => today('Asia/Kolkata')->subDay(), 'amount' => 75]);
+
+        $service = app(AssistantCollectionService::class);
+        $reminders = collect($service->reminders($employee))->keyBy('id');
+        $this->assertCount(4, $reminders);
+        $this->assertSame(380.0, $reminders['invoice_collection-'.$document->id]['amount']);
+        $this->assertSame(200.0, $reminders['deal_collection-'.$unbilled->id]['amount']);
+        $this->assertSame(90.0, $reminders['recurring_collection-'.$contract->id.'-'.$contract->start_date->toDateString()]['amount']);
+        $this->assertSame(75.0, $reminders['recurring_collection-'.$pastContract->id]['amount']);
+        $this->assertFalse($reminders->has('deal_collection-'.$billed->id));
+        $this->assertFalse($reminders->has('deal_collection-'.$hidden->id));
+        $this->assertFalse($reminders->has('deal_collection-'.$foreign->id));
+        $this->assertContains('deal_collection-'.$hidden->id, array_column($service->reminders($owner), 'id'));
+
+        BillingProfile::create(['organization_id' => $owner->organization_id, 'legal_name' => 'Organization A',
+            'permissions' => ['employee' => ['view' => false]]]);
+        $restricted = collect($service->reminders($employee))->keyBy('id');
+        $this->assertFalse($restricted->has('invoice_collection-'.$document->id));
+        $this->assertSame(380.0, $restricted['deal_collection-'.$billed->id]['amount']);
     }
 
     public function test_settings_are_isolated_and_employee_cannot_modify_them(): void

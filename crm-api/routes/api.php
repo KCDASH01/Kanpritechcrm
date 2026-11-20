@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Activity\ActivityController;
 use App\Http\Controllers\Assistant\AssistantController;
+use App\Http\Controllers\Assistant\AssistantSoundSettingsController;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Auth\MeController;
 use App\Http\Controllers\Auth\SSOController;
@@ -87,6 +88,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Organization settings
     Route::get('organization/receipt-settings', [MeController::class, 'getReceiptSettings']);
     Route::put('organization/receipt-settings', [MeController::class, 'updateReceiptSettings']);
+    Route::get('organization/assistant-sound-settings', [AssistantSoundSettingsController::class, 'show']);
+    Route::put('organization/assistant-sound-settings', [AssistantSoundSettingsController::class, 'update']);
 
     // Subscription (no plan gate — anyone can view their sub)
     Route::get('subscription', [SubscriptionController::class, 'show']);

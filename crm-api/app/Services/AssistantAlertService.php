@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Activity;
 use App\Models\Lead;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 
 class AssistantAlertService
@@ -18,17 +19,8 @@ class AssistantAlertService
         $now = Carbon::now($timezone);
         $soon = $now->copy()->addMinutes(30);
 
-        $activities = Activity::query()
-            ->where('activities.organization_id', $viewer->organization_id)
-            ->whereIn('activities.subject_type', self::LEAD_SUBJECT_TYPES)
+        $activities = $this->visibleActivities($viewer)
             ->where('activities.is_done', false)
-            ->whereExists(function ($query) use ($viewer) {
-                $query->selectRaw('1')->from('leads')
-                    ->whereColumn('leads.id', 'activities.subject_id')
-                    ->where('leads.organization_id', $viewer->organization_id)
-                    ->whereNull('leads.deleted_at')
-                    ->when(! $viewer->isAdmin() && ! $viewer->isOwner(), fn ($lead) => $lead->where('leads.assigned_to', $viewer->id));
-            })
             ->where(function ($query) use ($soon) {
                 $query->where('priority', 'high')
                     ->orWhere(function ($scheduled) use ($soon) {
@@ -52,6 +44,28 @@ class AssistantAlertService
 
             return $alert;
         })->all();
+    }
+
+    public function completedActivityIds(User $viewer, array $trackedIds): array
+    {
+        if ($trackedIds === []) return [];
+
+        return $this->visibleActivities($viewer)->whereKey($trackedIds)
+            ->where('activities.is_done', true)->pluck('activities.id')->all();
+    }
+
+    private function visibleActivities(User $viewer): Builder
+    {
+        return Activity::query()
+            ->where('activities.organization_id', $viewer->organization_id)
+            ->whereIn('activities.subject_type', self::LEAD_SUBJECT_TYPES)
+            ->whereExists(function ($query) use ($viewer) {
+                $query->selectRaw('1')->from('leads')
+                    ->whereColumn('leads.id', 'activities.subject_id')
+                    ->where('leads.organization_id', $viewer->organization_id)
+                    ->whereNull('leads.deleted_at')
+                    ->when(! $viewer->isAdmin(), fn ($lead) => $lead->where('leads.assigned_to', $viewer->id));
+            });
     }
 
     /** @return array<string, mixed> */
