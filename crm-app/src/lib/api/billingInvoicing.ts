@@ -60,13 +60,15 @@ export interface BillingLineItem {
   id?: number; catalogue_item_id?: number | null; description: string; hsn_sac?: string | null;
   quantity: string | number; unit?: string | null; unit_price: string | number;
   discount_type?: 'fixed' | 'percentage' | null; discount_value?: string | number; gst_rate?: string | number;
-  line_total?: string; catalogue_snapshot?: Partial<CatalogueItem> | null;
+  line_total?: string; metadata?: Record<string, unknown>; catalogue_snapshot?: Partial<CatalogueItem> | null;
 }
 
 export interface BillingDocument {
   id: number; uuid: string; document_type: 'proforma' | 'invoice'; status: string; payment_status: string;
   delivery_status: string; document_number?: string | null; lead_id?: number | null; client_id?: number | null;
   deal_id?: number | null; assigned_to?: number | null; currency: string; due_date?: string | null;
+  issue_date?: string | null;
+  draft_actions?: { edit: string | null; delete: string | null };
   grand_total: string; subtotal: string; discount_total: string; cgst_total: string; sgst_total: string;
   igst_total: string; template: string; notes?: string | null; terms?: string | null; issued_at?: string | null;
   tax_context?: { payment_link?: string | null; [key: string]: unknown } | null;
@@ -135,6 +137,7 @@ export const billingInvoicingApi = {
   documents: (params?: Record<string, string | number | undefined>) => client.get<Paginated<BillingDocument>>('/billing-invoicing/documents', { params }).then((r) => r.data),
   document: (id: number) => client.get<{ data: BillingDocument }>(`/billing-invoicing/documents/${id}`).then((r) => r.data.data),
   createDocument: (payload: Record<string, unknown>) => client.post<{ data: BillingDocument }>('/billing-invoicing/documents', payload).then((r) => r.data.data),
+  deleteDocument: (id: number) => client.delete(`/billing-invoicing/documents/${id}`),
   updateDocument: (id: number, payload: Record<string, unknown>) => client.put<{ data: BillingDocument }>(`/billing-invoicing/documents/${id}`, payload).then((r) => r.data.data),
   submitDocument: (id: number) => client.post<{ data: BillingDocument }>(`/billing-invoicing/documents/${id}/submit`).then((r) => r.data.data),
   approveDocument: (id: number) => client.post<{ data: BillingDocument }>(`/billing-invoicing/documents/${id}/approve`).then((r) => r.data.data),

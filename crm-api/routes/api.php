@@ -187,6 +187,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('documents', [BillingDocumentController::class, 'store']);
             Route::get('documents/{billingDocument}', [BillingDocumentController::class, 'show']);
             Route::put('documents/{billingDocument}', [BillingDocumentController::class, 'update']);
+            Route::delete('documents/{billingDocument}', [BillingDocumentController::class, 'destroy']);
             Route::post('documents/{billingDocument}/submit', [BillingDocumentController::class, 'submit']);
             Route::post('documents/{billingDocument}/approve', [BillingDocumentController::class, 'approve']);
             Route::post('documents/{billingDocument}/issue', [BillingDocumentController::class, 'issue']);

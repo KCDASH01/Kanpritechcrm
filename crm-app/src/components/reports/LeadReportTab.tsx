@@ -31,6 +31,7 @@ const SUMMARY_CARDS = [
   { key: 'ringing',       label: 'Ringing',        color: 'text-emerald-600', bg: 'bg-emerald-50' },
   { key: 'proposal_sent', label: 'Proposal Sent',  color: 'text-violet-600',  bg: 'bg-violet-50'  },
   { key: 'won',           label: 'Won',            color: 'text-green-600',   bg: 'bg-green-50'   },
+  { key: 'future_lead',   label: LEAD_STATUS_LABELS.future_lead, color: 'text-teal-700', bg: 'bg-teal-50' },
   { key: 'lost',          label: 'Lost',           color: 'text-red-600',     bg: 'bg-red-50'     },
 ] as const;
 

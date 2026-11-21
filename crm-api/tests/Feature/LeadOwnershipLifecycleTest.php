@@ -113,6 +113,7 @@ class LeadOwnershipLifecycleTest extends TestCase
             $table->string('last_name')->nullable();
             $table->string('email')->nullable();
             $table->string('phone')->nullable();
+            $table->string('phone_normalized')->nullable();
             $table->string('company')->nullable();
             $table->string('job_title')->nullable();
             $table->string('website')->nullable();
@@ -133,6 +134,14 @@ class LeadOwnershipLifecycleTest extends TestCase
             $table->string('market_type')->nullable();
             $table->decimal('expected_value', 15, 2)->nullable();
             $table->string('currency', 3)->default('INR');
+            $table->string('recurring_frequency')->nullable();
+            $table->decimal('recurring_amount', 15, 2)->nullable();
+            $table->date('recurring_start_date')->nullable();
+            $table->string('recurring_end_type')->nullable();
+            $table->date('recurring_end_date')->nullable();
+            $table->date('next_billing_date')->nullable();
+            $table->unsignedInteger('billing_cycles')->nullable();
+            $table->decimal('contract_value', 15, 2)->nullable();
             $table->timestamps();
             $table->softDeletes();
         });
@@ -175,6 +184,7 @@ class LeadOwnershipLifecycleTest extends TestCase
         Schema::create('proposals', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('lead_id');
+            $table->string('status')->nullable();
             $table->timestamps();
         });
 
@@ -186,6 +196,36 @@ class LeadOwnershipLifecycleTest extends TestCase
             'plan' => 'enterprise', 'status' => 'active', 'is_active' => true,
         ]);
         Sanctum::actingAs($this->owner);
+    }
+
+    public function test_future_lead_can_be_saved_filtered_imported_and_changed_again(): void
+    {
+        $lead = $this->lead($this->employee, 'DOMESTIC');
+        $reminder = DB::table('activities')->insertGetId([
+            'organization_id' => $this->organization->id, 'subject_type' => Lead::class,
+            'subject_id' => $lead->id, 'type' => 'follow_up', 'due_at' => now()->addDay(),
+        ]);
+        $url = '/api/leads/'.$lead->id;
+        $this->putJson($url, ['status' => Lead::FUTURE_LEAD])->assertOk()->assertJsonPath('data.status', Lead::FUTURE_LEAD);
+        $this->getJson($url.'/timeline')->assertOk()->assertJsonPath('data.0.action', 'status_changed')
+            ->assertJsonPath('data.0.description', 'Status changed from «new» to «Future Lead»');
+        $this->getJson('/api/leads?status='.Lead::FUTURE_LEAD)->assertOk()->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $lead->id);
+        $this->assertDatabaseHas('leads', ['id' => $lead->id, 'status' => Lead::FUTURE_LEAD,
+            'assigned_to' => $this->employee->id, 'market_type' => 'DOMESTIC', 'source' => 'manual']);
+        $this->assertDatabaseHas('activities', ['id' => $reminder, 'is_done' => false]);
+        $this->putJson($url, ['status' => 'contacted'])->assertOk()->assertJsonPath('data.status', 'contacted');
+        $this->postJson('/api/leads/bulk-import', ['leads' => [['first_name' => 'Imported lead', 'status' => Lead::FUTURE_LEAD]]])->assertCreated();
+        $this->assertDatabaseHas('leads', ['first_name' => 'Imported lead', 'status' => Lead::FUTURE_LEAD]);
+        $this->postJson('/api/leads', ['first_name' => 'Created lead', 'client_type' => 'NEW',
+            'business_type' => 'ONE_TIME', 'market_type' => 'DOMESTIC', 'types' => 'others', 'notes' => 'Created for follow-up later',
+            'status' => Lead::FUTURE_LEAD])->assertCreated()->assertJsonPath('data.status', Lead::FUTURE_LEAD);
+        $this->getJson('/api/reports/leads?status='.Lead::FUTURE_LEAD)->assertOk()
+            ->assertJsonPath('data.summary.future_lead', 2)->assertJsonPath('data.summary.won', 0)->assertJsonPath('data.summary.lost', 0);
+        $report = $this->get('/api/reports/leads/export?status='.Lead::FUTURE_LEAD)->assertOk()->streamedContent();
+        self::assertStringContainsString('Imported lead', $report);
+        self::assertStringContainsString(Lead::FUTURE_LEAD, $report);
+        $this->postJson('/api/leads/bulk-import', ['leads' => [['first_name' => 'Invalid lead', 'status' => 'invalid']]])->assertUnprocessable();
     }
 
     public function test_filtered_summary_matches_employee_dataset_independent_of_pagination(): void

@@ -1,3 +1,5 @@
+import type { LeadStatus } from '@/lib/leadStatuses';
+
 // ── Organization ──────────────────────────────────────────────────────────────
 export interface Organization {
   id: number;
@@ -145,7 +147,7 @@ export interface Lead {
   company?: string;
   job_title?: string;
   website?: string;
-  status: 'new' | 'contacted' | 'ringing' | 'important' | 'converted' | 'lost' | 'followup' | 'meeting' | 'not_interested';
+  status: LeadStatus;
   source?: string;
   types?: string | null;
   industry?: string;
@@ -687,6 +689,7 @@ export interface LeadReportSummary {
   new: number;
   contacted: number;
   ringing: number;
+  future_lead: number;
   qualified?: number; // legacy alias for ringing
   proposal_sent: number;
   won: number;

@@ -9,10 +9,14 @@ const read = (...segments) => fs.readFileSync(path.join(...segments), 'utf8');
 const leadRoute = read(appRoot, 'src', 'app', '(dashboard)', 'leads', 'page.tsx');
 const leadsWorkspace = read(appRoot, 'src', 'components', 'leads', 'LeadsWorkspace.tsx');
 const teamPage = read(appRoot, 'src', 'app', '(dashboard)', 'team', 'page.tsx');
+const leadStatuses = read(appRoot, 'src', 'lib', 'leadStatuses.ts');
+const leadBadge = read(appRoot, 'src', 'components', 'ui', 'Badge.tsx');
+const statusStepper = read(appRoot, 'src', 'components', 'leads', 'StatusStepperCard.tsx');
 const leadApi = read(appRoot, 'src', 'lib', 'api', 'leads.ts');
 const employeeApi = read(appRoot, 'src', 'lib', 'api', 'employees.ts');
 const apiRoutes = read(repositoryRoot, 'crm-api', 'routes', 'api.php');
 const releaseRoute = read(appRoot, 'src', 'app', 'api', 'release', 'route.ts');
+const reportOverview = read(appRoot, 'src', 'app', '(dashboard)', 'reports', 'page.tsx');
 const leadReport = read(appRoot, 'src', 'components', 'reports', 'LeadReportTab.tsx');
 const revenueReport = read(appRoot, 'src', 'components', 'reports', 'RevenueReportTab.tsx');
 const importantPage = read(appRoot, 'src', 'app', '(dashboard)', 'important', 'page.tsx');
@@ -25,6 +29,16 @@ assert.match(teamPage, />Transfer leads</);
 assert.match(teamPage, />Move leads to Unassigned</);
 assert.match(teamPage, /employeesApi\.removalPreview/);
 assert.doesNotMatch(teamPage, /confirm\(['"]Remove this member\?/);
+
+assert.match(leadStatuses, /'future_lead',/);
+assert.match(leadStatuses, /future_lead:\s+'Future Lead'/);
+assert.match(leadsWorkspace, /LEAD_STATUS_MENU\.map/);
+assert.match(leadsWorkspace, /LEAD_STATUSES\.map/);
+assert.match(leadsWorkspace, /set\('status', e\.target\.value\)/);
+assert.match(leadReport, /LEAD_STATUSES\.map/);
+assert.match(reportOverview, /funnel\.filter\(\(entry\) => entry\.status !== 'future_lead'\)\.reduce/);
+assert.match(statusStepper, /key: 'future_lead'/);
+assert.match(leadBadge, /future_lead:\s+'bg-teal-100/);
 
 assert.match(leadsWorkspace, /data-feature-lead-management="v2"/);
 assert.match(leadsWorkspace, /data-summary-scope=\{individualLeadScope \? 'member' : 'organization'\}/);
@@ -81,6 +95,7 @@ if (fs.existsSync(path.join(buildRoot, 'BUILD_ID'))) {
   assert.match(artifact, /Move leads to Unassigned/);
   assert.match(artifact, /Bulk Reassign Leads/);
   assert.match(artifact, /lead-management-v2/);
+  assert.match(artifact, /Future Lead/);
   console.log('Lead-management compiled-artifact contract: passed');
 }
 

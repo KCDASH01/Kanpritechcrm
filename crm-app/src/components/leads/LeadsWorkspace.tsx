@@ -404,6 +404,17 @@ export function LeadForm({ lead, presetClientId, onSave, onClose, saving, phoneE
             <option value="other">Other</option>
           </select>
         </div>
+        <label className="block">
+          <span className="mb-1 block text-xs font-semibold text-gray-600">Status</span>
+          <select className={inputCls} value={form.status ?? 'new'} disabled={lead?.status === 'converted'}
+            onChange={(e) => set('status', e.target.value)}>
+            {(lead?.status === 'converted' ? (['converted'] as const) : LEAD_STATUS_MENU.filter(
+              (status) => !isScheduledLeadStatus(status) || status === lead?.status,
+            )).map((status) => (
+              <option key={status} value={status}>{LEAD_STATUS_LABELS[status]}</option>
+            ))}
+          </select>
+        </label>
         {form.business_type === 'ONE_TIME' && field('expected_value', 'Expected Value', 'number')}
         <div>
           <label className="block text-xs font-semibold text-gray-600 mb-1">Currency</label>
@@ -492,7 +503,7 @@ function LeadPanel({ lead, onClose, onEdit }: { lead: Lead; onClose: () => void;
     ['Company',  lead.company],
     ['Job Title',lead.job_title],
     ['Website',  lead.website],
-    ['Status',   lead.status],
+    ['Status',   LEAD_STATUS_LABELS[lead.status] ?? lead.status],
     ['Type',     leadTypeLabel(lead.types) || null],
     ['Source',   lead.source],
     ['City',     lead.city],

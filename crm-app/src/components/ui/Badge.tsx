@@ -11,6 +11,7 @@ const COLORS: Record<string, string> = {
   converted:    'bg-indigo-100 text-indigo-700',
   followup:     'bg-orange-100 text-orange-700',
   meeting:      'bg-violet-100 text-violet-700',
+  future_lead:  'bg-teal-100 text-teal-800',
   not_interested: 'bg-gray-100 text-gray-600',
   // legacy aliases (if any cached responses)
   qualified:    'bg-green-100 text-green-700',

@@ -14,6 +14,14 @@ class Lead extends Model
 {
     use SoftDeletes;
 
+    public const FUTURE_LEAD = 'future_lead';
+    public const FUTURE_LEAD_LABEL = 'Future Lead';
+
+    public const STATUSES = [
+        'new', 'contacted', 'ringing', 'important', 'followup', 'meeting',
+        self::FUTURE_LEAD, 'not_interested', 'converted', 'lost',
+    ];
+
     protected $fillable = [
         'organization_id', 'client_id', 'created_by', 'assigned_to', 'department_id', 'lead_date',
         'pipeline_id', 'stage_id',

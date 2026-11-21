@@ -36,9 +36,9 @@ class BillingNumberService
         return $this->format($sequence, $number, $date, $profile?->financial_year_start_month ?? 4);
     }
 
-    public function issue(BillingDocument $document, User $actor, CarbonInterface $date): BillingDocument
+    public function issue(BillingDocument $document, User $actor, CarbonInterface $date, ?CarbonInterface $documentDate = null): BillingDocument
     {
-        return DB::transaction(function () use ($document, $actor, $date): BillingDocument {
+        return DB::transaction(function () use ($document, $actor, $date, $documentDate): BillingDocument {
             $document = BillingDocument::query()->lockForUpdate()->findOrFail($document->id);
             if ($document->organization_id !== $actor->organization_id) {
                 throw ValidationException::withMessages(['document' => 'The document does not belong to your organization.']);
@@ -72,7 +72,7 @@ class BillingNumberService
                     'bank_account' => $profile->bankAccounts()->where('is_active', true)->orderByDesc('is_default')->first()?->toArray(),
                 ];
             }
-            $document->forceFill(['document_number' => $number, 'status' => 'issued', 'issue_date' => $date->toDateString(), 'issued_at' => now(), 'issued_by' => $actor->id, 'issuer_snapshot' => $issuerSnapshot])->save();
+            $document->forceFill(['document_number' => $number, 'status' => 'issued', 'issue_date' => $documentDate?->toDateString() ?? $date->toDateString(), 'issued_at' => now(), 'issued_by' => $actor->id, 'issuer_snapshot' => $issuerSnapshot])->save();
             $this->audit->record($document->organization_id, $actor, 'document.issued', $document, null, ['document_number' => $number]);
 
             return $document->fresh();

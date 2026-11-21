@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Lead;
 
+use App\Models\Lead;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -115,7 +116,7 @@ class LeadRequest extends FormRequest
             'company' => ['nullable', 'string', 'max:191'],
             'job_title' => ['nullable', 'string', 'max:191'],
             'website' => ['nullable', 'url', 'max:500'],
-            'status' => ['nullable', 'in:new,contacted,ringing,important,converted,lost,followup,meeting,not_interested'],
+            'status' => ['nullable', Rule::in(Lead::STATUSES)],
             'schedule_at' => [
                 Rule::requiredIf(function () use ($isUpdate) {
                     if (! in_array($this->input('status'), ['followup', 'meeting'], true)) {

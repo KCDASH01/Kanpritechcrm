@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Http\Middleware\CheckSubscription;
+use App\Models\BillingAuditLog;
 use App\Models\BillingBankAccount;
 use App\Models\BillingCatalogueItem;
 use App\Models\BillingConsolidatedReceipt;
@@ -285,6 +286,135 @@ class BillingFoundationTest extends TestCase
         self::assertSame(0, DealPayment::count());
     }
 
+    public function test_billing_draft_mutations_enforce_permissions_and_recalculate_with_an_audit_trail(): void
+    {
+        [$owner, $employee, $otherOwner] = $this->users();
+        $admin = User::forceCreate(['organization_id' => $owner->organization_id, 'name' => 'Admin', 'email' => 'billing-admin@example.com', 'role' => 'admin']);
+        Sanctum::actingAs($owner);
+        $profile = BillingProfile::create(['organization_id' => $owner->organization_id, 'approval_required' => true]);
+        $client = Client::create(['organization_id' => $owner->organization_id, 'first_name' => 'Billing client', 'assigned_to' => $employee->id]);
+        $deal = Deal::create(['organization_id' => $owner->organization_id, 'client_id' => $client->id,
+            'assigned_to' => $employee->id, 'created_by' => $owner->id, 'title' => 'Deal']);
+        $base = '/api/billing-invoicing/documents';
+        $payload = ['document_type' => 'invoice', 'client_id' => $client->id, 'deal_id' => $deal->id,
+            'currency' => 'INR', 'idempotency_key' => 'invoice-draft-test',
+            'items' => [['description' => 'Service', 'quantity' => 1, 'unit_price' => 100]]];
+        $id = $this->postJson($base, $payload)->assertCreated()->json('data.id');
+        $url = $base.'/'.$id;
+
+        Sanctum::actingAs($employee);
+        $this->getJson($url)->assertOk()->assertJsonPath('data.draft_actions.edit', 'Billing draft management requires owner or admin permission.');
+        $this->putJson($url, $payload)->assertForbidden();
+        $this->deleteJson($url)->assertForbidden();
+
+        Sanctum::actingAs($otherOwner);
+        $this->putJson($url, $payload)->assertNotFound();
+        $this->deleteJson($url)->assertNotFound();
+
+        Sanctum::actingAs($owner);
+        $this->postJson($url.'/submit')->assertOk()->assertJsonPath('data.status', 'pending_approval');
+        $this->postJson($url.'/approve')->assertOk()->assertJsonPath('data.status', 'approved');
+        $this->deleteJson($url)->assertUnprocessable();
+        $payload['items'][0] = ['description' => 'Revised service', 'quantity' => 2, 'unit_price' => 100,
+            'discount_type' => 'fixed', 'discount_value' => 20, 'gst_rate' => 18];
+        $payload['issue_date'] = '2026-11-21';
+        Sanctum::actingAs($admin);
+        $profile->update(['permissions' => ['admin' => ['edit_draft' => false]]]);
+        $this->putJson($url, $payload)->assertForbidden();
+        $profile->update(['permissions' => ['admin' => ['edit_draft' => true]]]);
+        $this->putJson($url, $payload)->assertOk()->assertJsonPath('data.grand_total', '212.40')
+            ->assertJsonPath('data.status', 'draft')->assertJsonPath('data.approved_at', null)
+            ->assertJsonPath('data.approved_by', null)->assertJsonPath('data.submitted_at', null);
+        $this->postJson($url.'/issue')->assertUnprocessable()->assertJsonValidationErrors('status');
+        $audit = BillingAuditLog::where('auditable_id', $id)->where('event', 'document.updated')->sole();
+        self::assertSame($admin->id, $audit->actor_id);
+        self::assertSame('approved', $audit->before_values['status']);
+        self::assertSame('draft', $audit->after_values['status']);
+        self::assertSame('Service', $audit->before_values['items'][0]['description']);
+        self::assertSame('Revised service', $audit->after_values['items'][0]['description']);
+        self::assertSame('2026-11-21', BillingDocument::findOrFail($id)->issue_date->toDateString());
+        $this->getJson($base.'?document_type=invoice')->assertOk()
+            ->assertJsonPath('data.0.draft_actions.edit', null)->assertJsonPath('data.0.draft_actions.delete', null);
+        $this->deleteJson($url)->assertNoContent();
+        $this->getJson($url)->assertNotFound();
+        $this->getJson($base.'?document_type=invoice')->assertOk()->assertJsonPath('total', 0);
+        $this->getJson('/api/billing-invoicing/overview')->assertOk()->assertJsonPath('data.drafts', 0)
+            ->assertJsonCount(0, 'data.recent_documents');
+        $this->postJson($base, $payload)->assertConflict();
+        $this->assertSoftDeleted('billing_documents', ['id' => $id]);
+        $this->assertDatabaseHas('billing_document_items', ['billing_document_id' => $id, 'description' => 'Revised service']);
+        $this->assertDatabaseHas('billing_audit_logs', ['auditable_id' => $id, 'actor_id' => $admin->id, 'event' => 'document.deleted']);
+        self::assertSame(0, DealPayment::count());
+    }
+
+    public function test_proforma_drafts_can_be_edited_and_deleted_but_converted_and_financial_records_are_protected(): void
+    {
+        [$owner, $employee, $otherOwner] = $this->users();
+        Sanctum::actingAs($employee);
+        $base = '/api/billing-invoicing/documents';
+        $payload = ['document_type' => 'proforma', 'currency' => 'INR', 'customer_snapshot' => ['company_name' => 'Customer'],
+            'items' => [['description' => 'Service', 'quantity' => 1, 'unit_price' => 100]]];
+        $draft = $this->postJson($base, $payload)->assertCreated()->json('data.id');
+        $this->getJson($base.'?document_type=proforma')->assertOk()
+            ->assertJsonPath('data.0.draft_actions.edit', 'Billing draft management requires owner or admin permission.')
+            ->assertJsonPath('data.0.draft_actions.delete', 'Billing draft management requires owner or admin permission.');
+        $this->putJson($base.'/'.$draft, $payload)->assertForbidden();
+        $this->deleteJson($base.'/'.$draft)->assertForbidden();
+
+        Sanctum::actingAs($otherOwner);
+        $this->putJson($base.'/'.$draft, $payload)->assertNotFound();
+        $this->deleteJson($base.'/'.$draft)->assertNotFound();
+
+        Sanctum::actingAs($owner);
+        $payload['terms'] = 'Updated payment terms';
+        $this->putJson($base.'/'.$draft, $payload)->assertOk()->assertJsonPath('data.terms', 'Updated payment terms');
+        $this->deleteJson($base.'/'.$draft)->assertNoContent();
+        $this->getJson($base.'?document_type=proforma')->assertOk()->assertJsonPath('total', 0);
+        $this->assertSoftDeleted('billing_documents', ['id' => $draft]);
+
+        $client = Client::create(['organization_id' => $owner->organization_id, 'first_name' => 'Billing client']);
+        $deal = Deal::create(['organization_id' => $owner->organization_id, 'client_id' => $client->id,
+            'created_by' => $owner->id, 'title' => 'Conversion deal', 'value' => 100]);
+        $source = BillingDocument::create(['organization_id' => $owner->organization_id, 'document_type' => 'proforma',
+            'document_number' => 'PRO-100', 'status' => 'issued', 'issued_at' => now(), 'currency' => 'INR',
+            'client_id' => $client->id, 'deal_id' => $deal->id, 'created_by' => $owner->id, 'grand_total' => 100]);
+        $invoice = $this->postJson($base.'/'.$source->id.'/convert-to-invoice', ['confirm_deal_value_difference' => true])
+            ->assertCreated()->assertJsonPath('data.source_document_id', $source->id)->json('data.id');
+        $this->putJson($base.'/'.$source->id, $payload)->assertUnprocessable();
+        $this->deleteJson($base.'/'.$source->id)->assertUnprocessable();
+        $this->deleteJson($base.'/'.$invoice)->assertUnprocessable();
+        self::assertSame($invoice, $source->fresh()->converted_to_document_id);
+        self::assertSame('PRO-100', $source->fresh()->document_number);
+
+        $payment = DealPayment::create(['deal_id' => $deal->id, 'organization_id' => $owner->organization_id,
+            'created_by' => $owner->id, 'amount' => 25, 'payment_date' => today()]);
+        foreach ([
+            ['status' => 'issued', 'issued_at' => now()],
+            ['status' => 'draft', 'pdf_path' => 'locked.pdf'],
+            ['status' => 'draft', 'payment_status' => 'paid'],
+            ['status' => 'draft', 'payment_status' => 'partially_paid'],
+            ['status' => 'draft', 'payment_status' => 'unpaid'],
+        ] as $index => $attributes) {
+            $protected = BillingDocument::create($attributes + ['organization_id' => $owner->organization_id,
+                'document_type' => 'invoice', 'currency' => 'INR', 'created_by' => $owner->id]);
+            if ($index === 4) {
+                $protected->allocations()->create(['organization_id' => $owner->organization_id,
+                    'deal_payment_id' => $payment->id, 'amount' => 25, 'allocated_on' => today(),
+                    'allocated_by' => $owner->id, 'reversed_at' => now()]);
+            }
+            $this->putJson($base.'/'.$protected->id, $payload)->assertUnprocessable();
+            $this->deleteJson($base.'/'.$protected->id)->assertUnprocessable();
+        }
+        $receiptLinked = BillingDocument::create(['organization_id' => $owner->organization_id,
+            'document_type' => 'invoice', 'currency' => 'INR', 'created_by' => $owner->id]);
+        $receipt = BillingConsolidatedReceipt::create(['organization_id' => $owner->organization_id,
+            'uuid' => (string) Str::uuid(), 'client_id' => $client->id, 'billing_document_id' => $receiptLinked->id, 'receipt_number' => 'CR-100',
+            'issuer_snapshot' => [], 'customer_snapshot' => [], 'issued_at' => now(), 'issued_by' => $owner->id]);
+        $this->deleteJson($base.'/'.$receiptLinked->id)->assertUnprocessable();
+        self::assertSame($receiptLinked->id, $receipt->fresh()->billing_document_id);
+        self::assertSame(1, DealPayment::count());
+    }
+
     public function test_manual_proforma_snapshots_customer_without_creating_crm_records(): void
     {
         [$owner] = $this->users();
@@ -337,6 +467,32 @@ class BillingFoundationTest extends TestCase
         self::assertSame(300.0, (float) BillingConsolidatedReceipt::findOrFail($receipt['id'])->represented_total);
         self::assertSame(300.0, (float) BillingConsolidatedReceiptPayment::where('billing_consolidated_receipt_id', $receipt['id'])->value('amount_snapshot'));
         self::assertSame(1, DealPayment::count(), 'Consolidation must not create or duplicate revenue records.');
+    }
+
+    public function test_unissued_proforma_commercial_link_requires_draft_management_and_resets_approval(): void
+    {
+        [$owner, $employee] = $this->users();
+        $leadId = DB::table('leads')->insertGetId(['organization_id' => $owner->organization_id,
+            'assigned_to' => $employee->id, 'first_name' => 'Converted', 'created_at' => now(), 'updated_at' => now()]);
+        $client = Client::create(['organization_id' => $owner->organization_id, 'first_name' => 'Converted']);
+        $deal = Deal::create(['organization_id' => $owner->organization_id, 'client_id' => $client->id,
+            'lead_id' => $leadId, 'created_by' => $owner->id, 'assigned_to' => $employee->id, 'title' => 'Converted Deal']);
+        $document = BillingDocument::create(['organization_id' => $owner->organization_id, 'lead_id' => $leadId,
+            'document_type' => 'proforma', 'status' => 'approved', 'approved_at' => now(), 'approved_by' => $owner->id,
+            'currency' => 'INR', 'created_by' => $employee->id]);
+        $url = '/api/billing-invoicing/documents/'.$document->id.'/link-commercial';
+        $payload = ['client_id' => $client->id, 'deal_id' => $deal->id];
+
+        Sanctum::actingAs($employee);
+        $this->postJson($url, $payload)->assertForbidden();
+        self::assertNull($document->fresh()->deal_id);
+
+        Sanctum::actingAs($owner);
+        $this->postJson($url, $payload)->assertOk()->assertJsonPath('data.deal_id', $deal->id)
+            ->assertJsonPath('data.status', 'draft')->assertJsonPath('data.approved_by', null);
+        $audit = BillingAuditLog::where('auditable_id', $document->id)->where('event', 'document.commercial_linked')->sole();
+        self::assertSame('approved', $audit->before_values['status']);
+        self::assertSame('draft', $audit->after_values['status']);
     }
 
     public function test_issued_lead_proforma_can_be_linked_once_to_its_converted_client_and_deal(): void
@@ -427,12 +583,13 @@ class BillingFoundationTest extends TestCase
             'quantity' => 1, 'unit_price' => 1000, 'taxable_amount' => 1000, 'gst_rate' => 18,
             'cgst_amount' => 90, 'sgst_amount' => 90, 'line_total' => 1180,
         ]);
-        app(BillingNumberService::class)->issue($document, $owner, Carbon::parse('2026-10-20'));
+        app(BillingNumberService::class)->issue($document, $owner, Carbon::parse('2026-10-20'), Carbon::parse('2026-10-18'));
         Sanctum::actingAs($owner);
         $response = $this->get("/api/billing-invoicing/documents/{$document->id}/pdf?download=1");
         $response->assertOk()->assertHeader('Content-Type', 'application/pdf');
 
         $stored = $document->fresh();
+        self::assertSame('2026-10-18', $stored->issue_date->toDateString());
         self::assertNotNull($stored->pdf_path);
         self::assertSame(hash('sha256', $response->getContent()), $stored->pdf_sha256);
         Storage::disk('local')->assertExists($stored->pdf_path);

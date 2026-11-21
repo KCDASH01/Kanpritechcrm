@@ -54,4 +54,9 @@ class BillingPermissionService
     {
         return (bool) ($this->effective($user, $profile)[$action] ?? false);
     }
+
+    public function allowsDraftChanges(User $user, ?BillingProfile $profile): bool
+    {
+        return $user->isAdmin() && $this->allows($user, $profile, 'edit_draft');
+    }
 }

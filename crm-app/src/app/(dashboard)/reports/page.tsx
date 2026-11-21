@@ -1,5 +1,7 @@
 'use client';
 
+import { LEAD_STATUS_LABELS } from '@/lib/leadStatuses';
+
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -26,6 +28,7 @@ const PIE_COLORS = ['#6366f1','#10b981','#3b82f6','#f59e0b','#ef4444','#8b5cf6',
 const STATUS_COLORS: Record<string, { bar: string; label: string }> = {
   new:         { bar: '#6366f1', label: 'New'         },
   contacted:   { bar: '#3b82f6', label: 'Contacted'   },
+  future_lead: { bar: '#0d9488', label: LEAD_STATUS_LABELS.future_lead },
   ringing:     { bar: '#10b981', label: 'Ringing'     },
   converted:   { bar: '#22c55e', label: 'Converted'   },
   important:   { bar: '#f59e0b', label: 'Important'   },
@@ -138,7 +141,8 @@ export default function ReportsPage() {
   const funnelMax    = Math.max(...funnel.map((f) => f.count), 1);
   const wonCycle     = avgCycle.find((c) => c.status === 'won');
   const lostCycle    = avgCycle.find((c) => c.status === 'lost');
-  const totalLeads   = funnel.reduce((s, f) => s + f.count, 0);
+  // Keep the existing conversion cohort when displaying the additional status.
+  const totalLeads   = funnel.filter((entry) => entry.status !== 'future_lead').reduce((sum, entry) => sum + entry.count, 0);
 
   // Conversion rate: converted / total (non-zero)
   const convertedCount = funnel.find((f) => f.status === 'converted')?.count ?? 0;

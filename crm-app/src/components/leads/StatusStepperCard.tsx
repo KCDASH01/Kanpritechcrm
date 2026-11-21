@@ -15,8 +15,9 @@ const MAIN_STEPS: { key: LeadStatus; label: string; num: number }[] = [
   { key: 'ringing',   label: 'Ringing',   num: 3 },
 ];
 
-const TERMINAL: { key: LeadStatus; label: string; color: string; activeColor: string }[] = [
+const OTHER: { key: LeadStatus; label: string; color: string; activeColor: string }[] = [
   { key: 'important',      label: 'Important',      color: 'border-amber-300 text-amber-700 hover:border-amber-400',    activeColor: 'bg-amber-500 border-amber-500 text-white'       },
+  { key: 'future_lead', label: LEAD_STATUS_LABELS.future_lead, color: 'border-teal-300 text-teal-700 hover:border-teal-400', activeColor: 'bg-teal-600 border-teal-600 text-white' },
   { key: 'not_interested', label: 'Not Interested', color: 'border-gray-300 text-gray-500 hover:border-gray-400',          activeColor: 'bg-gray-600 border-gray-600 text-white'       },
   { key: 'converted',      label: 'Converted',      color: 'border-emerald-300 text-emerald-600 hover:border-emerald-400', activeColor: 'bg-emerald-500 border-emerald-500 text-white' },
   { key: 'lost',           label: 'Lost',           color: 'border-red-300 text-red-500 hover:border-red-400',           activeColor: 'bg-red-500 border-red-500 text-white'         },
@@ -113,11 +114,11 @@ export function StatusStepperCard({ status, onStatusChange, saving, canEdit = tr
         </div>
       </div>
 
-      {/* Terminal status pills */}
+      {/* Other status pills */}
       <div className="border-t border-gray-50 pt-3">
-        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Close As</p>
+        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Other statuses</p>
         <div className="flex flex-wrap gap-2">
-          {TERMINAL.map(({ key, label, color, activeColor }) => {
+          {OTHER.map(({ key, label, color, activeColor }) => {
             const isActive = status === key;
             const isDisabled = !canEdit || saving || isActive;
             return (

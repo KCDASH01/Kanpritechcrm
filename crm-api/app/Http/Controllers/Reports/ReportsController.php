@@ -34,7 +34,7 @@ class ReportsController extends Controller
             ->get()
             ->keyBy('status');
 
-        $statuses = ['new', 'contacted', 'ringing', 'converted', 'important', 'lost'];
+        $statuses = ['new', 'contacted', 'ringing', 'converted', 'important', Lead::FUTURE_LEAD, 'lost'];
         $funnel   = collect($statuses)->map(fn ($s) => [
             'status' => $s,
             'count'  => (int) ($funnelRaw[$s]->count ?? 0),
@@ -380,6 +380,7 @@ class ReportsController extends Controller
                 DB::raw("SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) as new_leads"),
                 DB::raw("SUM(CASE WHEN status = 'contacted' THEN 1 ELSE 0 END) as contacted"),
                 DB::raw("SUM(CASE WHEN status = 'ringing' THEN 1 ELSE 0 END) as ringing"),
+                DB::raw("SUM(CASE WHEN status = '".Lead::FUTURE_LEAD."' THEN 1 ELSE 0 END) as future_lead"),
                 DB::raw("SUM(CASE WHEN status = 'converted' THEN 1 ELSE 0 END) as won"),
                 DB::raw("SUM(CASE WHEN status = 'lost' THEN 1 ELSE 0 END) as lost"),
             ])
@@ -396,6 +397,7 @@ class ReportsController extends Controller
             'contacted'      => (int) ($counts->contacted ?? 0),
             'qualified'      => (int) ($counts->ringing ?? 0), // legacy key (now Ringing)
             'ringing'        => (int) ($counts->ringing ?? 0),
+            'future_lead'    => (int) ($counts->future_lead ?? 0),
             'proposal_sent'  => $proposalSent,
             'won'            => (int) ($counts->won ?? 0),
             'lost'           => (int) ($counts->lost ?? 0),

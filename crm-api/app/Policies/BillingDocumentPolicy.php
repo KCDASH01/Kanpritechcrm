@@ -26,8 +26,9 @@ class BillingDocumentPolicy
 
     public function update(User $user, BillingDocument $document): bool
     {
-        return $document->issued_at === null && $this->view($user, $document)
-            && $this->permissions->allows($user, $this->profile($user), 'edit_draft');
+        return $this->view($user, $document)
+            && $this->permissions->allowsDraftChanges($user, $this->profile($user))
+            && $document->draftChangeRestriction() === null;
     }
 
     public function issue(User $user, BillingDocument $document): bool

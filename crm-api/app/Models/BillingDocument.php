@@ -13,6 +13,8 @@ class BillingDocument extends Model
 {
     use SoftDeletes;
 
+    public const DRAFT_LINKS = ['allocations', 'consolidatedReceipts', 'deliveryHistory', 'derivedDocuments', 'recurringSchedules'];
+
     protected $fillable = [
         'uuid', 'organization_id', 'client_id', 'lead_id', 'deal_id', 'recurring_business_id',
         'source_document_id', 'converted_to_document_id', 'document_type', 'status', 'payment_status', 'delivery_status', 'document_number', 'issue_date',
@@ -102,5 +104,57 @@ class BillingDocument extends Model
     public function allocations(): HasMany
     {
         return $this->hasMany(BillingPaymentAllocation::class);
+    }
+
+    public function derivedDocuments(): HasMany
+    {
+        return $this->hasMany(self::class, 'source_document_id')->withTrashed();
+    }
+
+    public function consolidatedReceipts(): HasMany
+    {
+        return $this->hasMany(BillingConsolidatedReceipt::class);
+    }
+
+    public function recurringSchedules(): HasMany
+    {
+        return $this->hasMany(BillingRecurringSchedule::class, 'template_document_id');
+    }
+
+    public function deliveryHistory(): HasMany
+    {
+        return $this->hasMany(BillingDeliveryHistory::class);
+    }
+
+    public function draftChangeRestriction(bool $deleting = false): ?string
+    {
+        if ($this->issued_at || $this->document_number || $this->pdf_path || $this->pdf_sha256 || $this->voided_at
+            || ! in_array($this->document_type, ['invoice', 'proforma'], true)) {
+            return 'Issued, locked or voided billing documents are protected.';
+        }
+
+        if ($this->payment_status !== 'unpaid' || $this->hasDraftLink('allocations')
+            || $this->hasDraftLink('consolidatedReceipts') || $this->hasDraftLink('deliveryHistory')) {
+            return 'Documents with payment, receipt or delivery history are protected.';
+        }
+
+        if ($this->converted_to_document_id || $this->hasDraftLink('derivedDocuments')) {
+            return 'Converted Proforma Invoices are protected.';
+        }
+
+        if ($deleting && ($this->source_document_id || $this->hasDraftLink('recurringSchedules'))) {
+            return 'Documents linked to a conversion or recurring billing schedule cannot be deleted.';
+        }
+
+        if ($deleting ? $this->status !== 'draft' : ! in_array($this->status, ['draft', 'pending_approval', 'approved'], true)) {
+            return $deleting ? 'Only drafts can be deleted.' : 'Only unissued drafts can be edited.';
+        }
+
+        return null;
+    }
+
+    private function hasDraftLink(string $relation): bool
+    {
+        return $this->getAttribute(Str::snake($relation).'_exists') ?? $this->{$relation}()->exists();
     }
 }

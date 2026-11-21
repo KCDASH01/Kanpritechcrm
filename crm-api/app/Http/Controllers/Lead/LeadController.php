@@ -382,10 +382,12 @@ class LeadController extends Controller
             $assignedChanged = isset($changed['assigned_to']);
 
             if ($statusChanged) {
+                $from = $changed['status']['from'] === Lead::FUTURE_LEAD ? Lead::FUTURE_LEAD_LABEL : $changed['status']['from'];
+                $to = $changed['status']['to'] === Lead::FUTURE_LEAD ? Lead::FUTURE_LEAD_LABEL : $changed['status']['to'];
                 LeadTimeline::log(
                     $lead,
                     'status_changed',
-                    "Status changed from «{$changed['status']['from']}» to «{$changed['status']['to']}»",
+                    "Status changed from «{$from}» to «{$to}»",
                     $user->id,
                     $changed
                 );
@@ -555,6 +557,7 @@ class LeadController extends Controller
             'leads.*.first_name' => ['required', 'string', 'max:191'],
             'leads.*.email'      => ['nullable', 'email', 'max:191'],
             'leads.*.phone'      => ['nullable', 'string', 'max:30'],
+            'leads.*.status'     => ['nullable', Rule::in(Lead::STATUSES)],
         ]);
 
         $orgId  = $this->orgId($request);
@@ -572,6 +575,7 @@ class LeadController extends Controller
                 'client_type'      => $row['client_type'] ?? 'NEW',
                 'business_type'    => $row['business_type'] ?? 'ONE_TIME',
                 'market_type'      => $row['market_type'] ?? 'DOMESTIC',
+                'status'           => $row['status'] ?? 'new',
                 'created_at'       => $now,
                 'updated_at'       => $now,
             ]);
@@ -766,10 +770,11 @@ class LeadController extends Controller
             ['deal_id' => $deal->id, 'deal_title' => $deal->title]
         );
 
+        $oldStatusLabel = $oldStatus === Lead::FUTURE_LEAD ? Lead::FUTURE_LEAD_LABEL : $oldStatus;
         LeadTimeline::log(
             $lead,
             'status_changed',
-            "Status changed from «{$oldStatus}» to «converted» (deal created)",
+            "Status changed from «{$oldStatusLabel}» to «converted» (deal created)",
             $user->id,
             ['from' => $oldStatus, 'to' => 'converted']
         );
