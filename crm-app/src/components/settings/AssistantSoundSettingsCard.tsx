@@ -1,16 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { assistantApi, assistantSoundKey, type AssistantSoundSettings } from '@/lib/api/assistant';
+import { assistantApi, assistantSoundKey, type AssistantSound, type AssistantSoundSettings } from '@/lib/api/assistant';
 import { useAuthStore } from '@/store/authStore';
+import { useDashboardAssistantAudio } from '@/components/assistant/DashboardAssistantAudio';
 
-const toggles = [
-  ['enabled', 'Master sound effects'],
+const soundTypes = [
   ['success', 'Success sound'],
   ['alert', 'Important alert sound'],
   ['celebrate', 'Celebration sound'],
-  ['play_when_hidden', 'Allow sounds while the Dashboard tab is hidden'],
 ] as const;
 const intervals = [
   ['buddy_interval_seconds', 'Follow-up Buddy'],
@@ -23,7 +22,11 @@ export function AssistantSoundSettingsCard() {
   const queryClient = useQueryClient();
   const { data, isError } = useQuery({ queryKey, queryFn: ({ signal }) => assistantApi.soundSettings(signal) });
   const [draft, setDraft] = useState<AssistantSoundSettings>();
+  const { preview, stopPreview } = useDashboardAssistantAudio();
+  const [testing, setTesting] = useState<AssistantSound>();
+  const [previewMessage, setPreviewMessage] = useState('');
   const settings = draft ?? data;
+  useEffect(() => stopPreview, [stopPreview]);
   const save = useMutation({
     mutationFn: assistantApi.updateSoundSettings,
     onSuccess: (saved) => {
@@ -33,9 +36,24 @@ export function AssistantSoundSettingsCard() {
   });
   const change = (patch: Partial<AssistantSoundSettings>) => {
     if (!settings) return;
+    stopPreview();
+    setTesting(undefined);
+    setPreviewMessage('');
     save.reset();
     setDraft({ ...settings, ...patch });
   };
+
+  async function testSound(sound: AssistantSound, label: string) {
+    if (!settings?.enabled || !settings[sound]) return;
+    setTesting(sound);
+    setPreviewMessage('');
+    const result = await preview(sound, settings);
+    if (result === 'cancelled') return;
+    setTesting(undefined);
+    setPreviewMessage(result === 'played' ? `Played ${label.toLowerCase()}.`
+      : result === 'disabled' ? 'This sound is turned off.'
+      : 'Audio could not start. Check that this tab is active and try again.');
+  }
 
   return (
     <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm sm:p-6" aria-labelledby="assistant-sound-heading">
@@ -43,12 +61,28 @@ export function AssistantSoundSettingsCard() {
       {!settings ? <p className="mt-3 text-sm text-gray-600">{isError ? 'Sound settings are temporarily unavailable.' : 'Loading sound settings…'}</p> : (
         <form className="mt-4 space-y-4" onSubmit={(event) => { event.preventDefault(); save.mutate(settings); }}>
           <fieldset disabled={save.isPending} className="space-y-4">
-            <div className="flex flex-col gap-3">
-              {toggles.map(([key, label]) => <label key={key} className="flex items-center gap-2 text-sm text-gray-700">
-                <input type="checkbox" checked={settings[key]} onChange={(event) => change({ [key]: event.target.checked })} className="h-4 w-4 accent-indigo-600" />
-                {label}
-              </label>)}
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" checked={settings.enabled} onChange={(event) => change({ enabled: event.target.checked })} className="h-4 w-4 accent-indigo-600" />
+              Master sound effects
+            </label>
+            <div className="max-w-md space-y-1" role="group" aria-label="Test assistant sounds">
+              <p className="mb-2 text-xs text-gray-500">Test sounds use the switches and volume shown here, including unsaved changes.</p>
+              {soundTypes.map(([key, label]) => <div key={key} className="flex flex-wrap items-center justify-between gap-2">
+                <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <input type="checkbox" checked={settings[key]} onChange={(event) => change({ [key]: event.target.checked })} className="h-4 w-4 accent-indigo-600" />
+                  {label}
+                </label>
+                <button type="button" onClick={() => void testSound(key, label)} disabled={!settings.enabled || !settings[key] || !!testing}
+                  aria-label={`Test ${label.toLowerCase()}`} className="min-h-10 rounded-xl border border-indigo-200 px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50">
+                  {testing === key ? 'Starting…' : 'Test Sound'}
+                </button>
+              </div>)}
+              <p role="status" className="text-xs text-gray-600">{previewMessage}</p>
             </div>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" checked={settings.play_when_hidden} onChange={(event) => change({ play_when_hidden: event.target.checked })} className="h-4 w-4 accent-indigo-600" />
+              Allow sounds while the Dashboard tab is hidden
+            </label>
             <label className="block max-w-44 text-sm font-medium text-gray-700">Volume
               <select value={settings.volume} onChange={(event) => change({ volume: event.target.value as AssistantSoundSettings['volume'] })} className="mt-1 block w-full rounded-xl border border-gray-300 bg-white p-2">
                 <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>

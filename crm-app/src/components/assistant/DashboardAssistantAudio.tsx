@@ -3,20 +3,18 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { assistantApi, assistantSoundKey, type AssistantSound, type AssistantSoundSettings } from '@/lib/api/assistant';
+import { AssistantSoundPlayer } from '@/lib/assistantSoundPlayer';
 import { useAuthStore } from '@/store/authStore';
 
 type Robot = 'buddy' | 'coach';
+type PreviewResult = 'played' | 'disabled' | 'unavailable' | 'cancelled';
+
 const AudioContextValue = createContext({
   play: (_robot: Robot, _sounds: AssistantSound[]) => {},
+  preview: async (_sound: AssistantSound, _settings: AssistantSoundSettings): Promise<PreviewResult> => 'unavailable',
+  stopPreview: () => {},
   playWhenHidden: false,
 });
-
-const notes: Record<AssistantSound, number[]> = {
-  alert: [523, 659],
-  success: [523, 659, 784],
-  celebrate: [659, 784, 880, 1047],
-};
-const volumes = { low: 0.045, medium: 0.09, high: 0.16 };
 
 export function allowedAssistantSound(
   settings: AssistantSoundSettings | undefined,
@@ -43,8 +41,10 @@ export function useDashboardAssistantAudio() {
 }
 
 export function DashboardAssistantAudio({ active, children }: { active: boolean; children: React.ReactNode }) {
-  const userId = useAuthStore((state) => state.user?.id);
-  const organizationId = useAuthStore((state) => state.user?.organization?.id);
+  const user = useAuthStore((state) => state.user);
+  const userId = user?.id;
+  const organizationId = user?.organization?.id;
+  const canPreview = user?.role === 'owner' || user?.role === 'admin';
   const { data: settings } = useQuery({
     queryKey: assistantSoundKey(organizationId, userId),
     queryFn: ({ signal }) => assistantApi.soundSettings(signal),
@@ -53,90 +53,93 @@ export function DashboardAssistantAudio({ active, children }: { active: boolean;
     refetchIntervalInBackground: true,
     refetchOnWindowFocus: true,
   });
-  const audio = useRef<AudioContext>();
-  const output = useRef<GainNode>();
-  const busyUntil = useRef(0);
+  const player = useRef<AssistantSoundPlayer>();
   const playedAt = useRef<Partial<Record<Robot, number>>>({});
+  const previewVersion = useRef(0);
+  const playingPreview = useRef(false);
+  const latest = useRef({ active, settings, canPreview, userId, organizationId });
+  latest.current = { active, settings, canPreview, userId, organizationId };
+
+  useEffect(() => () => {
+    player.current?.close();
+    player.current = undefined;
+    playedAt.current = {};
+    playingPreview.current = false;
+    previewVersion.current++;
+  }, [organizationId, userId]);
 
   useEffect(() => {
     if (!active || !userId) return;
     const unlock = (event: Event) => {
-      if (!event.isTrusted || document.hidden) return;
-      try {
-        const context = audio.current ??= new AudioContext();
-        if (context.state !== 'running') void context.resume().catch(() => {});
-      } catch {
-        // Audio is optional when unavailable or blocked by the browser.
-      }
+      if (!event.isTrusted || document.hidden || navigator.userActivation?.isActive === false) return;
+      if (event.type === 'pointerdown' && (event as PointerEvent).pointerType !== 'mouse') return;
+      void (player.current ??= new AssistantSoundPlayer()).unlock();
     };
-    window.addEventListener('pointerup', unlock);
-    window.addEventListener('keydown', unlock);
+    const gestures = ['pointerdown', 'click', 'keydown'] as const;
+    gestures.forEach((gesture) => window.addEventListener(gesture, unlock, true));
     return () => {
-      window.removeEventListener('pointerup', unlock);
-      window.removeEventListener('keydown', unlock);
-      const context = audio.current;
-      audio.current = undefined;
-      output.current = undefined;
-      busyUntil.current = 0;
-      if (context && context.state !== 'closed') void context.close().catch(() => {});
+      gestures.forEach((gesture) => window.removeEventListener(gesture, unlock, true));
+      if (!playingPreview.current) player.current?.stop();
     };
   }, [active, organizationId, userId]);
 
   useEffect(() => {
-    playedAt.current = {};
-  }, [organizationId, userId]);
-
-  useEffect(() => {
     if (!active) return;
-    const mute = () => {
-      const context = audio.current;
-      if ((!settings?.enabled || (document.hidden && !settings.play_when_hidden)) && context && output.current) {
-        output.current.gain.setValueAtTime(0, context.currentTime);
-      }
+    const stopIfDisabled = () => {
+      if (!settings?.enabled || (document.hidden && !settings.play_when_hidden)) player.current?.stop();
     };
-    mute();
-    return subscribeToVisibility(mute);
+    stopIfDisabled();
+    return subscribeToVisibility(stopIfDisabled);
   }, [active, settings?.enabled, settings?.play_when_hidden]);
 
   const play = useCallback((robot: Robot, sounds: AssistantSound[]) => {
-    const context = audio.current;
-    if (!active || !settings || !context) return;
-    const now = performance.now();
-    const sound = allowedAssistantSound(settings, sounds, {
-      robot,
-      hidden: document.hidden,
-      unlocked: context.state === 'running',
-      busy: context.currentTime < busyUntil.current,
-      secondsSinceLast: (now - (playedAt.current[robot] ?? -Infinity)) / 1000,
-    });
-    if (!sound) return;
+    const audio = player.current;
+    const { userId, organizationId } = latest.current;
+    if (!audio || !latest.current.active) return;
 
-    const start = context.currentTime;
-    const gain = context.createGain();
-    gain.gain.value = volumes[settings.volume];
-    gain.connect(context.destination);
-    output.current = gain;
-    notes[sound].forEach((frequency, index) => {
-      const oscillator = context.createOscillator();
-      const envelope = context.createGain();
-      const noteStart = start + index * 0.1;
-      oscillator.type = 'sine';
-      oscillator.frequency.value = frequency;
-      envelope.gain.setValueAtTime(0.001, noteStart);
-      envelope.gain.exponentialRampToValueAtTime(0.8, noteStart + 0.025);
-      envelope.gain.exponentialRampToValueAtTime(0.001, noteStart + 0.18);
-      oscillator.connect(envelope).connect(gain);
-      oscillator.start(noteStart);
-      oscillator.stop(noteStart + 0.18);
-      oscillator.onended = () => {
-        oscillator.disconnect();
-        envelope.disconnect();
-        if (index === notes[sound].length - 1) gain.disconnect();
-      };
-    });
-    busyUntil.current = start + notes[sound].length * 0.1 + 0.1;
-    playedAt.current[robot] = now;
-  }, [active, settings]);
+    const schedule = () => {
+      const current = latest.current;
+      if (!current.active || current.userId !== userId || current.organizationId !== organizationId || player.current !== audio) return;
+      const now = performance.now();
+      const sound = allowedAssistantSound(current.settings, sounds, {
+        robot,
+        hidden: document.hidden,
+        unlocked: audio.running,
+        busy: audio.busy,
+        secondsSinceLast: (now - (playedAt.current[robot] ?? -Infinity)) / 1000,
+      });
+      if (sound && current.settings && audio.play(sound, current.settings.volume)) {
+        playingPreview.current = false;
+        playedAt.current[robot] = now;
+      }
+    };
 
-  return <AudioContextValue.Provider value={{ play, playWhenHidden: settings?.play_when_hidden ?? false }}>{children}</AudioContextValue.Provider>;
+    if (audio.running) schedule();
+    else if (audio.unlocking) void audio.unlocking.then((unlocked) => { if (unlocked) schedule(); });
+  }, []);
+
+  const preview = useCallback(async (sound: AssistantSound, draft: AssistantSoundSettings): Promise<PreviewResult> => {
+    if (!latest.current.canPreview || !draft.enabled || !draft[sound]) return 'disabled';
+    const version = ++previewVersion.current;
+    const audio = player.current ??= new AssistantSoundPlayer();
+    const unlocked = await audio.unlock();
+    if (version !== previewVersion.current || !latest.current.canPreview || player.current !== audio) return 'cancelled';
+    if (!unlocked || document.hidden || !audio.play(sound, draft.volume)) return 'unavailable';
+    playingPreview.current = true;
+    return 'played';
+  }, []);
+
+  const stopPreview = useCallback(() => {
+    previewVersion.current++;
+    if (playingPreview.current) {
+      playingPreview.current = false;
+      player.current?.stop();
+    }
+  }, []);
+
+  return (
+    <AudioContextValue.Provider value={{ play, preview, stopPreview, playWhenHidden: settings?.play_when_hidden ?? false }}>
+      {children}
+    </AudioContextValue.Provider>
+  );
 }
