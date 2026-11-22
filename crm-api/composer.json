@@ -8,10 +8,12 @@
     "require": {
         "php": "^8.3",
         "firebase/php-jwt": "^6.10",
+        "giggsey/libphonenumber-for-php-lite": "^9.0",
         "laravel/framework": "^13.0",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^3.0",
         "openai-php/client": "^0.19.2",
+        "phpoffice/phpspreadsheet": "^5.11",
         "resend/resend-php": "^1.18"
     },
     "require-dev": {

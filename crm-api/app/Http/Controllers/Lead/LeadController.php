@@ -20,6 +20,9 @@ use App\Models\RecurringBusiness;
 use App\Models\Stage;
 use App\Models\User;
 use App\Services\LeadAuthorizationService;
+use App\Services\LeadCreationService;
+use App\Services\LeadImports\ImportAccess;
+use App\Models\LeadImportRow;
 use App\Services\DealStatusService;
 use App\Services\RecurringRevenueService;
 use App\Services\LeadOwnershipService;
@@ -27,7 +30,6 @@ use App\Support\PhoneNormalizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use App\Services\PlanEntitlementService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -37,6 +39,7 @@ class LeadController extends Controller
 {
     public function __construct(
         private readonly LeadAuthorizationService $leadAuth,
+        private readonly LeadCreationService $creation,
         private readonly DealStatusService $dealStatus,
         private readonly RecurringRevenueService $recurringRevenue,
         private readonly LeadOwnershipService $ownership,
@@ -65,36 +68,6 @@ class LeadController extends Controller
             ->get(['id', 'type', 'code', 'name', 'category']);
 
         return response()->json(['data' => $items]);
-    }
-
-    /**
-     * Validate a selected catalogue ID and store a human-readable snapshot in
-     * the legacy `types` column. This preserves existing reporting and keeps
-     * historical leads readable after an item is renamed or deactivated.
-     */
-    private function resolveCatalogueRequirement(Request $request, array $attributes): array
-    {
-        $catalogueItemId = $attributes['catalogue_item_id'] ?? null;
-        unset($attributes['catalogue_item_id']);
-
-        if ($catalogueItemId === null) {
-            return $attributes;
-        }
-
-        $item = BillingCatalogueItem::query()
-            ->where('organization_id', $this->orgId($request))
-            ->where('is_active', true)
-            ->find($catalogueItemId);
-
-        if (! $item) {
-            throw ValidationException::withMessages([
-                'catalogue_item_id' => ['The selected product or service is no longer available.'],
-            ]);
-        }
-
-        $attributes['types'] = $item->name;
-
-        return $attributes;
     }
 
     // ── GET /api/leads/department-counts ──────────────────────────────────────
@@ -280,40 +253,7 @@ class LeadController extends Controller
             return response()->json(['message' => 'You are not allowed to create leads.'], 403);
         }
 
-        // Plan lead limits
-        $org = $user->organization;
-        $limit = app(PlanEntitlementService::class)->limits($org)['leads'];
-        if ($limit !== null && Lead::where('organization_id', $this->orgId($request))->count() >= $limit) {
-            return response()->json([
-                'message' => "You have reached the {$limit}-lead limit for your current plan.",
-                'code' => 'LIMIT_REACHED',
-            ], 403);
-        }
-
-        $payload = $this->resolveCatalogueRequirement($request, $request->validated());
-        $payload = $this->leadAuth->attributesForCreate($user, $payload);
-
-        if (($payload['client_type'] ?? null) === 'EXISTING') {
-            $client = $this->visibleClientQuery($request)->findOrFail($payload['client_id']);
-            $payload = array_merge($payload, $this->clientSnapshot($client));
-        }
-
-        $payload['department_id'] ??= $this->departmentForAssignee($payload['assigned_to'] ?? null, $this->orgId($request));
-
-        $lead = Lead::create(array_merge($payload, [
-            'organization_id' => $this->orgId($request),
-            'created_by'      => $user->id,
-            'lead_date'       => now()->toDateString(),
-        ]));
-
-        // ── Auto-log: lead created ─────────────────────────────────────────────
-        LeadTimeline::log(
-            $lead,
-            'created',
-            "Lead created by {$user->name}",
-            $user->id,
-            ['source' => $lead->source, 'status' => $lead->status]
-        );
+        $lead = $this->creation->create($user, $request->validated());
 
         return response()->json([
             'data'    => new LeadResource($lead->load(['stage', 'pipeline', 'assignedTo', 'client', 'department'])),
@@ -345,14 +285,14 @@ class LeadController extends Controller
             return response()->json(['message' => 'You are not allowed to edit this lead.'], 403);
         }
 
-        $validated = $this->resolveCatalogueRequirement($request, $request->validated());
+        $validated = $this->creation->resolveCatalogue($user, $request->validated());
         $validated = $this->leadAuth->attributesForUpdate($user, $validated);
         if (($validated['client_type'] ?? $lead->client_type) === 'EXISTING' && isset($validated['client_id'])) {
-            $client = $this->visibleClientQuery($request)->findOrFail($validated['client_id']);
-            $validated = array_merge($validated, $this->clientSnapshot($client));
+            $client = $this->creation->visibleClients($user)->findOrFail($validated['client_id']);
+            $validated = array_merge($validated, $this->creation->clientSnapshot($client));
         }
         if (array_key_exists('assigned_to', $validated) && ! array_key_exists('department_id', $validated)) {
-            $validated['department_id'] = $this->departmentForAssignee($validated['assigned_to'], $this->orgId($request));
+            $validated['department_id'] = $this->creation->departmentForAssignee($validated['assigned_to'], $this->orgId($request));
         }
         $scheduleAt  = $validated['schedule_at'] ?? null;
         $remark      = isset($validated['remark']) ? trim((string) $validated['remark']) : null;
@@ -550,43 +490,12 @@ class LeadController extends Controller
 
     // ── POST /api/leads/bulk-import ───────────────────────────────────────────
 
-    public function bulkImport(Request $request): JsonResponse
+    public function bulkImport(): JsonResponse
     {
-        $request->validate([
-            'leads'              => ['required', 'array', 'max:500'],
-            'leads.*.first_name' => ['required', 'string', 'max:191'],
-            'leads.*.email'      => ['nullable', 'email', 'max:191'],
-            'leads.*.phone'      => ['nullable', 'string', 'max:30'],
-            'leads.*.status'     => ['nullable', Rule::in(Lead::STATUSES)],
-        ]);
-
-        $orgId  = $this->orgId($request);
-        $userId = $request->user()->id;
-        $now    = now();
-        $rows   = [];
-        foreach ($request->input('leads') as $row) {
-            $normalizedPhone = PhoneNormalizer::normalize($row['phone'] ?? null);
-
-            $rows[] = array_merge($row, [
-                'phone_normalized' => $normalizedPhone,
-                'organization_id'  => $orgId,
-                'created_by'       => $userId,
-                'lead_date'        => $now->toDateString(),
-                'client_type'      => $row['client_type'] ?? 'NEW',
-                'business_type'    => $row['business_type'] ?? 'ONE_TIME',
-                'market_type'      => $row['market_type'] ?? 'DOMESTIC',
-                'status'           => $row['status'] ?? 'new',
-                'created_at'       => $now,
-                'updated_at'       => $now,
-            ]);
-        }
-
-        Lead::insert($rows);
-
         return response()->json([
-            'message' => count($rows) . ' leads imported successfully.',
-            'count'   => count($rows),
-        ], 201);
+            'message' => 'Use the spreadsheet import workflow to validate and confirm leads before creating them.',
+            'code' => 'IMPORT_WIZARD_REQUIRED',
+        ], 410);
     }
 
     // ── GET /api/leads/{lead}/timeline ────────────────────────────────────────
@@ -669,7 +578,7 @@ class LeadController extends Controller
                     'organization_id' => $lead->organization_id,
                     'created_by' => $user->id,
                     'assigned_to' => $lead->assigned_to,
-                    ...$this->clientSnapshot($lead),
+                    ...$this->creation->clientSnapshot($lead),
                 ]);
                 $lead->update(['client_id' => $client->id, 'client_type' => $lead->client_type ?: 'NEW']);
             }
@@ -802,28 +711,6 @@ class LeadController extends Controller
     }
 
     /** @return array<string, mixed> */
-    private function clientSnapshot(Client|Lead $source): array
-    {
-        return [
-            'first_name' => $source->first_name,
-            'last_name' => $source->last_name,
-            'company' => $source->company,
-            'email' => $source->email,
-            'phone' => $source->phone,
-            'job_title' => $source->job_title,
-            'website' => $source->website,
-            'city' => $source->city,
-            'state' => $source->state,
-            'country' => $source->country,
-        ];
-    }
-
-    private function departmentForAssignee(?int $userId, int $organizationId): ?int
-    {
-        if (! $userId) return null;
-        return User::where('organization_id', $organizationId)->find($userId)?->departments()->value('departments.id');
-    }
-
     // ── Helper ────────────────────────────────────────────────────────────────
 
     /**
@@ -942,6 +829,14 @@ class LeadController extends Controller
     private function filteredLeadQuery(Request $request, array $filters): Builder
     {
         $query = Lead::query()->where('leads.organization_id', $this->orgId($request));
+        if (array_key_exists('import_id', $filters)) {
+            $validated = $request->validate(['import_id' => ['required', 'integer', 'min:1']]);
+            $access = app(ImportAccess::class);
+            abort_unless($access->canImport($request->user()), 403, 'Lead import requires an active Business or Enterprise membership.');
+            $import = $access->visible($request->user())->findOrFail($validated['import_id']);
+            $query->whereIn('leads.id', LeadImportRow::where('lead_import_id', $import->id)
+                ->where('status', 'created')->select('lead_id'));
+        }
 
         if ($request->user()->isEmployee()) {
             $query->where('leads.assigned_to', $request->user()->id);
@@ -1063,17 +958,5 @@ class LeadController extends Controller
         if ($request->user()->isEmployee() && $lead->assigned_to !== $request->user()->id) {
             abort(404);
         }
-    }
-
-    private function visibleClientQuery(Request $request): Builder
-    {
-        $user = $request->user();
-
-        return Client::query()
-            ->where('organization_id', $this->orgId($request))
-            ->when($user->isEmployee(), fn ($q) => $q->where(fn ($visible) => $visible
-                ->where('assigned_to', $user->id)
-                ->orWhereHas('leads', fn ($lead) => $lead->where('assigned_to', $user->id))
-                ->orWhereHas('deals', fn ($deal) => $deal->where('assigned_to', $user->id))));
     }
 }

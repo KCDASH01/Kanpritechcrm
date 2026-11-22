@@ -25,6 +25,7 @@ use App\Http\Controllers\FollowUp\FollowUpController;
 use App\Http\Controllers\GeographicAnalytics\GeographicAnalyticsController;
 use App\Http\Controllers\Important\ImportantController;
 use App\Http\Controllers\Lead\LeadController;
+use App\Http\Controllers\Lead\LeadImportController;
 use App\Http\Controllers\LeadIntegration\LeadIntegrationController;
 use App\Http\Controllers\LeadIntegration\OAuthController as LeadIntegrationOAuthController;
 use App\Http\Controllers\LeadIntegration\WebhookController as LeadIntegrationWebhookController;
@@ -148,6 +149,16 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('leads/bulk-reassign', [LeadController::class, 'bulkReassign']);
         Route::get('leads/{lead}/timeline', [LeadController::class, 'timeline']);
         Route::post('leads/{lead}/convert', [LeadController::class, 'convertToDeal']);
+        Route::prefix('leads/imports')->middleware(['business.only', 'throttle:120,1,lead-import:'])->group(function () {
+            Route::get('/', [LeadImportController::class, 'index']);
+            Route::post('/', [LeadImportController::class, 'upload'])->middleware('throttle:8,1,lead-import-upload:');
+            Route::get('template', [LeadImportController::class, 'template']);
+            Route::get('{id}', [LeadImportController::class, 'show'])->whereNumber('id');
+            Route::post('{id}/validate', [LeadImportController::class, 'validateFile'])->whereNumber('id')->middleware('throttle:15,1,lead-import-validation:');
+            Route::get('{id}/preview', [LeadImportController::class, 'preview'])->whereNumber('id');
+            Route::post('{id}/confirm', [LeadImportController::class, 'confirm'])->whereNumber('id');
+            Route::get('{id}/errors', [LeadImportController::class, 'errors'])->whereNumber('id');
+        });
         Route::apiResource('leads', LeadController::class);
 
         // Canonical clients and their complete commercial history

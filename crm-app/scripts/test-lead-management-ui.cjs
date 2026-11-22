@@ -7,6 +7,8 @@ const repositoryRoot = path.resolve(appRoot, '..');
 
 const read = (...segments) => fs.readFileSync(path.join(...segments), 'utf8');
 const leadRoute = read(appRoot, 'src', 'app', '(dashboard)', 'leads', 'page.tsx');
+const importRoute = read(appRoot, 'src', 'app', '(dashboard)', 'leads', 'imports', 'page.tsx');
+const importWizard = read(appRoot, 'src', 'components', 'leads', 'import', 'LeadImportWorkspace.tsx');
 const leadsWorkspace = read(appRoot, 'src', 'components', 'leads', 'LeadsWorkspace.tsx');
 const teamPage = read(appRoot, 'src', 'app', '(dashboard)', 'team', 'page.tsx');
 const leadStatuses = read(appRoot, 'src', 'lib', 'leadStatuses.ts');
@@ -20,6 +22,11 @@ const reportOverview = read(appRoot, 'src', 'app', '(dashboard)', 'reports', 'pa
 const leadReport = read(appRoot, 'src', 'components', 'reports', 'LeadReportTab.tsx');
 const revenueReport = read(appRoot, 'src', 'components', 'reports', 'RevenueReportTab.tsx');
 const importantPage = read(appRoot, 'src', 'app', '(dashboard)', 'important', 'page.tsx');
+
+assert.match(importRoute, /return <LeadImportWorkspace \/>/);
+assert.match(leadsWorkspace, /router\.push\('\/leads\/imports'\)/);
+assert.match(importWizard, /disabled=\{!confirmed \|\| uploading/);
+assert.match(importWizard, /href=\{'\/leads\?import_id='\+job\.id\}/);
 
 assert.match(leadRoute, /return <LeadsWorkspace \/>/, 'The active /leads route must render LeadsWorkspace.');
 

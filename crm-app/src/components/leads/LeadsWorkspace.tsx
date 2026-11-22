@@ -1165,6 +1165,7 @@ export default function LeadsPage() {
 
   // modal states
   const [modalLead, setModalLead]           = useState<Lead | null | undefined>(undefined); // undefined=closed
+  const importId = Number(searchParams.get('import_id')) || undefined;
   const presetClientId = Number(searchParams.get('client_id')) || undefined;
   const [panelLead, setPanelLead]           = useState<Lead | null>(null);
   const [convertLead, setConvertLead]       = useState<Lead | null>(null);
@@ -1223,6 +1224,7 @@ export default function LeadsPage() {
     client_type:   clientTypeFilter || undefined,
     business_type: businessTypeFilter || undefined,
     client_id:      presetClientId,
+    import_id:      importId,
     market_type:   marketTypeFilter || undefined,
     date_from:     dateFromFilter || undefined,
     date_to:       dateToFilter || undefined,
@@ -1233,13 +1235,13 @@ export default function LeadsPage() {
   };
 
   const hasActiveFilters = !!(
-    search || statusFilter || typeFilter || clientTypeFilter || businessTypeFilter || marketTypeFilter || teamMemberFilter || dateFromFilter || dateToFilter || departmentFilter || presetClientId
+    search || statusFilter || typeFilter || clientTypeFilter || businessTypeFilter || marketTypeFilter || teamMemberFilter || dateFromFilter || dateToFilter || departmentFilter || presetClientId || importId
   );
 
   const clearAllFilters = () =>
     updateParams({
       search: null, status: null, types: null, client_type: null, business_type: null, market_type: null, member: null,
-      client_id: null, date_from: null, date_to: null, department: null, page: null,
+      client_id: null, import_id: null, date_from: null, date_to: null, department: null, page: null,
     });
 
   const { data: liveSub } = useQuery({
@@ -1248,8 +1250,9 @@ export default function LeadsPage() {
     staleTime: 5 * 60_000,
   });
 
+  const importSubscription = liveSub ?? user?.subscription;
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['leads', listFilters],
+    queryKey: importId ? ['leads', listFilters, user?.organization?.id, user?.id] : ['leads', listFilters],
     queryFn:  () => leadsApi.list(listFilters),
     placeholderData: keepPreviousData,
   });
@@ -1518,6 +1521,13 @@ export default function LeadsPage() {
                   All Leads
                 </button>
               </div>
+            )}
+            {canCreateLead && user?.is_active !== false && ['business', 'enterprise'].includes(importSubscription?.plan ?? '')
+              && importSubscription?.is_active !== false && !importSubscription?.is_expired && !importSubscription?.is_read_only && (
+              <button type="button" onClick={() => router.push('/leads/imports')} className="flex items-center gap-1.5 rounded-xl border border-indigo-200 px-4 py-2.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-50">
+                <svg aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16V4m-4 4 4-4 4 4M4 16v4h16v-4"/></svg>
+                Import Leads
+              </button>
             )}
             {/* Add Lead — managers and employees */}
             {canCreateLead && (

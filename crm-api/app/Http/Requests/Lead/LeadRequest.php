@@ -3,6 +3,8 @@
 namespace App\Http\Requests\Lead;
 
 use App\Models\Lead;
+use App\Models\User;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -11,6 +13,15 @@ class LeadRequest extends FormRequest
     public function authorize(): bool
     {
         return true;
+    }
+
+    public static function validateImport(User $user, array $attributes): array
+    {
+        $request = new self([], $attributes, [], [], [], ['REQUEST_METHOD' => 'POST']);
+        $request->setUserResolver(fn () => $user);
+        $request->prepareForValidation();
+
+        return Validator::make($request->all(), $request->rules())->validate();
     }
 
     protected function prepareForValidation(): void

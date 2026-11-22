@@ -48,6 +48,7 @@ export interface LeadFilters {
   stage_id?: number;
   pipeline_id?: number;
   client_id?: number;
+  import_id?: number;
   assigned_to?: number | null;
   unassigned?: boolean;
   department_id?: number;
@@ -175,9 +176,6 @@ export const leadsApi = {
 
   delete: (id: number) =>
     client.delete(`/leads/${id}`).then((r) => r.data),
-
-  bulkImport: (leads: Partial<LeadPayload>[]) =>
-    client.post<{ message: string; count: number }>('/leads/bulk-import', { leads }).then((r) => r.data),
 
   timeline: (id: number) =>
     client.get<{ data: LeadTimelineEntry[] }>(`/leads/${id}/timeline`).then((r) => r.data.data),

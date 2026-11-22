@@ -198,7 +198,7 @@ class LeadOwnershipLifecycleTest extends TestCase
         Sanctum::actingAs($this->owner);
     }
 
-    public function test_future_lead_can_be_saved_filtered_imported_and_changed_again(): void
+    public function test_future_lead_can_be_saved_filtered_exported_and_changed_again(): void
     {
         $lead = $this->lead($this->employee, 'DOMESTIC');
         $reminder = DB::table('activities')->insertGetId([
@@ -215,17 +215,14 @@ class LeadOwnershipLifecycleTest extends TestCase
             'assigned_to' => $this->employee->id, 'market_type' => 'DOMESTIC', 'source' => 'manual']);
         $this->assertDatabaseHas('activities', ['id' => $reminder, 'is_done' => false]);
         $this->putJson($url, ['status' => 'contacted'])->assertOk()->assertJsonPath('data.status', 'contacted');
-        $this->postJson('/api/leads/bulk-import', ['leads' => [['first_name' => 'Imported lead', 'status' => Lead::FUTURE_LEAD]]])->assertCreated();
-        $this->assertDatabaseHas('leads', ['first_name' => 'Imported lead', 'status' => Lead::FUTURE_LEAD]);
         $this->postJson('/api/leads', ['first_name' => 'Created lead', 'client_type' => 'NEW',
             'business_type' => 'ONE_TIME', 'market_type' => 'DOMESTIC', 'types' => 'others', 'notes' => 'Created for follow-up later',
             'status' => Lead::FUTURE_LEAD])->assertCreated()->assertJsonPath('data.status', Lead::FUTURE_LEAD);
         $this->getJson('/api/reports/leads?status='.Lead::FUTURE_LEAD)->assertOk()
-            ->assertJsonPath('data.summary.future_lead', 2)->assertJsonPath('data.summary.won', 0)->assertJsonPath('data.summary.lost', 0);
+            ->assertJsonPath('data.summary.future_lead', 1)->assertJsonPath('data.summary.won', 0)->assertJsonPath('data.summary.lost', 0);
         $report = $this->get('/api/reports/leads/export?status='.Lead::FUTURE_LEAD)->assertOk()->streamedContent();
-        self::assertStringContainsString('Imported lead', $report);
+        self::assertStringContainsString('Created lead', $report);
         self::assertStringContainsString(Lead::FUTURE_LEAD, $report);
-        $this->postJson('/api/leads/bulk-import', ['leads' => [['first_name' => 'Invalid lead', 'status' => 'invalid']]])->assertUnprocessable();
     }
 
     public function test_filtered_summary_matches_employee_dataset_independent_of_pagination(): void
