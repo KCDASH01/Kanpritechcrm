@@ -53,7 +53,7 @@ function Coach({ scope, selectedUserId }: { scope: string; selectedUserId?: numb
   const [selected, setSelected] = useState('');
   const [muted, setMuted] = useState(false);
   const [celebrating, setCelebrating] = useState('');
-  const previousStatuses = useRef<Map<string, TargetCoachStatus>>();
+  const previousStatuses = useRef<Map<string, TargetCoachStatus>>(undefined);
   const achieved = useRef(new Set<string>());
   const motionKey = `growneq.target-coach.reduced-motion:${scope}`;
   useEffect(() => {

@@ -53,7 +53,7 @@ export function DashboardAssistantAudio({ active, children }: { active: boolean;
     refetchIntervalInBackground: true,
     refetchOnWindowFocus: true,
   });
-  const player = useRef<AssistantSoundPlayer>();
+  const player = useRef<AssistantSoundPlayer>(undefined);
   const playedAt = useRef<Partial<Record<Robot, number>>>({});
   const previewVersion = useRef(0);
   const playingPreview = useRef(false);

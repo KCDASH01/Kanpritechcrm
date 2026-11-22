@@ -50,7 +50,7 @@ function Buddy({ scope }: { scope: string }) {
   const visible = useDashboardVisibility();
   const { play, playWhenHidden } = useDashboardAssistantAudio();
   const trigger = useRef<HTMLButtonElement>(null);
-  const history = useRef<{ seen: Set<string>; activities: number[] }>();
+  const history = useRef<{ seen: Set<string>; activities: number[] }>(undefined);
   const tracked = useRef<number[]>([]);
   const storageKey = `growneq.followup-buddy.v2:${scope}`;
   const [prefs, setPrefs] = useState(defaults);
